@@ -1,3 +1,10 @@
+
+import streamlit as st
+import pandas as pd
+import connector
+import ev_engine
+import tracker
+import os
 # Añade esto al inicio de tu dashboard para probar
 if st.sidebar.button("🔍 Testear Conexión"):
     test_data = connector.obtener_datos_caliente_limpios()
@@ -5,13 +12,6 @@ if st.sidebar.button("🔍 Testear Conexión"):
         st.sidebar.success(f"Conexión OK: {len(test_data)} partidos encontrados.")
     else:
         st.sidebar.error("Conexión fallida. Revisa los Secrets.")
-import streamlit as st
-import pandas as pd
-import connector
-import ev_engine
-import tracker
-import os
-
 st.set_page_config(page_title="NBA ELITE Pro", layout="wide")
 
 # Barra lateral para gestión de banca
@@ -69,5 +69,6 @@ st.subheader("📋 Historial de Movimientos")
 if os.path.exists('historial_apuestas.csv'):
     df_hist = pd.read_csv('historial_apuestas.csv')
     st.dataframe(df_hist.tail(10), use_container_width=True)
+
 
 
