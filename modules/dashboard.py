@@ -22,16 +22,22 @@ def obtener_analisis_ia(partido, jugador, linea):
 st.set_page_config(page_title="NBA Dashboard Pro", layout="wide")
 st.title("🏀 NBA +EV Dashboard v12")
 
-# Datos de ejemplo
+# Simulamos datos con momios de Caliente y nuestra proyección
 data = {
-    'date': ['2026-02-20', '2026-02-20', '2026-02-20'],
-    'game': ['Lakers vs Suns', 'Celtics vs Heat', 'Nuggets vs Warriors'],
-    'stake': [50, 50, 40],
-    'result': ['win', 'loss', 'win'], 
-    'jugador': ['LeBron James', 'Jaylen Brown', 'Stephen Curry'],
-    'linea': [24.5, 26.5, 28.5]
+    'game': ['Lakers vs Suns', 'Celtics vs Heat', 'Nuggets vs Warriors', 'Knicks vs Bulls'],
+    'jugador': ['LeBron James', 'Jaylen Brown', 'Stephen Curry', 'Jalen Brunson'],
+    'linea': [24.5, 22.5, 28.5, 26.5],
+    'momio_caliente': [-110, -115, -110, -110], # Momios reales de la casa
+    'prob_modelo': [0.58, 0.45, 0.62, 0.48]    # Lo que nuestra IA proyecta
 }
-df = pd.DataFrame(data)
+df_picks = pd.DataFrame(data)
+
+# Calculamos si vale la pena apostar (Edge)
+# Si prob_modelo > 0.54 (para momios -110), hay valor
+df_picks['es_buena_idea'] = df_picks['prob_modelo'] > 0.53 
+
+# SOLO mostramos los que tienen valor
+picks_filtrados = df_picks[df_picks['es_buena_idea'] == True]
 
 # --- CÁLCULO DE ROI (CORRECCIÓN TYPEERROR) ---
 # Evitamos el error de la imagen 17db93 convirtiendo resultados a números
@@ -60,6 +66,7 @@ for i, row in df.iterrows():
 
 st.subheader("📊 Historial Detallado")
 st.dataframe(df, use_container_width=True)
+
 
 
 
