@@ -3,8 +3,8 @@ import pandas as pd
 import google.generativeai as genai
 
 # --- CONFIGURACIÓN DE IA (GEMINI) ---
-# Sustituye con tu clave de Google AI Studio
-genai.configure(api_key="TU_API_KEY_AQUÍ")
+# En lugar de poner la clave aquí, usamos st.secrets
+genai.configure(api_key=st.secrets["AIzaSyDLMYEylhE8m7UV1kRDmKHuXjMGoulFutg"])
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 def obtener_analisis_ia(partido, jugador, linea):
@@ -59,5 +59,5 @@ for i, row in df.iterrows():
 st.subheader("📊 Historial Detallado")
 
 st.dataframe(df, use_container_width=True)
-# En lugar de poner la clave aquí, usamos st.secrets
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+
+
