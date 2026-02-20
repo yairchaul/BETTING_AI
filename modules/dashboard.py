@@ -57,4 +57,7 @@ for i, row in df.iterrows():
         st.code(ticket_text, language="text")
 
 st.subheader("📊 Historial Detallado")
+
 st.dataframe(df, use_container_width=True)
+# En lugar de poner la clave aquí, usamos st.secrets
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
