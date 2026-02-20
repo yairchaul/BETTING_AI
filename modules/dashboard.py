@@ -1,51 +1,52 @@
 import streamlit as st
 import pandas as pd
 import connector
-import ev_engine
-import tracker # <--- Nuevo import
+import ev_engine # <--- Conectamos el motor estadístico
 
-st.set_page_config(page_title="NBA ELITE TRACKER", layout="wide")
+st.set_page_config(page_title="NBA ELITE v13", layout="wide")
+st.title("🏀 NBA ELITE AI - ESCÁNER v13")
 
-# --- CAPITAL ---
-with st.sidebar:
-    st.header("💳 Control de Caja")
-    capital = st.number_input("Capital Actual (MXN):", value=1000.0)
+# --- LÓGICA DE CATEGORIZACIÓN (Tu esencia original) ---
+def categorizar_pick(prob):
+    if prob >= 0.65:
+        return "🔥 EXCELENTE", "#00FF00" # Verde
+    elif prob >= 0.58:
+        return "⚡ BUENA", "#FFFF00"    # Amarillo
+    else:
+        return "⚠️ BAJA / EVITAR", "#FF4B4B" # Rojo
 
-if st.button("🔄 ESCANEAR Y REGISTRAR ELITES"):
-    datos = connector.obtener_datos_caliente_limpios()
-    
-    for p in datos:
-        # Probabilidad calculada por promedios (ev_engine)
-        prob = ev_engine.calcular_probabilidad_over(p['home'], p['away'], p['linea'])
+if st.button("🚀 EJECUTAR ANÁLISIS ESTADÍSTICO"):
+    with st.spinner("Analizando promedios y momios de Caliente..."):
+        datos_reales = connector.obtener_datos_caliente_limpios()
         
-        # Recuperamos la esencia de las etiquetas
-        if prob >= 0.65:
-            status = "🔥 EXCELENTE"
-            color = "#00FF00"
-            stake = capital * 0.05 # Invertimos el 5% en excelentes
+        resultados = []
+        for p in datos_reales:
+            # Calculamos probabilidad real con tu motor
+            prob = ev_engine.calcular_probabilidad_over(p['home'], p['away'], p['linea'])
+            status, color = categorizar_pick(prob)
             
-            # REGISTRO AUTOMÁTICO EN EXCEL/CSV
-            tracker.registrar_apuesta(f"{p['away']}@{p['home']}", "Equipo Total", p['linea'], prob, stake, status)
-            st.success(f"Registrada Sugerencia Élite: {p['away']} @ {p['home']} (Over {p['linea']})")
+            resultados.append({
+                "PARTIDO": f"{p['away']} @ {p['home']}",
+                "LÍNEA (OVER)": p['linea'],
+                "PROB. IA": f"{prob*100:.1f}%",
+                "STATUS": status,
+                "COLOR": color,
+                "INVERSIÓN": "2% Stake" if prob >= 0.58 else "0%"
+            })
         
-        elif prob >= 0.58:
-            status = "⚡ BUENA"
-            color = "#FFFF00"
-            stake = capital * 0.02 # Invertimos el 2% en buenas
-        else:
-            status = "⚠️ BAJA"
-            color = "#FF4B4B"
-            stake = 0
+        df = pd.DataFrame(resultados)
+        
+        # --- RENDERIZADO VISUAL ---
+        for _, row in df.iterrows():
+            st.markdown(f"""
+            <div style="border-left: 10px solid {row['COLOR']}; padding:15px; background-color:#1e1e1e; border-radius:5px; margin-bottom:10px">
+                <h4 style="margin:0">{row['STATUS']} | {row['PARTIDO']}</h4>
+                <p style="margin:0">Línea Sugerida: <b>{row['LÍNEA (OVER)']}</b> | Probabilidad: {row['PROB. IA']}</p>
+                <p style="margin:0; font-size: 0.8em; color: gray;">Sugerencia: {row['INVERSIÓN']}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-# --- MOSTRAR HISTORIAL REAL ---
-st.divider()
-st.subheader("📋 Historial de Inversiones (Tracker)")
-if os.path.exists('historial_apuestas.csv'):
-    historial_df = pd.read_csv('historial_apuestas.csv')
-    st.dataframe(historial_df.tail(10), use_container_width=True) # Muestra las últimas 10
-else:
-    st.info("Aún no hay apuestas registradas hoy.")
-
+        st.success("Análisis completado con datos de Caliente.")
 
 
 
