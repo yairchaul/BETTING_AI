@@ -1,45 +1,49 @@
-def analizar_jerarquia_acumulativa(partido):
-    # Aseguramos que el nombre del partido nunca sea None
+def analizar_jerarquia_maestra(partido):
     game_name = partido.get('game', 'Partido Desconocido')
-    posibilidades = []
-
-    # Mercado 1: Triples de Jugador (Alta Especificidad)
-    if "Hornets" in game_name:
-        posibilidades.append({
-            "seleccion": "LaMelo Ball Over 3.5 Triples",
-            "jugador": "LaMelo Ball",
-            "prob": 0.89,
-            "tipo": "3-Pointers"
-        })
-
-    # Mercado 2: Puntos de Jugador (Player Props)
-    if "Bucks" in game_name:
-        posibilidades.append({
-            "seleccion": "Giannis Over 30.5 Puntos",
-            "jugador": "G. Antetokounmpo",
-            "prob": 0.91,
-            "tipo": "Player Prop"
-        })
-
-    # Mercado 3: Over/Under Total
-    linea = partido.get('linea', 222.5)
-    posibilidades.append({
-        "seleccion": f"Over {linea} Puntos",
-        "jugador": "Equipo (Total)",
-        "prob": 0.75,
-        "tipo": "Totals"
-    })
-
-    # Mercado 4: Ganador del Partido (Moneyline)
-    posibilidades.append({
-        "seleccion": f"{game_name.split('@')[0].strip()} a Ganar",
-        "jugador": "Equipo",
-        "prob": 0.68,
-        "tipo": "Moneyline"
-    })
-
-    # 🏆 FILTRO MAESTRO: Selecciona el mercado con la probabilidad más alta
-    # Si hay un empate, prioriza el mercado más específico (jugador sobre equipo)
-    mejor_pick = max(posibilidades, key=lambda x: x['prob'])
     
-    return mejor_pick
+    # Simulamos el escaneo simultáneo de los 4 mercados
+    # En producción, aquí conectarías con los diccionarios de la API
+    opciones = [
+        {
+            "seleccion": "LaMelo Ball Over 3.5 Triples",
+            "protagonista": "LaMelo Ball",
+            "prob": 0.89,
+            "tipo": "3-Pointers",
+            "nota": "🔥 Cavs permiten 12+ triples por juego."
+        },
+        {
+            "seleccion": "Giannis Over 31.5 Puntos",
+            "protagonista": "G. Antetokounmpo",
+            "prob": 0.92,
+            "tipo": "Player Prop",
+            "nota": "🎯 Promedio de 34.0 vs Pelicans."
+        },
+        {
+            "seleccion": f"Over {partido.get('linea', 224.5)} Puntos",
+            "protagonista": "Global Partido",
+            "prob": 0.74,
+            "tipo": "Totals",
+            "nota": "✅ Ambos equipos en back-to-back."
+        },
+        {
+            "seleccion": f"{game_name.split('@')[0].strip()} ML",
+            "protagonista": "Equipo ML",
+            "prob": 0.65,
+            "tipo": "Moneyline",
+            "nota": "⚠️ Cuota con poco valor relativo."
+        }
+    ]
+
+    # SELECCIÓN JERÁRQUICA: Filtramos por la probabilidad más alta
+    # No importa la categoría, el sistema elige lo "más real"
+    mejor_pick = max(opciones, key=lambda x: x['prob'])
+    
+    # Aseguramos que el diccionario de salida sea robusto (Sin Nulos)
+    return {
+        "game": game_name,
+        "label": mejor_pick["seleccion"],
+        "sujeto": mejor_pick["protagonista"],
+        "confianza": mejor_pick["prob"],
+        "categoria": mejor_pick["tipo"],
+        "observacion": mejor_pick["nota"]
+    }
