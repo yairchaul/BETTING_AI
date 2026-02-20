@@ -1,32 +1,21 @@
-# tracker.py
+# modules/tracker.py
 import csv
 from datetime import datetime
 
-ARCHIVO_HISTORICO = "data/historial_picks.csv"
-
-def registrar_pick_generado(partido, seleccion, momio, confianza, inversion):
+def guardar_apuesta_real(partido, seleccion, momio, confianza):
     """
-    Guarda el pick en un CSV antes de que empiece el partido.
-    Cura el error de no saber qué se apostó realmente.
+    Registra el pick con nombres reales de Selenium para auditoría
     """
-    nuevo_registro = [
+    datos_apuesta = [
         datetime.now().strftime("%Y-%m-%d %H:%M"),
         partido,
         seleccion,
         momio,
-        f"{confianza}%",
-        inversion,
-        "PENDIENTE" # Se actualizará al finalizar el juego
+        confianza,
+        "Pendiente"
     ]
     
-    with open(ARCHIVO_HISTORICO, mode='a', newline='') as f:
+    # Guarda en la carpeta de módulos para fácil acceso
+    with open('modules/historial_resultados.csv', 'a', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(nuevo_registro)
-
-def auditar_resultados_diarios():
-    """
-    Función para comparar los picks guardados contra los resultados finales.
-    Esto alimenta al módulo learning.py para ajustar probabilidades futuras.
-    """
-    # Lógica para leer el CSV y marcar como GANADO o PERDIDO
-    pass
+        writer.writerow(datos_apuesta)
