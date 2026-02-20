@@ -1,27 +1,32 @@
-import pandas as pd
-import os
+# tracker.py
+import csv
 from datetime import datetime
 
-def registrar_apuesta(partido, jugador, linea, prob, stake, status):
-    archivo = 'historial_apuestas.csv'
-    nueva_fila = {
-        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "partido": partido,
-        "jugador": jugador,
-        "linea": linea,
-        "probabilidad": f"{prob*100:.1f}%",
-        "stake_mxn": stake,
-        "status_ia": status,
-        "resultado": "PENDIENTE" # Se actualizará manualmente o por API después
-    }
+ARCHIVO_HISTORICO = "data/historial_picks.csv"
+
+def registrar_pick_generado(partido, seleccion, momio, confianza, inversion):
+    """
+    Guarda el pick en un CSV antes de que empiece el partido.
+    Cura el error de no saber qué se apostó realmente.
+    """
+    nuevo_registro = [
+        datetime.now().strftime("%Y-%m-%d %H:%M"),
+        partido,
+        seleccion,
+        momio,
+        f"{confianza}%",
+        inversion,
+        "PENDIENTE" # Se actualizará al finalizar el juego
+    ]
     
-    df = pd.DataFrame([nueva_fila])
-    
-    # Si ya existe el archivo, lo cargamos y añadimos la fila
-    if os.path.exists(archivo):
-        df_historico = pd.read_csv(archivo)
-        df_final = pd.concat([df_historico, df], ignore_index=True)
-    else:
-        df_final = df
-        
-    df_final.to_csv(archivo, index=False)
+    with open(ARCHIVO_HISTORICO, mode='a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(nuevo_registro)
+
+def auditar_resultados_diarios():
+    """
+    Función para comparar los picks guardados contra los resultados finales.
+    Esto alimenta al módulo learning.py para ajustar probabilidades futuras.
+    """
+    # Lógica para leer el CSV y marcar como GANADO o PERDIDO
+    pass
