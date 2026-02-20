@@ -1,53 +1,29 @@
 def analizar_jerarquia_maestra(partido):
-    # Validación anti-None y anti-KeyError
-    game_name = partido.get('game') if partido.get('game') else "Partido Desconocido"
-    linea_base = partido.get('linea', 220.5)
+    # Diccionario de nombres reales para evitar el "None"
+    nombres_reales = {
+        "CLE@CHA": "Cleveland Cavaliers @ Charlotte Hornets",
+        "MIL@NOP": "Milwaukee Bucks @ New Orleans Pelicans",
+        "LAC@LAL": "LA Clippers @ LA Lakers"
+    }
     
-    # Repositorio de mercados para el análisis simultáneo
-    mercados = []
+    # Obtenemos el nombre limpio o un genérico válido
+    game_id = partido.get('game_id', 'NBA Game')
+    game_display = nombres_reales.get(game_id, partido.get('game', 'Partido NBA'))
 
-    # A. Mercado de Triples (Prioridad Alta)
-    if "Hornets" in game_name or "Cavaliers" in game_name:
-        mercados.append({
-            "sel": "LaMelo Ball Over 3.5 Triples",
-            "sujeto": "LaMelo Ball",
-            "prob": 0.89,
-            "tipo": "3-Pointers"
-        })
+    # Simulamos la jerarquía de mercados (Elige el de mayor % automáticamente)
+    # Prioridad: 1. Triples, 2. Puntos Jugador, 3. Over/Under, 4. Ganador
+    mercados = [
+        {"sel": "LaMelo Ball Over 3.5 Triples", "prob": 0.89, "tipo": "Triples", "sujeto": "LaMelo Ball"},
+        {"sel": "Giannis Over 30.5 Puntos", "prob": 0.91, "tipo": "Puntos", "sujeto": "Giannis A."},
+        {"sel": f"Over {partido.get('linea', 222.5)}", "prob": 0.72, "tipo": "Totals", "sujeto": "Equipo"},
+        {"sel": f"{game_display.split('@')[0]} ML", "prob": 0.65, "tipo": "Moneyline", "sujeto": "Equipo"}
+    ]
 
-    # B. Mercado de Puntos Jugador
-    if "Bucks" in game_name:
-        mercados.append({
-            "sel": "Giannis Over 30.5 Puntos",
-            "sujeto": "G. Antetokounmpo",
-            "prob": 0.91,
-            "tipo": "Player Prop"
-        })
-
-    # C. Mercado Over/Under Total
-    mercados.append({
-        "sel": f"Over {linea_base} Puntos",
-        "sujeto": "Equipo (Total)",
-        "prob": 0.72,
-        "tipo": "Totals"
-    })
-
-    # D. Mercado Ganador (Moneyline)
-    equipo_local = game_name.split('@')[0].strip() if '@' in game_name else "Local"
-    mercados.append({
-        "sel": f"{equipo_local} a Ganar",
-        "sujeto": equipo_local,
-        "prob": 0.65,
-        "tipo": "Moneyline"
-    })
-
-    # FILTRO DE VALOR ÚNICO: Selecciona solo la opción con mayor probabilidad
-    mejor_pick = max(mercados, key=lambda x: x['prob'])
-    
+    # Retorna solo el de mayor probabilidad
+    mejor = max(mercados, key=lambda x: x['prob'])
     return {
-        "partido": game_name,
-        "seleccion": mejor_pick["sel"],
-        "jugador": mejor_pick["sujeto"],
-        "probabilidad": mejor_pick["prob"],
-        "categoria": mejor_pick["tipo"]
+        "partido": game_display,
+        "seleccion": mejor["sel"],
+        "prob": mejor["prob"],
+        "jugador": mejor["sujeto"]
     }
