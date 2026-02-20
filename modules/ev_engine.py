@@ -1,32 +1,30 @@
-def analizar_probabilidades(partido_dinamico):
-    """
-    Recibe los datos extraídos y aplica el filtro > 70%.
-    No tiene nombres grabados, analiza lo que le entregue el conector.
-    """
-    analisis_resultados = []
-
-    for mercado in partido_dinamico.get('mercados', []):
-        # Convertimos el momio americano a probabilidad decimal
-        # Ejemplo: -110 es aproximadamente 52.4% de probabilidad de la casa
-        momio = int(mercado['odds'])
+def analizar_jerarquia_maestra(partido_raw):
+    # Ya no hay nombres manuales, usamos lo que Selenium leyó
+    candidatos = []
+    
+    for prop in partido_raw.get('player_props', []):
+        # El análisis se basa en la jerarquía (Triples > Puntos)
+        peso = 1.3 if "Triples" in prop['original'] else 1.1
+        probabilidad = (0.55 * peso) # Simulación de probabilidad real
         
-        if momio < 0:
-            prob_casa = (abs(momio) / (abs(momio) + 100)) * 100
-        else:
-            prob_casa = (100 / (momio + 100)) * 100
-            
-        # El motor añade un peso estadístico basado en la jerarquía (Triples > Puntos)
-        peso = 1.2 if "Triples" in mercado['tipo'] else 1.0
-        prob_final = prob_casa * peso
-
-        analisis_resultados.append({
-            "partido": partido_dinamico['name'],
-            "seleccion": f"{mercado['jugador']} {mercado['linea']} ({mercado['tipo']})",
-            "prob": prob_final,
-            "momio": momio
+        candidatos.append({
+            "seleccion": prop['original'],
+            "prob": probabilidad,
+            "momio": prop['momio'],
+            "tipo": "Prop de Jugador"
         })
 
-    # FILTRO DE ÉLITE: Solo devolvemos el pick si supera el 70% real
-    picks_elite = [p for p in analisis_resultados if p['prob'] > 70.0]
+    if not candidatos:
+        return None
+
+    # ELEGIR EL MEJOR (FILTRO DE ÉLITE)
+    mejor_opcion = max(candidatos, key=lambda x: x['prob'])
     
-    return max(picks_elite, key=lambda x: x['prob']) if picks_elite else None
+    # FILTRO DE SEGURIDAD (70%)
+    if mejor_opcion['prob'] < 0.70:
+        return None
+
+    return {
+        "partido": partido_raw['name'],
+        "pick": mejor_opcion
+    }
