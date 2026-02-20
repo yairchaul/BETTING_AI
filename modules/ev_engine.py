@@ -1,30 +1,35 @@
-def analizar_jerarquia_maestra(partido_raw):
-    # Ya no hay nombres manuales, usamos lo que Selenium leyó
-    candidatos = []
-    
-    for prop in partido_raw.get('player_props', []):
-        # El análisis se basa en la jerarquía (Triples > Puntos)
-        peso = 1.3 if "Triples" in prop['original'] else 1.1
-        probabilidad = (0.55 * peso) # Simulación de probabilidad real
+def analizar_capas_dinamicas(partido):
+    """
+    Analiza las 4 capas sin nombres hardcodeados.
+    """
+    mejor_seleccion = None
+    max_prob = 0.0
+
+    # Capas de prioridad
+    # Capa 1 y 2: Basadas en la lista real de Selenium
+    for m in partido.get('mercados', []):
+        # Lógica de probabilidad calculada sobre el momio real
+        prob_base = (abs(m['momio']) / (abs(m['momio']) + 100)) if m['momio'] < 0 else (100 / (m['momio'] + 100))
         
-        candidatos.append({
-            "seleccion": prop['original'],
-            "prob": probabilidad,
-            "momio": prop['momio'],
-            "tipo": "Prop de Jugador"
-        })
+        # Bonus por jerarquía: Triples tiene mayor peso estadístico
+        peso = 1.2 if "Triples" in m['jugador'] else 1.0
+        prob_final = prob_base * peso
 
-    if not candidatos:
-        return None
+        if prob_final > max_prob:
+            max_prob = prob_final
+            mejor_seleccion = {
+                "categoria": "Triples" if "Triples" in m['jugador'] else "Puntos",
+                "jugador": m['jugador'],
+                "linea": m['linea'],
+                "momio": m['momio'],
+                "prob": prob_final
+            }
 
-    # ELEGIR EL MEJOR (FILTRO DE ÉLITE)
-    mejor_opcion = max(candidatos, key=lambda x: x['prob'])
-    
-    # FILTRO DE SEGURIDAD (70%)
-    if mejor_opcion['prob'] < 0.70:
+    # FILTRO CRÍTICO DEL 70%
+    if max_prob < 0.70 or not mejor_seleccion:
         return None
 
     return {
-        "partido": partido_raw['name'],
-        "pick": mejor_opcion
+        "partido": partido['juego'],
+        "pick": mejor_seleccion
     }
