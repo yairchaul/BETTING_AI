@@ -1,72 +1,76 @@
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
-import requests
-import connector # Importación directa ya que están en la misma carpeta
+import connector 
 
 # --- CONFIGURACIÓN DE IA ---
-try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash')
-except:
-    st.error("Error al configurar Gemini.")
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- FUNCIÓN TELEGRAM ---
-def enviar_telegram(mensaje):
-    try:
-        token = st.secrets["TELEGRAM_BOT_TOKEN"]
-        chat_id = st.secrets["TELEGRAM_CHAT_ID"]
-        url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={mensaje}&parse_mode=Markdown"
-        requests.get(url)
-    except Exception as e:
-        st.warning(f"No se pudo enviar mensaje a Telegram: {e}")
-
-def obtener_analisis_ia(partido, linea, status):
-    prompt = f"Analista NBA: El pick es {status}. Explica brevemente por qué el Over de {linea} en {partido} es buena idea. Sé muy breve."
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except:
-        return "IA analizando tendencias..."
-
-# --- LÓGICA DE VALOR ---
+# --- LÓGICA DE VALOR V3.0 (Recuperando la esencia) ---
 def evaluar_pick(prob_ia):
+    # La casa suele ofrecer 52.4% en momio -110
     prob_casa = 0.52 
     ventaja = prob_ia - prob_casa
-    if ventaja > 0.08:
-        return "🔥 SUGERENCIA ELITE", "green", 50
-    elif ventaja > 0.03:
-        return "⚡ BUENA", "blue", 20
+    
+    if ventaja > 0.10:
+        return "🔥 SUGERENCIA ELITE", "#00FF00", "EXCELENTE" # Verde brillante
+    elif ventaja > 0.05:
+        return "⚡ BUENA", "#FFFF00", "RECOMENDADA"      # Amarillo
     else:
-        return "⚠️ Confianza insuficiente", "orange", 0
+        return "⚠️ Confianza insuficiente", "#FFA500", "EVITAR" # Naranja
 
 # --- INTERFAZ ---
-st.set_page_config(page_title="NBA AI Dashboard", layout="wide")
-st.title("🏀 NBA AI Dashboard + Telegram")
+st.set_page_config(page_title="NBA ELITE SCANNER", layout="wide")
+st.title("🏀 NBA ELITE AI - SISTEMA DE VALOR v13")
 
-# Botón principal corregido
-if st.button("🔄 Escanear y Notificar"):
-    with st.spinner("Conectando con API y enviando alertas..."):
-        # Usamos el nombre de función que sí funciona en tu prueba
-        datos = connector.obtener_juegos() 
-        df = pd.DataFrame(datos)
-        
-        for i, row in df.iterrows():
-            status, color, stake = evaluar_pick(row['prob_modelo'])
-            
-            # Si es ELITE, mandamos a Telegram
-            if status == "🔥 SUGERENCIA ELITE":
-                analisis = obtener_analisis_ia(row['game'], row['linea'], status)
-                msg = f"🚀 *PICK ELITE DETECTADO*\n\n🏀 {row['game']}\n🎯 Over {row['linea']}\n💰 Stake Sugerido: {stake} MXN\n\n🧠 *Análisis:* {analisis}"
-                enviar_telegram(msg)
-        
-        st.session_state['picks_reales'] = df
-        st.success("Escaneo completado y alertas enviadas.")
+# --- GESTIÓN DE CAPITAL ---
+with st.sidebar:
+    st.header("💰 Gestión de Bankroll")
+    capital_inicial = st.number_input("Tu Capital Actual (MXN):", value=1000.0)
+    st.info(f"Capital para invertir: ${capital_inicial}")
 
-# Mostrar tabla de resultados si existen
-if 'picks_reales' in st.session_state:
-    st.subheader("📊 Partidos Detectados")
-    st.dataframe(st.session_state['picks_reales'], use_container_width=True)
+# --- ESCÁNER Y PROCESAMIENTO ---
+if st.button("🔄 EJECUTAR ESCÁNER DE VALOR"):
+    with st.spinner("Buscando ventajas en Caliente.mx..."):
+        # Traemos los juegos reales que ya logramos conectar
+        datos_api = connector.obtener_juegos()
+        
+        # Simulamos la integración con tu ev_engine para nombres de jugadores
+        # En el futuro, tu connector extraerá 'player_totals' de la API
+        for p in datos_api:
+            status, color, nivel = evaluar_pick(p['prob_modelo'])
+            p['STATUS'] = status
+            p['COLOR'] = color
+            p['NIVEL'] = nivel
+            # Calculamos ganancia potencial basada en momio y stake (2% del bankroll)
+            p['STAKE_MXN'] = capital_inicial * 0.02 if nivel != "EVITAR" else 0
+            p['PROB_REAL'] = f"{p['prob_modelo']*100}%"
+        
+        st.session_state['picks_v13'] = pd.DataFrame(datos_api)
+
+# --- VISUALIZACIÓN DE INVERSIÓN ---
+if 'picks_v13' in st.session_state:
+    df = st.session_state['picks_v13']
+    
+    st.subheader("🎯 Oportunidades de Inversión Detectadas")
+    
+    # Creamos las "Tarjetas de Apuesta" con la esencia original
+    for i, row in df.iterrows():
+        if row['NIVEL'] != "EVITAR":
+            # Usamos el color verde para las ELITE como pediste
+            st.markdown(f"""
+            <div style="border: 2px solid {row['COLOR']}; border-radius: 10px; padding: 15px; margin-bottom: 10px; background-color: #1e1e1e;">
+                <h3 style="color: {row['COLOR']}; margin: 0;">{row['STATUS']} - Confianza {row['NIVEL']}</h3>
+                <p style="margin: 5px 0;"><b>Partido:</b> {row['game']} | <b>Línea:</b> Over {row['linea']}</p>
+                <p style="margin: 5px 0;"><b>Inversión Sugerida:</b> ${row['STAKE_MXN']:.2f} MXN | <b>Probabilidad IA:</b> {row['PROB_REAL']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.divider()
+    st.subheader("📊 Registro y Control de Datos")
+    st.dataframe(df[['game', 'STATUS', 'linea', 'PROB_REAL', 'STAKE_MXN']], use_container_width=True)
+
 
 
 
