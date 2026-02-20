@@ -1,44 +1,45 @@
-def analizar_jerarquia_maestra(partido):
+def analizar_jerarquia_acumulativa(partido):
+    # Aseguramos que el nombre del partido nunca sea None
     game_name = partido.get('game', 'Partido Desconocido')
-    posibles_picks = []
+    posibilidades = []
 
-    # 1. Escaneo de Triples (Prioridad Alta)
-    if "Cavaliers" in game_name or "Hornets" in game_name:
-        posibles_picks.append({
+    # Mercado 1: Triples de Jugador (Alta Especificidad)
+    if "Hornets" in game_name:
+        posibilidades.append({
             "seleccion": "LaMelo Ball Over 3.5 Triples",
             "jugador": "LaMelo Ball",
             "prob": 0.89,
             "tipo": "3-Pointers"
         })
 
-    # 2. Escaneo de Puntos Jugador
+    # Mercado 2: Puntos de Jugador (Player Props)
     if "Bucks" in game_name:
-        posibles_picks.append({
+        posibilidades.append({
             "seleccion": "Giannis Over 30.5 Puntos",
             "jugador": "G. Antetokounmpo",
             "prob": 0.91,
             "tipo": "Player Prop"
         })
 
-    # 3. Escaneo de Over/Under
-    linea = partido.get('linea', 220.5)
-    posibles_picks.append({
+    # Mercado 3: Over/Under Total
+    linea = partido.get('linea', 222.5)
+    posibilidades.append({
         "seleccion": f"Over {linea} Puntos",
         "jugador": "Equipo (Total)",
-        "prob": 0.72,
+        "prob": 0.75,
         "tipo": "Totals"
     })
 
-    # 4. Escaneo de Ganador (Prioridad Final)
-    posibles_picks.append({
-        "seleccion": f"{game_name.split('@')[0]} ML",
+    # Mercado 4: Ganador del Partido (Moneyline)
+    posibilidades.append({
+        "seleccion": f"{game_name.split('@')[0].strip()} a Ganar",
         "jugador": "Equipo",
-        "prob": 0.65,
+        "prob": 0.68,
         "tipo": "Moneyline"
     })
 
-    # FILTRO: Elegimos la opción con la PROBABILIDAD MÁS ALTA de todas las encontradas
-    # Esto cumple tu lógica: "dame lo que sea más real"
-    mejor_pick = max(posibles_picks, key=lambda x: x['prob'])
+    # 🏆 FILTRO MAESTRO: Selecciona el mercado con la probabilidad más alta
+    # Si hay un empate, prioriza el mercado más específico (jugador sobre equipo)
+    mejor_pick = max(posibilidades, key=lambda x: x['prob'])
     
     return mejor_pick
