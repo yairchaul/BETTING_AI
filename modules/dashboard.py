@@ -61,6 +61,14 @@ if st.button("🔄 Escanear y Notificar"):
 # Mostrar resultados
 if 'picks' in st.session_state:
     st.dataframe(st.session_state['picks'], use_container_width=True)
+# --- BOTÓN DE PRUEBA EN EL DASHBOARD ---
+if st.button("🔍 Probar Conexión con API"):
+    partidos_api = connector.obtener_juegos()
+    if partidos_api:
+        st.success(f"¡Éxito! Se encontraron {len(partidos_api)} partidos.")
+        st.write(partidos_api) # Esto te mostrará la lista cruda de partidos
+    else:
+        st.error("La API no devolvió datos. Revisa tu ODDS_API_KEY en Secrets.")
 
 
 
