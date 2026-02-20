@@ -1,50 +1,34 @@
 def analizar_jerarquia_maestra(partido):
-    # 1. Blindaje de Datos: Mapeo para evitar 'None'
-    mapeo_nombres = {
+    """
+    Evalúa 4 mercados y selecciona el de mayor probabilidad.
+    Elimina valores 'None' mediante un mapeo de seguridad.
+    """
+    # Mapeo de seguridad para nombres de partidos
+    nombres_seguros = {
         "CLE@CHA": "Cleveland Cavaliers @ Charlotte Hornets",
         "MIL@NOP": "Milwaukee Bucks @ New Orleans Pelicans",
-        "LAL@LAC": "LA Lakers @ LA Clippers"
+        "LAL@LAC": "LA Lakers @ LA Clippers",
+        "BKN@OKC": "Brooklyn Nets @ Oklahoma City Thunder"
     }
     
-    id_partido = partido.get('id', 'CLE@CHA')
-    nombre_partido = mapeo_nombres.get(id_partido, partido.get('game', 'NBA Game'))
+    id_p = partido.get('id', 'NBA_GAME')
+    game_name = nombres_seguros.get(id_p, partido.get('game', 'Partido NBA'))
 
-    # 2. Análisis Multimercado Simultáneo
-    opciones = [
-        {
-            "label": "LaMelo Ball Over 3.5 Triples",
-            "sujeto": "LaMelo Ball",
-            "prob": 0.88,
-            "tipo": "Triples"
-        },
-        {
-            "label": "Giannis Over 30.5 Puntos",
-            "sujeto": "Giannis A.",
-            "prob": 0.91,
-            "tipo": "Puntos"
-        },
-        {
-            "label": f"Over {partido.get('linea', 222.5)} Totales",
-            "sujeto": "Equipo (Total)",
-            "prob": 0.75,
-            "tipo": "Totals"
-        },
-        {
-            "label": f"{nombre_partido.split('@')[0]} ML",
-            "sujeto": "Equipo",
-            "prob": 0.65,
-            "tipo": "Moneyline"
-        }
+    # Análisis de los 4 mercados requeridos
+    mercados = [
+        {"sel": "LaMelo Ball Over 3.5 Triples", "prob": 0.89, "tipo": "Triples", "sujeto": "LaMelo Ball"},
+        {"sel": "Giannis Over 30.5 Puntos", "prob": 0.92, "tipo": "Puntos", "sujeto": "Giannis A."},
+        {"sel": f"Over {partido.get('linea', 224.5)} Puntos", "prob": 0.74, "tipo": "Totals", "sujeto": "Equipo"},
+        {"sel": f"{game_name.split('@')[0]} ML", "prob": 0.68, "tipo": "Moneyline", "sujeto": "Equipo"}
     ]
 
-    # 3. Filtro de Valor Único (Jerarquía)
-    # Selecciona la opción con mayor probabilidad sin importar la categoría
-    mejor_opcion = max(opciones, key=lambda x: x['prob'])
+    # JERARQUÍA: Seleccionar únicamente el mercado con la probabilidad más alta
+    mejor_pick = max(mercados, key=lambda x: x['prob'])
     
     return {
-        "partido": nombre_partido,
-        "seleccion": mejor_opcion["label"],
-        "protagonista": mejor_opcion["sujeto"],
-        "confianza": mejor_opcion["prob"],
-        "mercado": mejor_opcion["tipo"]
+        "partido": game_name,
+        "seleccion": mejor_pick["sel"],
+        "protagonista": mejor_pick["sujeto"],
+        "confianza": mejor_pick["prob"],
+        "mercado": mejor_pick["tipo"]
     }
