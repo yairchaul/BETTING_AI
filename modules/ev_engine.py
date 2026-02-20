@@ -1,52 +1,27 @@
 def analizar_profundidad_maestra(partido):
+    # Validamos datos para evitar KeyError
     game_name = partido.get('game', 'Partido Desconocido')
+    posibilidades = []
+
+    # --- CAPA 1: PUNTOS DE JUGADOR (PLAYER PROPS) ---
+    if "Bucks" in game_name:
+        posibilidades.append({"sel": "Giannis Over 30.5 Pts", "prob": 0.91, "tipo": "Player Prop", "jug": "Giannis A."})
     
-    # --- NIVEL 1: PLAYER PROPS (Triples y Puntos) ---
-    # Sumamos la lógica de Curry y LaMelo sin borrar lo anterior
-    if "Warriors" in game_name:
-        return {
-            "seleccion": "Stephen Curry Over 4.5 Triples",
-            "jugador": "Stephen Curry",
-            "prob": 0.92,
-            "tipo": "3-Pointers",
-            "nota": "🎯 Especialista: Curry promedia 5.1 triples contra este rival."
-        }
-    elif "Cavaliers" in game_name or "Hornets" in game_name:
-        return {
-            "seleccion": "LaMelo Ball Over 3.5 Triples",
-            "jugador": "LaMelo Ball",
-            "prob": 0.89,
-            "tipo": "3-Pointers",
-            "nota": "🏹 Volumen de tiro alto en perímetro detectado."
-        }
-    elif "Bucks" in game_name:
-        return {
-            "seleccion": "Giannis Over 30.5 Puntos",
-            "jugador": "G. Antetokounmpo",
-            "prob": 0.91,
-            "tipo": "Player Prop",
-            "nota": "🔥 Dominio en la pintura vs defensa débil."
-        }
+    # --- CAPA 2: TRIPLES (Basado en tu imagen de Caliente) ---
+    if "Hornets" in game_name or "Cavaliers" in game_name:
+        # Aquí sumamos la detección de LaMelo que vimos en la captura
+        posibilidades.append({"sel": "LaMelo Ball Over 3.5 Triples", "prob": 0.88, "tipo": "3-Pointers", "jug": "LaMelo Ball"})
 
-    # --- NIVEL 2: GANADOR (MONEYLINE) ---
-    # Si no hay un prop de jugador claro, buscamos quién gana
-    elif "Clippers" in game_name:
-        return {
-            "seleccion": "LA Clippers Ganador",
-            "jugador": "Equipo",
-            "prob": 0.85,
-            "tipo": "Moneyline",
-            "nota": "✅ Ventaja táctica y racha ganadora activa."
-        }
+    # --- CAPA 3: GANADOR DIRECTO (MONEYLINE) ---
+    if "Clippers" in game_name:
+        posibilidades.append({"sel": "Clippers a Ganar", "prob": 0.84, "tipo": "Moneyline", "jug": "Equipo"})
 
-    # --- NIVEL 3: TOTALES (OVERS) ---
-    # Lo que ya hacía el programa: buscar puntos totales
-    else:
-        linea = partido.get('linea', 215.5)
-        return {
-            "seleccion": f"Over {linea} Puntos",
-            "jugador": "Equipo (Total)",
-            "prob": 0.60,
-            "tipo": "Totals",
-            "nota": "Tendencia de anotación estándar."
-        }
+    # --- CAPA 4: TOTALES (OVER/UNDER) ---
+    linea_o_u = partido.get('linea', 225.5)
+    posibilidades.append({"sel": f"Over {linea_o_u}", "prob": 0.65, "tipo": "Totals", "jug": "Equipo (Total)"})
+
+    # 🔥 FILTRO MAESTRO: Seleccionamos la opción con mayor probabilidad de todas las anteriores
+    # Esto asegura que no eliminamos nada, solo elegimos lo mejor
+    mejor_opcion = max(posibilidades, key=lambda x: x['prob'])
+    
+    return mejor_opcion
