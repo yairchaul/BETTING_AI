@@ -3,60 +3,60 @@ import ev_engine
 import connector
 import tracker
 
-st.set_page_config(page_title="Ticket Pro NBA", layout="wide")
+st.set_page_config(page_title="NBA Elite Scanner", layout="wide")
 
-# Barra lateral: Calculadora de ROI Estilo Caliente
+# Barra Lateral: Calculadora Dinámica
 with st.sidebar:
-    st.header("💵 Gestión de Banca")
-    capital = st.number_input("Capital Disponible (MXN):", value=1000.0, step=100.0)
-    cuota_parlay = st.number_input("Cuota Total (Momio):", value=6.50, step=0.1)
+    st.header("💵 Mi Carrito")
+    capital_total = st.number_input("Capital Actual (MXN):", value=1000.0)
+    cuota_parlay = st.number_input("Momio Total:", value=6.50)
     
-    # Cálculos de inversión
-    stake_sugerido = capital * 0.10  # 10% de inversión
-    ganancia_neta = (stake_sugerido * cuota_parlay) - stake_sugerido
-    roi_final = (cuota_parlay - 1) * 100
-
+    # La inversión total es el 10% del capital
+    stake_total = capital_total * 0.10
+    ganancia_neta = (stake_total * cuota_parlay) - stake_total
+    
     st.divider()
-    st.metric("Inversión Sugerida", f"${stake_sugerido:.2f}")
-    st.metric("Ganancia Neta", f"${ganancia_neta:.2f}", delta=f"{roi_final:.0f}% ROI")
+    st.metric("Inversión Total", f"${stake_total:.2f}")
+    st.metric("Ganancia Neta", f"${ganancia_neta:.2f}", delta=f"ROI {(cuota_parlay-1)*100:.0f}%")
 
-st.title("🎫 Ticket de Valor Único")
+st.title("🏀 Escáner Maestro Multicapa")
 
-if st.button("🚀 GENERAR TICKET"):
-    # Prevención de AttributeError: verificamos que la función exista
-    try:
-        datos_api = connector.obtener_datos_reales()
-    except AttributeError:
-        # Datos de respaldo si el conector falla
-        datos_api = [{"id": "CLE@CHA", "linea": 228.5}, {"id": "BKN@OKC", "linea": 213.5}]
-
-    for p in datos_api:
-        pick = ev_engine.analizar_jerarquia_maestra(p)
+if st.button("🔍 ESCANEAR TODOS LOS PARTIDOS DE HOY"):
+    # CONEXIÓN DINÁMICA: Obtiene todos los partidos sin filtros manuales
+    partidos_hoy = connector.obtener_datos_reales()
+    
+    if not partidos_hoy:
+        st.warning("No se detectaron partidos activos en la API.")
+    else:
+        st.write(f"✅ Analizando **{len(partidos_hoy)}** partidos encontrados...")
         
-        # Diseño de Tarjeta Compacta (Estilo Ticket Caliente)
-        status = "🔥 EXCELENTE" if pick['confianza'] >= 0.85 else "⚡ BUENA"
-        color_borde = "#00FF00" if pick['confianza'] >= 0.85 else "#FFFF00"
+        # Stake por cada tarjeta (Inversión dividida equitativamente)
+        stake_por_pick = stake_total / len(partidos_hoy)
 
-        st.markdown(f"""
-            <div style="border: 1px solid #444; border-left: 5px solid {color_borde}; padding: 10px; border-radius: 5px; background-color: #111; margin-bottom: 5px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                    <span style="font-size: 0.7em; color: gray;">{pick['mercado']}</span>
-                    <b style="font-size: 0.75em; color: {color_borde};">{status} ({pick['confianza']*100:.0f}%)</b>
-                </div>
-                <div style="font-size: 0.8em; color: #ddd;">{pick['partido']}</div>
-                <div style="font-size: 1.1em; font-weight: bold; color: #fff; margin-top: 2px;">{pick['seleccion']}</div>
-                <div style="text-align: right; font-size: 0.65em; color: gray; border-top: 1px solid #222; margin-top: 5px; padding-top: 3px;">
-                    Sugerido: ${stake_sugerido/len(datos_api):.2f} MXN
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        for p in partidos_hoy:
+            res = ev_engine.analizar_jerarquia_por_partido(p)
+            
+            # Formato de Estatus
+            es_top = res['confianza'] >= 0.80
+            status_text = "🔥 EXCELENTE" if es_top else "⚡ BUENA"
+            status_color = "#00FF00" if es_top else "#FFFF00"
 
-        # Historial con nombres específicos (No etiquetas genéricas)
-        tracker.registrar_apuesta(
-            pick['partido'], 
-            pick['protagonista'], 
-            pick['seleccion'], 
-            pick['confianza'], 
-            stake_sugerido, 
-            "PENDIENTE"
-        )
+            # INTERFAZ VISUAL COMPACTA (Estilo Ticket Caliente)
+            st.markdown(f"""
+                <div style="border: 1px solid #333; border-left: 6px solid {status_color}; padding: 10px; border-radius: 6px; background-color: #111; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.75em; color: gray; text-transform: uppercase;">{res['categoria']}</span>
+                        <b style="font-size: 0.8em; color: {status_color};">{status_text} ({res['confianza']*100:.0f}%)</b>
+                    </div>
+                    <div style="margin: 4px 0;">
+                        <div style="font-size: 0.85em; color: #aaa;">{res['partido']}</div>
+                        <div style="font-size: 1.1em; font-weight: bold; color: white;">{res['seleccion']}</div>
+                    </div>
+                    <div style="text-align: right; font-size: 0.7em; color: gray; border-top: 1px solid #222; margin-top: 6px; padding-top: 4px;">
+                        Análisis: {res['protagonista']} | Inversión: ${stake_por_pick:.2f} MXN
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            # Historial detallado por protagonista
+            tracker.registrar_apuesta(res['partido'], res['protagonista'], res['seleccion'], res['confianza'], stake_por_pick, "PENDIENTE")
