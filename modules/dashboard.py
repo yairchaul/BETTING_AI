@@ -5,7 +5,7 @@ import google.generativeai as genai
 # --- CONFIGURACIÓN DE IA (GEMINI) ---
 # Usamos la etiqueta "GEMINI_API_KEY" que configuraste en los Secrets de Streamlit
 try:
-    genai.configure(api_key=st.secrets["AIzaSyDLMYEylhE8m7UV1kRDmKHuXjMGoulFutg"])
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error("Error al configurar la API Key de Gemini. Verifica tus Secrets.")
@@ -60,6 +60,7 @@ for i, row in df.iterrows():
 
 st.subheader("📊 Historial Detallado")
 st.dataframe(df, use_container_width=True)
+
 
 
 
