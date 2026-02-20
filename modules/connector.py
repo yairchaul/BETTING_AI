@@ -2,43 +2,39 @@ import streamlit as st
 import requests
 
 def obtener_datos_caliente_limpios():
-    # Usamos la API para traer Totales y Puntos de Jugadores
     API_KEY = st.secrets["ODDS_API_KEY"]
     base_url = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds/"
     
-    # Parámetros para buscar mercados de jugadores y totales
+    # Solicitamos múltiples mercados para tener de donde elegir
     params = {
         'apiKey': API_KEY,
         'regions': 'us',
-        'markets': 'totals,player_points', 
+        'markets': 'totals,h2h,player_points', 
         'oddsFormat': 'american'
     }
     
     try:
         response = requests.get(base_url, params=params).json()
+        if not isinstance(response, list): # Verificación de seguridad para evitar el error de la imagen
+            return []
+            
         partidos_procesados = []
-        
         for game in response:
-            home = game['home_team']
-            away = game['away_team']
+            data_partido = {
+                "id": game['id'],
+                "game": f"{game['away_team']} @ {game['home_team']}",
+                "home": game['home_team'],
+                "away": game['away_team'],
+                "mercados": {}
+            }
             
-            # Filtro para evitar momios basura como -1000
-            bookmaker = game['bookmakers'][0]
-            market = bookmaker['markets'][0]
+            # Organizamos los mercados disponibles
+            for bookmaker in game.get('bookmakers', []):
+                if bookmaker['key'] == 'draftkings' or bookmaker['key'] == 'betonlineag':
+                    for market in bookmaker.get('markets', []):
+                        data_partido["mercados"][market['key']] = market['outcomes']
             
-            # Extraemos la línea (ej. 228.5 o 25.5 de un jugador)
-            linea = market['outcomes'][0]['point']
-            momio = market['outcomes'][0]['price']
-            
-            if -500 < momio < 500: # Filtro de seguridad profesional
-                partidos_procesados.append({
-                    "game": f"{away} @ {home}",
-                    "home": home,
-                    "away": away,
-                    "linea": linea,
-                    "momio": momio,
-                    "tipo_mercado": market['key']
-                })
+            partidos_procesados.append(data_partido)
         return partidos_procesados
     except Exception as e:
         st.error(f"Error en API: {e}")
