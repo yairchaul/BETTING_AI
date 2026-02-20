@@ -1,35 +1,24 @@
-def analizar_capas_dinamicas(partido):
-    """
-    Analiza las 4 capas sin nombres hardcodeados.
-    """
-    mejor_seleccion = None
-    max_prob = 0.0
+import learning
+import injuries
 
-    # Capas de prioridad
-    # Capa 1 y 2: Basadas en la lista real de Selenium
-    for m in partido.get('mercados', []):
-        # Lógica de probabilidad calculada sobre el momio real
-        prob_base = (abs(m['momio']) / (abs(m['momio']) + 100)) if m['momio'] < 0 else (100 / (m['momio'] + 100))
-        
-        # Bonus por jerarquía: Triples tiene mayor peso estadístico
-        peso = 1.2 if "Triples" in m['jugador'] else 1.0
-        prob_final = prob_base * peso
-
-        if prob_final > max_prob:
-            max_prob = prob_final
-            mejor_seleccion = {
-                "categoria": "Triples" if "Triples" in m['jugador'] else "Puntos",
-                "jugador": m['jugador'],
-                "linea": m['linea'],
-                "momio": m['momio'],
-                "prob": prob_final
-            }
-
-    # FILTRO CRÍTICO DEL 70%
-    if max_prob < 0.70 or not mejor_seleccion:
-        return None
-
-    return {
-        "partido": partido['juego'],
-        "pick": mejor_seleccion
-    }
+def analizar_con_inteligencia(datos_selenium):
+    picks_finales = []
+    
+    for partido in datos_selenium:
+        for m in partido['mercados']:
+            # 1. Filtro de lesiones
+            if not injuries.verificar_disponibilidad(m['jugador']):
+                continue
+            
+            # 2. Cálculo de probabilidad real combinada (Momio + Learning)
+            prob_stat = learning.calcular_probabilidad_real(m['jugador'], float(m['linea']), "Puntos")
+            
+            # 3. Solo si supera el 70% de confianza combinada
+            if prob_stat >= 0.70:
+                picks_finales.append({
+                    "partido": partido['juego'],
+                    "seleccion": f"{m['jugador']} Over {m['linea']}",
+                    "confianza": prob_stat * 100,
+                    "momio": m['momio']
+                })
+    return picks_finales
