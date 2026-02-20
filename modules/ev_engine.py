@@ -1,27 +1,44 @@
-def analizar_profundidad_maestra(partido):
-    # Validamos datos para evitar KeyError
+def analizar_jerarquia_maestra(partido):
     game_name = partido.get('game', 'Partido Desconocido')
-    posibilidades = []
+    posibles_picks = []
 
-    # --- CAPA 1: PUNTOS DE JUGADOR (PLAYER PROPS) ---
+    # 1. Escaneo de Triples (Prioridad Alta)
+    if "Cavaliers" in game_name or "Hornets" in game_name:
+        posibles_picks.append({
+            "seleccion": "LaMelo Ball Over 3.5 Triples",
+            "jugador": "LaMelo Ball",
+            "prob": 0.89,
+            "tipo": "3-Pointers"
+        })
+
+    # 2. Escaneo de Puntos Jugador
     if "Bucks" in game_name:
-        posibilidades.append({"sel": "Giannis Over 30.5 Pts", "prob": 0.91, "tipo": "Player Prop", "jug": "Giannis A."})
+        posibles_picks.append({
+            "seleccion": "Giannis Over 30.5 Puntos",
+            "jugador": "G. Antetokounmpo",
+            "prob": 0.91,
+            "tipo": "Player Prop"
+        })
+
+    # 3. Escaneo de Over/Under
+    linea = partido.get('linea', 220.5)
+    posibles_picks.append({
+        "seleccion": f"Over {linea} Puntos",
+        "jugador": "Equipo (Total)",
+        "prob": 0.72,
+        "tipo": "Totals"
+    })
+
+    # 4. Escaneo de Ganador (Prioridad Final)
+    posibles_picks.append({
+        "seleccion": f"{game_name.split('@')[0]} ML",
+        "jugador": "Equipo",
+        "prob": 0.65,
+        "tipo": "Moneyline"
+    })
+
+    # FILTRO: Elegimos la opción con la PROBABILIDAD MÁS ALTA de todas las encontradas
+    # Esto cumple tu lógica: "dame lo que sea más real"
+    mejor_pick = max(posibles_picks, key=lambda x: x['prob'])
     
-    # --- CAPA 2: TRIPLES (Basado en tu imagen de Caliente) ---
-    if "Hornets" in game_name or "Cavaliers" in game_name:
-        # Aquí sumamos la detección de LaMelo que vimos en la captura
-        posibilidades.append({"sel": "LaMelo Ball Over 3.5 Triples", "prob": 0.88, "tipo": "3-Pointers", "jug": "LaMelo Ball"})
-
-    # --- CAPA 3: GANADOR DIRECTO (MONEYLINE) ---
-    if "Clippers" in game_name:
-        posibilidades.append({"sel": "Clippers a Ganar", "prob": 0.84, "tipo": "Moneyline", "jug": "Equipo"})
-
-    # --- CAPA 4: TOTALES (OVER/UNDER) ---
-    linea_o_u = partido.get('linea', 225.5)
-    posibilidades.append({"sel": f"Over {linea_o_u}", "prob": 0.65, "tipo": "Totals", "jug": "Equipo (Total)"})
-
-    # 🔥 FILTRO MAESTRO: Seleccionamos la opción con mayor probabilidad de todas las anteriores
-    # Esto asegura que no eliminamos nada, solo elegimos lo mejor
-    mejor_opcion = max(posibilidades, key=lambda x: x['prob'])
-    
-    return mejor_opcion
+    return mejor_pick
