@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import connector
@@ -79,4 +80,5 @@ st.subheader("📋 Historial de Movimientos")
 if os.path.exists('historial_apuestas.csv'):
     df_hist = pd.read_csv('historial_apuestas.csv')
     st.dataframe(df_hist.tail(10), use_container_width=True)
+
 
