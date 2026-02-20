@@ -1,51 +1,63 @@
 import streamlit as st
 import connector
 import ev_engine
+import tracker
 
-st.set_page_config(page_title="NBA Elite Scanner", layout="wide")
+st.set_page_config(page_title="Ticket Pro NBA", layout="wide")
 
-# Sidebar: Calculadora
+# Sidebar: Calculadora de ROI
 with st.sidebar:
-    st.header("💳 Gestión de Banca")
-    capital = st.number_input("Capital MXN:", value=1000.0)
-    inversion_total = capital * 0.10
-    st.metric("Inversión Sugerida (10%)", f"${inversion_total:.2f}")
+    st.header("💳 Mi Banca")
+    capital = st.number_input("Capital Actual (MXN):", value=1000.0)
+    cuota_parlay = st.number_input("Cuota/Momio Total:", value=6.50)
+    
+    # Inversión del 10%
+    stake_total = capital * 0.10
+    ganancia_neta = (stake_total * cuota_parlay) - stake_total
+    
+    st.divider()
+    st.metric("Inversión Sugerida", f"${stake_total:.2f}")
+    st.metric("Ganancia Neta", f"${ganancia_neta:.2f}", delta=f"ROI {(cuota_parlay-1)*100:.0f}%")
 
-st.title("🏀 Escáner Maestro Multicapa")
+st.title("🎫 Ticket de Apuestas Caliente")
 
-if st.button("🔍 ESCANEAR PARTIDOS DE HOY"):
-    # Solución al error de la imagen: Bloque de seguridad
+if st.button("🔍 EJECUTAR ANÁLISIS MAESTRO"):
     try:
-        todos_los_partidos = connector.obtener_datos_reales()
-        picks_finales = []
+        partidos = connector.obtener_datos_reales() # Conexión dinámica
+        picks_validos = []
 
-        for p in todos_los_partidos:
-            resultado = ev_engine.analizar_jerarquia_por_partido(p)
-            if resultado: # Solo si pasó el filtro del 70%
-                picks_finales.append(resultado)
+        for p in partidos:
+            res = ev_engine.analizar_jerarquia_por_partido(p)
+            if res: # Solo si pasó el umbral del 70%
+                picks_validos.append(res)
 
-        if not picks_finales:
-            st.error("❌ Ningún mercado superó el 70% de probabilidad hoy.")
+        if not picks_validos:
+            st.warning("⚠️ Ningún mercado superó el 70% de confianza hoy.")
         else:
-            st.write(f"✅ Se encontraron **{len(picks_finales)}** picks de alta confianza.")
-            
-            # Reparto equitativo del capital
-            stake_unid = inversion_total / len(picks_finales)
+            # Dividir inversión equitativamente
+            stake_unid = stake_total / len(picks_validos)
 
-            for pick in picks_finales:
-                # Interfaz Compacta Estilo Ticket
+            for pick in picks_validos:
+                # Interfaz Compacta Estilo Caliente
                 color = "#00FF00" if pick['confianza'] >= 0.85 else "#FFFF00"
                 st.markdown(f"""
-                    <div style="border: 1px solid #444; border-left: 5px solid {color}; padding: 10px; border-radius: 6px; background-color: #111; margin-bottom: 5px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: {color};">
-                            <b>{pick['categoria']}</b>
-                            <b>{pick['confianza']*100:.1f}%</b>
+                    <div style="border: 1px solid #444; border-left: 4px solid {color}; padding: 8px; border-radius: 4px; background-color: #111; margin-bottom: 5px; line-height: 1.2;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.7em; color: gray;">
+                            <span>{pick['categoria']}</span>
+                            <b style="color: {color};">{pick['confianza']*100:.1f}% CONFIDENCIA</b>
                         </div>
-                        <div style="font-size: 0.9em; color: #bbb;">{pick['partido']}</div>
-                        <div style="font-size: 1.1em; font-weight: bold; color: white;">{pick['seleccion']}</div>
-                        <div style="text-align: right; font-size: 0.7em; color: gray;">Sugerido: ${stake_unid:.2f} MXN</div>
+                        <div style="font-size: 0.8em; color: #aaa; margin: 2px 0;">{pick['partido']}</div>
+                        <div style="font-size: 1em; font-weight: bold; color: white;">{pick['seleccion']}</div>
+                        <div style="text-align: right; font-size: 0.65em; color: #777; border-top: 1px solid #222; margin-top: 4px; padding-top: 2px;">
+                            Inversión: ${stake_unid:.2f} MXN
+                        </div>
                     </div>
                 """, unsafe_allow_html=True)
 
+                # Registro en historial con nombre real del jugador
+                tracker.registrar_apuesta(pick['partido'], pick['jugador'], pick['seleccion'], pick['confianza'], stake_unid, "PENDIENTE")
+
+            st.success(f"✅ Ticket Generado con {len(picks_validos)} picks de élite.")
+
     except Exception as e:
-        st.error(f"Error de conexión: {e}. Verifica que connector.py tenga la función obtener_datos_reales()")
+        st.error(f"Error técnico: {e}")
