@@ -4,45 +4,47 @@ from selenium.webdriver.common.by import By
 import time
 
 def obtener_datos_reales():
-    # Configuración de Navegador Invisible
-    chrome_options = Options()
-    chrome_options.add_argument("--headless") 
-    chrome_options.add_argument("--no-sandbox")
-    driver = webdriver.Chrome(options=chrome_options)
-
-    url_caliente = "https://www.caliente.mx/sports/en/basketball/nba" # URL real
-    driver.get(url_caliente)
-    time.sleep(5) # Espera a que carguen los momios dinámicos
-
-    partidos_detectados = []
-
+    """
+    Escanea Caliente.mx dinámicamente. No contiene nombres fijos.
+    """
+    options = Options()
+    options.add_argument("--headless") # Navegador invisible
+    driver = webdriver.Chrome(options=options)
+    
+    partidos_en_vivo = []
     try:
-        # Buscamos todos los bloques de partidos en la pantalla
-        bloques = driver.find_elements(By.CLASS_NAME, "event-card") 
-        
-        for bloque in bloques:
-            nombre_partido = bloque.find_element(By.CLASS_NAME, "event-name").text # Ej: "LAL @ GSW"
-            
-            # Buscamos props de jugadores dentro de ese partido
-            # Nota: Esto varía según el diseño de Caliente, extraemos texto de botones de momios
-            mercados = bloque.find_elements(By.CLASS_NAME, "market-selection")
-            
-            props_dinamicos = []
-            for m in mercados:
-                texto = m.text # Ej: "LeBron James Over 25.5 (-110)"
-                if "Over" in texto:
-                    props_dinamicos.append({
-                        "original": texto,
-                        "momio": -110 # Extracción lógica del número en paréntesis
-                    })
+        # URL específica de NBA en Caliente
+        driver.get("https://www.caliente.mx/sports/en/basketball/nba")
+        time.sleep(5) # Espera técnica para carga de scripts dinámicos
 
-            partidos_detectados.append({
-                "name": nombre_partido,
-                "player_props": props_dinamicos,
-                "game_total": {"line": 222.5, "odds": -110} # Extraído dinámicamente
+        # Localización de tarjetas de eventos
+        eventos = driver.find_elements(By.CLASS_NAME, "event-card") 
+        
+        for ev in eventos:
+            nombre_juego = ev.find_element(By.CLASS_NAME, "event-name").text # Ej: MIL @ NOP
+            
+            # Extraemos la lista de jugadores disponibles en ese momento
+            secciones_jugadores = ev.find_elements(By.CLASS_NAME, "market-selection")
+            mercados_reales = []
+            
+            for s in secciones_jugadores:
+                # El texto extraído es: "Zion Williamson Over 23.5 (-120)"
+                datos = s.text.split('\n') 
+                if len(datos) >= 3:
+                    mercados_reales.append({
+                        "jugador": datos[0],
+                        "linea": datos[1],
+                        "momio": int(datos[2]) if datos[2] else 0
+                    })
+            
+            partidos_en_vivo.append({
+                "juego": nombre_juego,
+                "mercados": mercados_reales
             })
             
+    except Exception as e:
+        print(f"Error en Selenium: {e}")
     finally:
         driver.quit()
-    
-    return partidos_detectados
+        
+    return partidos_en_vivo # Blindaje: Siempre devuelve una lista
