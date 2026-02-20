@@ -3,7 +3,7 @@ import pandas as pd
 import google.generativeai as genai
 import requests
 # Importamos tu conector local
-from modules import connector 
+import connector # Como ambos están en la misma carpeta, se importan directo
 
 # --- CONFIGURACIÓN DE APIS ---
 try:
@@ -61,6 +61,7 @@ if st.button("🔄 Escanear y Notificar"):
 # Mostrar resultados
 if 'picks' in st.session_state:
     st.dataframe(st.session_state['picks'], use_container_width=True)
+
 
 
 
