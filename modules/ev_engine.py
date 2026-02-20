@@ -1,22 +1,30 @@
-# modules/ev_engine.py
-
-def buscar_mejor_valor_global(game_data, stats_jugadores):
-    """
-    Analiza todos los mercados disponibles y devuelve la opción con 
-    probabilidad más alta (Safe Pick).
-    """
-    prob_over = 0.52 # Ejemplo de probabilidad baja para el total
+def analizar_mejor_opcion(partido):
+    # Simulamos consulta a racha (NBA Stats)
+    # En una versión pro, aquí llamarías a una API de estadísticas de jugadores
     
-    if prob_over < 0.60:
-        # Lógica de Pivot: Si el total es dudoso, buscamos rachas de jugadores
-        # Aquí es donde vincularemos con APIs de estadísticas reales
-        mejor_prop = stats_jugadores.get_top_performer() 
-        
+    prob_over = 0.55
+    prob_ganador_home = 0.62
+    prob_player_prop = 0.85 # Ejemplo: Racha de 5 partidos cumpliendo
+    
+    # El sistema elige la opción con mayor EV (Valor Esperado)
+    if prob_player_prop > 0.80:
         return {
-            "mercado": "Player Prop",
-            "seleccion": f"{mejor_prop['nombre']} Over {mejor_prop['linea']} Puntos",
-            "prob": 0.82, # Alta probabilidad detectada por racha
-            "tipo": "Sugerencia de Jugador"
+            "seleccion": "Donovan Mitchell Over 25.5 Pts",
+            "prob": prob_player_prop,
+            "tipo": "PLAYER PROP",
+            "nota": "🔥 Racha detectada: Superó la línea en 4 de últimos 5."
         }
-    
-    return {"mercado": "Total", "seleccion": "Over", "prob": prob_over, "tipo": "Puntos Partido"}
+    elif prob_ganador_home > 0.70:
+        return {
+            "seleccion": f"Ganador {partido['home']}",
+            "prob": prob_ganador_home,
+            "tipo": "MONEYLINE",
+            "nota": "✅ Ventaja clara de localía."
+        }
+    else:
+        return {
+            "seleccion": f"Over {partido.get('linea', 0)}",
+            "prob": prob_over,
+            "tipo": "TOTALS",
+            "nota": "⚠️ Confianza media en puntos."
+        }
