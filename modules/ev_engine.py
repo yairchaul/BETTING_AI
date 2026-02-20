@@ -12,3 +12,4 @@ def calcular_probabilidad_over(equipo_a, equipo_b, linea_over):
     # Lógica de probabilidad dinámica
     prob = 0.50 + (diferencia * 0.02) 
     return min(max(prob, 0.01), 0.99) # Limitamos entre 1% y 99%
+
