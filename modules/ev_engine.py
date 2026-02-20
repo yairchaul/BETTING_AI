@@ -1,34 +1,60 @@
-def analizar_jerarquia_maestra(partido):
-    """
-    Evalúa 4 mercados y selecciona el de mayor probabilidad.
-    Elimina valores 'None' mediante un mapeo de seguridad.
-    """
-    # Mapeo de seguridad para nombres de partidos
-    nombres_seguros = {
-        "CLE@CHA": "Cleveland Cavaliers @ Charlotte Hornets",
-        "MIL@NOP": "Milwaukee Bucks @ New Orleans Pelicans",
-        "LAL@LAC": "LA Lakers @ LA Clippers",
-        "BKN@OKC": "Brooklyn Nets @ Oklahoma City Thunder"
-    }
-    
-    id_p = partido.get('id', 'NBA_GAME')
-    game_name = nombres_seguros.get(id_p, partido.get('game', 'Partido NBA'))
+def limpiar_nombre_partido(partido):
+    # BLINDAJE ANTI-NONE: Reconstruye el nombre si viene vacío
+    game_name = partido.get('game')
+    if not game_name or game_name == "None":
+        id_partido = partido.get('id', 'NBA@GAME')
+        if '@' in id_partido:
+            visitante, local = id_partido.split('@')
+            game_name = f"{visitante} vs {local}"
+        else:
+            game_name = "NBA Matchup"
+    return game_name
 
-    # Análisis de los 4 mercados requeridos
-    mercados = [
-        {"sel": "LaMelo Ball Over 3.5 Triples", "prob": 0.89, "tipo": "Triples", "sujeto": "LaMelo Ball"},
-        {"sel": "Giannis Over 30.5 Puntos", "prob": 0.92, "tipo": "Puntos", "sujeto": "Giannis A."},
-        {"sel": f"Over {partido.get('linea', 224.5)} Puntos", "prob": 0.74, "tipo": "Totals", "sujeto": "Equipo"},
-        {"sel": f"{game_name.split('@')[0]} ML", "prob": 0.68, "tipo": "Moneyline", "sujeto": "Equipo"}
-    ]
-
-    # JERARQUÍA: Seleccionar únicamente el mercado con la probabilidad más alta
-    mejor_pick = max(mercados, key=lambda x: x['prob'])
+def analizar_jerarquia_por_partido(partido):
+    game_name = limpiar_nombre_partido(partido)
     
+    # REPOSITORIO DE CAPAS (Se evalúan simultáneamente)
+    capas = []
+
+    # CAPA 1: Triples (Prioridad 1)
+    capas.append({
+        "label": "Over 3.5 Triples",
+        "sujeto": "Jugador Estrella",
+        "prob": 0.85 + (0.10 * (partido.get('id', 'A')[0] > 'M')), # Simulación lógica
+        "mercado": "Triples"
+    })
+
+    # CAPA 2: Puntos Jugador (Prioridad 2)
+    capas.append({
+        "label": "Over 24.5 Puntos",
+        "sujeto": "Líder Anotador",
+        "prob": 0.78,
+        "mercado": "Player Props"
+    })
+
+    # CAPA 3: Over/Under Partido (Prioridad 3)
+    capas.append({
+        "label": f"Over {partido.get('linea', 222.5)} Totales",
+        "sujeto": "Equipo",
+        "prob": 0.72,
+        "mercado": "Totals"
+    })
+
+    # CAPA 4: Ganador / ML (Prioridad 4)
+    capas.append({
+        "label": "Victoria Directa (ML)",
+        "sujeto": "Equipo Favorito",
+        "prob": 0.65,
+        "mercado": "Moneyline"
+    })
+
+    # FILTRO DE ÉLITE: Elegir solo la capa con mayor probabilidad
+    mejor_mercado = max(capas, key=lambda x: x['prob'])
+
     return {
         "partido": game_name,
-        "seleccion": mejor_pick["sel"],
-        "protagonista": mejor_pick["sujeto"],
-        "confianza": mejor_pick["prob"],
-        "mercado": mejor_pick["tipo"]
+        "seleccion": mejor_mercado["label"],
+        "protagonista": mejor_mercado["sujeto"],
+        "confianza": mejor_mercado["prob"],
+        "categoria": mejor_mercado["mercado"]
     }
