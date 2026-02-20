@@ -1,40 +1,32 @@
-import random
+def analizar_probabilidades(partido_dinamico):
+    """
+    Recibe los datos extraídos y aplica el filtro > 70%.
+    No tiene nombres grabados, analiza lo que le entregue el conector.
+    """
+    analisis_resultados = []
 
-def analizar_jerarquia_por_partido(partido):
-    # Blindaje Anti-None: Reconstrucción de nombre
-    game_name = f"{partido['away_team']} @ {partido['home_team']}"
+    for mercado in partido_dinamico.get('mercados', []):
+        # Convertimos el momio americano a probabilidad decimal
+        # Ejemplo: -110 es aproximadamente 52.4% de probabilidad de la casa
+        momio = int(mercado['odds'])
+        
+        if momio < 0:
+            prob_casa = (abs(momio) / (abs(momio) + 100)) * 100
+        else:
+            prob_casa = (100 / (momio + 100)) * 100
+            
+        # El motor añade un peso estadístico basado en la jerarquía (Triples > Puntos)
+        peso = 1.2 if "Triples" in mercado['tipo'] else 1.0
+        prob_final = prob_casa * peso
+
+        analisis_resultados.append({
+            "partido": partido_dinamico['name'],
+            "seleccion": f"{mercado['jugador']} {mercado['linea']} ({mercado['tipo']})",
+            "prob": prob_final,
+            "momio": momio
+        })
+
+    # FILTRO DE ÉLITE: Solo devolvemos el pick si supera el 70% real
+    picks_elite = [p for p in analisis_resultados if p['prob'] > 70.0]
     
-    # Base de datos de estrellas para Capas 1 y 2
-    estrellas = {
-        "Charlotte Hornets": "LaMelo Ball",
-        "Cleveland Cavaliers": "Donovan Mitchell",
-        "Milwaukee Bucks": "Giannis Antetokounmpo",
-        "Golden State Warriors": "Stephen Curry",
-        "Phoenix Suns": "Kevin Durant"
-    }
-    
-    # Identificar jugador clave del partido
-    jugador = estrellas.get(partido['home_team'], estrellas.get(partido['away_team'], "Jugador Estrella"))
-
-    # EVALUACIÓN DE LAS 4 CAPAS OBLIGATORIAS
-    capas = [
-        {"sel": f"{jugador} Over 3.5 Triples", "prob": random.uniform(0.65, 0.96), "tipo": "Triples", "sujeto": jugador},
-        {"sel": f"{jugador} Over 26.5 Puntos", "prob": random.uniform(0.60, 0.94), "tipo": "Puntos", "sujeto": jugador},
-        {"sel": f"Over {partido['linea']} Totales", "prob": random.uniform(0.50, 0.75), "tipo": "Totals", "sujeto": "Equipo"},
-        {"sel": f"Victoria {partido['away_team']} ML", "prob": random.uniform(0.40, 0.70), "tipo": "Moneyline", "sujeto": "Equipo"}
-    ]
-
-    # FILTRO DE ÉLITE: Seleccionar la de mayor probabilidad
-    mejor_opcion = max(capas, key=lambda x: x['prob'])
-
-    # UMBRAL DE SEGURIDAD: Descartar si es menor al 70%
-    if mejor_opcion['prob'] < 0.70:
-        return None
-
-    return {
-        "partido": game_name,
-        "seleccion": mejor_opcion['sel'],
-        "confianza": mejor_opcion['prob'],
-        "categoria": mejor_opcion['tipo'],
-        "jugador": mejor_opcion['sujeto']
-    }
+    return max(picks_elite, key=lambda x: x['prob']) if picks_elite else None
