@@ -2,31 +2,34 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import requests
-# Importamos tu conector local
-import connector # Como ambos están en la misma carpeta, se importan directo
+import connector # Importación directa ya que están en la misma carpeta
 
-# --- CONFIGURACIÓN DE APIS ---
+# --- CONFIGURACIÓN DE IA ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except:
-    st.error("Error en API Key de Gemini.")
+    st.error("Error al configurar Gemini.")
 
+# --- FUNCIÓN TELEGRAM ---
 def enviar_telegram(mensaje):
-    token = st.secrets["TELEGRAM_BOT_TOKEN"]
-    chat_id = st.secrets["TELEGRAM_CHAT_ID"]
-    url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={mensaje}&parse_mode=Markdown"
-    requests.get(url)
+    try:
+        token = st.secrets["TELEGRAM_BOT_TOKEN"]
+        chat_id = st.secrets["TELEGRAM_CHAT_ID"]
+        url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={mensaje}&parse_mode=Markdown"
+        requests.get(url)
+    except Exception as e:
+        st.warning(f"No se pudo enviar mensaje a Telegram: {e}")
 
-def obtener_analisis_ia(partido, jugador, linea, status):
-    prompt = f"Analista NBA: El pick es {status}. Explica por qué el Over de {linea} para {jugador} en {partido} es buena apuesta. Sé breve."
+def obtener_analisis_ia(partido, linea, status):
+    prompt = f"Analista NBA: El pick es {status}. Explica brevemente por qué el Over de {linea} en {partido} es buena idea. Sé muy breve."
     try:
         response = model.generate_content(prompt)
         return response.text
     except:
         return "IA analizando tendencias..."
 
-# --- LÓGICA DE ESCÁNER v3.0 ---
+# --- LÓGICA DE VALOR ---
 def evaluar_pick(prob_ia):
     prob_casa = 0.52 
     ventaja = prob_ia - prob_casa
@@ -38,37 +41,32 @@ def evaluar_pick(prob_ia):
         return "⚠️ Confianza insuficiente", "orange", 0
 
 # --- INTERFAZ ---
-st.set_page_config(page_title="NBA AI Pro", layout="wide")
+st.set_page_config(page_title="NBA AI Dashboard", layout="wide")
 st.title("🏀 NBA AI Dashboard + Telegram")
 
+# Botón principal corregido
 if st.button("🔄 Escanear y Notificar"):
-    with st.spinner("Escaneando Caliente.mx..."):
-        # Llamamos a tu función de connector.py
-        # NOTA: Debes editar connector.py para que use st.secrets["ODDS_API_KEY"]
-        datos = connector.obtener_datos_reales() 
+    with st.spinner("Conectando con API y enviando alertas..."):
+        # Usamos el nombre de función que sí funciona en tu prueba
+        datos = connector.obtener_juegos() 
         df = pd.DataFrame(datos)
         
         for i, row in df.iterrows():
             status, color, stake = evaluar_pick(row['prob_modelo'])
+            
+            # Si es ELITE, mandamos a Telegram
             if status == "🔥 SUGERENCIA ELITE":
-                analisis = obtener_analisis_ia(row['game'], row['jugador'], row['linea'], status)
-                msg = f"🚀 *NUEVA SUGERENCIA ELITE*\n\n🏀 {row['game']}\n🎯 {row['jugador']} Over {row['linea']}\n💰 Stake: {stake} MXN\n\n🧠 *Análisis IA:* {analisis}"
+                analisis = obtener_analisis_ia(row['game'], row['linea'], status)
+                msg = f"🚀 *PICK ELITE DETECTADO*\n\n🏀 {row['game']}\n🎯 Over {row['linea']}\n💰 Stake Sugerido: {stake} MXN\n\n🧠 *Análisis:* {analisis}"
                 enviar_telegram(msg)
-                st.success(f"Notificación enviada: {row['game']}")
         
-        st.session_state['picks'] = df
+        st.session_state['picks_reales'] = df
+        st.success("Escaneo completado y alertas enviadas.")
 
-# Mostrar resultados
-if 'picks' in st.session_state:
-    st.dataframe(st.session_state['picks'], use_container_width=True)
-# --- BOTÓN DE PRUEBA EN EL DASHBOARD ---
-if st.button("🔍 Probar Conexión con API"):
-    partidos_api = connector.obtener_juegos()
-    if partidos_api:
-        st.success(f"¡Éxito! Se encontraron {len(partidos_api)} partidos.")
-        st.write(partidos_api) # Esto te mostrará la lista cruda de partidos
-    else:
-        st.error("La API no devolvió datos. Revisa tu ODDS_API_KEY en Secrets.")
+# Mostrar tabla de resultados si existen
+if 'picks_reales' in st.session_state:
+    st.subheader("📊 Partidos Detectados")
+    st.dataframe(st.session_state['picks_reales'], use_container_width=True)
 
 
 
