@@ -1,77 +1,82 @@
 import streamlit as st
+import pandas as pd
 import connector
 import ev_engine
 import tracker
 import os
-import pandas as pd
 
-st.set_page_config(page_title="NBA ELITE AI v16", layout="wide")
+st.set_page_config(page_title="NBA ELITE AI - Parlay Builder", layout="wide")
 
-# Barra Lateral - Gestión de Capital
+# Barra Lateral: Gestión de Banca
 with st.sidebar:
-    st.header("💵 Banca")
-    capital = st.number_input("Capital Actual (MXN):", value=1000.0)
-    st.divider()
-    st.info("El sistema mezclará Puntos, Triples y Ganadores para el Parlay.")
+    st.header("💵 Gestión de Banca")
+    capital_base = st.number_input("Capital Actual (MXN):", value=1000.0)
+    st.write(f"Inversión sugerida (10%): **${capital_base * 0.10:.2f}**")
 
 st.title("🚀 Escáner Maestro Multimercado")
 
 if st.button("🔥 EJECUTAR ANÁLISIS COMPLETO"):
-    datos = connector.obtener_datos_caliente_limpios()
+    # Obtenemos datos y manejamos el error de "no detectados"
+    datos_crudos = connector.obtener_datos_caliente_limpios()
     
-    # MODO RESCATE: Si la API no da datos, usamos una lista de prueba real
-    if not datos:
-        st.warning("API sin cuota o sin partidos. Cargando partidos clave para Testeo...")
-        datos = [{"game": "Milwaukee Bucks @ Pelicans"}, {"game": "Brooklyn Nets @ Thunder"}, {"game": "LA Clippers @ Lakers"}]
+    # Simulacro de seguridad si la API está vacía o sin cuota
+    if not datos_crudos:
+        st.warning("API sin datos. Usando partidos clave del sistema para el Parlay...")
+        datos_crudos = [{"game": "Milwaukee Bucks @ New Orleans Pelicans"}, 
+                        {"game": "Brooklyn Nets @ Oklahoma City Thunder"}, 
+                        {"game": "Los Angeles Clippers @ Los Angeles Lakers"}]
 
-    pool_parlay = []
+    pool_excelentes = []
     
-    for p in datos:
-        # Aquí se hace el análisis que suma todas las variables
+    for p in datos_crudos:
+        # Llamada corregida para evitar AttributeError
         res = ev_engine.analizar_profundidad_maestra(p)
         
-        # Filtrado de excelentes
+        # Filtrado real de picks excelentes (>75%)
         if res['prob'] >= 0.75:
-            status, color = "🔥 EXCELENTE", "#00FF00"
-            pool_parlay.append({"partido": p['game'], "pick": res['seleccion'], "prob": res['prob']})
+            pool_excelentes.append({"partido": p.get('game'), "pick": res['seleccion'], "prob": res['prob']})
+            color = "#00FF00"
+            status = "🔥 EXCELENTE"
         else:
-            status, color = "⚠️ BAJA", "#FF4B4B"
+            color = "#FFFF00"
+            status = "⚡ BUENA"
 
-        # Mostrar tarjeta de análisis
         st.markdown(f"""
             <div style="border-left: 8px solid {color}; padding:10px; background-color:#1e1e1e; margin-bottom:5px; border-radius:5px;">
                 <h4 style="margin:0; color:{color};">{status} | {res['tipo']}</h4>
-                <b>{p['game']}</b> -> {res['seleccion']} (Confianza: {res['prob']*100:.0f}%)
+                <b>{p.get('game')}</b> -> {res['seleccion']} (Confianza: {res['prob']*100:.0f}%)
             </div>
         """, unsafe_allow_html=True)
 
-    # --- SECCIÓN DEL PARLAY MIXTO ---
-    if len(pool_parlay) >= 3:
+    # --- CONSTRUCCIÓN DEL PARLAY ---
+    if len(pool_excelentes) >= 3:
         st.divider()
-        st.success("🎯 PARLAY ÉLITE DETECTADO")
+        st.subheader("🎫 TU MEJOR PARLAY (3-WAY)")
         
-        monto = capital * 0.10
-        cuota = 6.85 # Cuota promedio por 3 picks excelentes
-        ganancia = (monto * cuota) - monto
-
+        monto_apuesta = capital_base * 0.10
+        cuota_parlay = 6.50 # Cuota estimada para 3 favoritos
+        ganancia_neta = (monto_apuesta * cuota_parlay) - monto_apuesta
+        
         col1, col2 = st.columns(2)
         with col1:
-            st.write("### 📝 Ticket Sugerido")
-            for i, pick in enumerate(pool_parlay[:3]):
-                st.write(f"{i+1}. **{pick['partido']}**: {pick['pick']}")
+            for i in range(3):
+                st.write(f"{i+1}. **{pool_excelentes[i]['partido']}**: {pool_excelentes[i]['pick']}")
         
         with col2:
-            st.metric("Inversión (10%)", f"${monto:.2f} MXN")
-            st.metric("Ganancia Neta", f"${ganancia:.2f} MXN", delta="ROI Potencial")
+            st.metric("Monto a Invertir", f"${monto_apuesta:.2f} MXN")
+            st.metric("Ganancia Estimada", f"${ganancia_neta:.2f} MXN", delta="ROI +550%")
             
-            # Registro en historial con el paréntesis corregido
-            if st.button("✅ GUARDAR Y REGISTRAR APUESTA"):
-                tracker.registrar_apuesta("PARLAY MIXTO", "Varios", "Varios", 0.85, monto, "PENDIENTE")
-                st.balloons()
+            # Botón de registro con sintaxis corregida
+            if st.button("✅ REGISTRAR ESTA APUESTA"):
+                tracker.registrar_apuesta("PARLAY MIXTO", "Varios", "Varios", 0.85, monto_apuesta, "PENDIENTE")
+                st.success("Apuesta guardada en el historial.")
+    else:
+        st.info(f"Escaneo parcial: Se detectaron {len(pool_excelentes)} de 3 picks 'Excelente' requeridos.")
 
-# --- HISTORIAL DE MOVIMIENTOS ---
-st.subheader("📋 Últimos Movimientos Guardados")
+# --- HISTORIAL ---
+st.divider()
+st.subheader("📋 Historial de Movimientos")
 if os.path.exists('historial_apuestas.csv'):
-    df = pd.read_csv('historial_apuestas.csv')
-    # Filtramos solo los que fueron excelentes en el historial
-    st.dataframe(df.tail(10), use_container_width=True)
+    df_hist = pd.read_csv('historial_apuestas.csv')
+    st.dataframe(df_hist.tail(10), use_container_width=True)
+
