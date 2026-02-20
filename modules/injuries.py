@@ -1,16 +1,10 @@
-import google.generativeai as genai
-from config import GEMINI_API_KEY
-
-genai.configure(api_key=GEMINI_API_KEY)
-
-def verificar_lesiones(equipo):
-
-    model = genai.GenerativeModel("gemini-pro")
-
-    prompt = f"Lista jugadores lesionados hoy del equipo NBA {equipo}"
-
-    try:
-        r = model.generate_content(prompt)
-        return r.text
-    except:
-        return "No disponible"
+# injuries.py
+def verificar_disponibilidad(nombre_jugador):
+    """
+    Simula una consulta a un reporte de lesiones (NBA Injury Report).
+    """
+    lesionados = ["Joel Embiid", "Ja Morant", "Julius Randle"]
+    
+    if nombre_jugador in lesionados:
+        return False # El jugador no debe aparecer en el ticket
+    return True
