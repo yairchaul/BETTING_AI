@@ -1,49 +1,53 @@
 def analizar_jerarquia_maestra(partido):
-    game_name = partido.get('game', 'Partido Desconocido')
+    # Validación anti-None y anti-KeyError
+    game_name = partido.get('game') if partido.get('game') else "Partido Desconocido"
+    linea_base = partido.get('linea', 220.5)
     
-    # Simulamos el escaneo simultáneo de los 4 mercados
-    # En producción, aquí conectarías con los diccionarios de la API
-    opciones = [
-        {
-            "seleccion": "LaMelo Ball Over 3.5 Triples",
-            "protagonista": "LaMelo Ball",
-            "prob": 0.89,
-            "tipo": "3-Pointers",
-            "nota": "🔥 Cavs permiten 12+ triples por juego."
-        },
-        {
-            "seleccion": "Giannis Over 31.5 Puntos",
-            "protagonista": "G. Antetokounmpo",
-            "prob": 0.92,
-            "tipo": "Player Prop",
-            "nota": "🎯 Promedio de 34.0 vs Pelicans."
-        },
-        {
-            "seleccion": f"Over {partido.get('linea', 224.5)} Puntos",
-            "protagonista": "Global Partido",
-            "prob": 0.74,
-            "tipo": "Totals",
-            "nota": "✅ Ambos equipos en back-to-back."
-        },
-        {
-            "seleccion": f"{game_name.split('@')[0].strip()} ML",
-            "protagonista": "Equipo ML",
-            "prob": 0.65,
-            "tipo": "Moneyline",
-            "nota": "⚠️ Cuota con poco valor relativo."
-        }
-    ]
+    # Repositorio de mercados para el análisis simultáneo
+    mercados = []
 
-    # SELECCIÓN JERÁRQUICA: Filtramos por la probabilidad más alta
-    # No importa la categoría, el sistema elige lo "más real"
-    mejor_pick = max(opciones, key=lambda x: x['prob'])
+    # A. Mercado de Triples (Prioridad Alta)
+    if "Hornets" in game_name or "Cavaliers" in game_name:
+        mercados.append({
+            "sel": "LaMelo Ball Over 3.5 Triples",
+            "sujeto": "LaMelo Ball",
+            "prob": 0.89,
+            "tipo": "3-Pointers"
+        })
+
+    # B. Mercado de Puntos Jugador
+    if "Bucks" in game_name:
+        mercados.append({
+            "sel": "Giannis Over 30.5 Puntos",
+            "sujeto": "G. Antetokounmpo",
+            "prob": 0.91,
+            "tipo": "Player Prop"
+        })
+
+    # C. Mercado Over/Under Total
+    mercados.append({
+        "sel": f"Over {linea_base} Puntos",
+        "sujeto": "Equipo (Total)",
+        "prob": 0.72,
+        "tipo": "Totals"
+    })
+
+    # D. Mercado Ganador (Moneyline)
+    equipo_local = game_name.split('@')[0].strip() if '@' in game_name else "Local"
+    mercados.append({
+        "sel": f"{equipo_local} a Ganar",
+        "sujeto": equipo_local,
+        "prob": 0.65,
+        "tipo": "Moneyline"
+    })
+
+    # FILTRO DE VALOR ÚNICO: Selecciona solo la opción con mayor probabilidad
+    mejor_pick = max(mercados, key=lambda x: x['prob'])
     
-    # Aseguramos que el diccionario de salida sea robusto (Sin Nulos)
     return {
-        "game": game_name,
-        "label": mejor_pick["seleccion"],
-        "sujeto": mejor_pick["protagonista"],
-        "confianza": mejor_pick["prob"],
-        "categoria": mejor_pick["tipo"],
-        "observacion": mejor_pick["nota"]
+        "partido": game_name,
+        "seleccion": mejor_pick["sel"],
+        "jugador": mejor_pick["sujeto"],
+        "probabilidad": mejor_pick["prob"],
+        "categoria": mejor_pick["tipo"]
     }
