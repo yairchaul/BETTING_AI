@@ -2,41 +2,26 @@ import streamlit as st
 import requests
 
 def obtener_datos_caliente_limpios():
-    API_KEY = st.secrets["ODDS_API_KEY"]
-    base_url = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds/"
-    
-    # Solicitamos múltiples mercados para tener de donde elegir
-    params = {
-        'apiKey': API_KEY,
-        'regions': 'us',
-        'markets': 'totals,h2h,player_points', 
-        'oddsFormat': 'american'
-    }
-    
+    # Usamos try/except para capturar el error exacto
     try:
-        response = requests.get(base_url, params=params).json()
-        if not isinstance(response, list): # Verificación de seguridad para evitar el error de la imagen
+        API_KEY = st.secrets["ODDS_API_KEY"]
+        # Simplificamos a mercados básicos para asegurar que traiga ALGO
+        url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=h2h,totals&oddsFormat=american"
+        
+        response = requests.get(url)
+        
+        if response.status_code == 401:
+            st.error("🔑 Error: Tu API Key de Odds API es inválida.")
             return []
             
-        partidos_procesados = []
-        for game in response:
-            data_partido = {
-                "id": game['id'],
-                "game": f"{game['away_team']} @ {game['home_team']}",
-                "home": game['home_team'],
-                "away": game['away_team'],
-                "mercados": {}
-            }
+        data = response.json()
+        
+        if not data:
+            st.warning("⚠️ La API respondió pero no hay partidos disponibles ahora.")
+            return []
             
-            # Organizamos los mercados disponibles
-            for bookmaker in game.get('bookmakers', []):
-                if bookmaker['key'] == 'draftkings' or bookmaker['key'] == 'betonlineag':
-                    for market in bookmaker.get('markets', []):
-                        data_partido["mercados"][market['key']] = market['outcomes']
-            
-            partidos_procesados.append(data_partido)
-        return partidos_procesados
+        return data # Retorna la lista de partidos
+        
     except Exception as e:
-        st.error(f"Error en API: {e}")
+        st.error(f"❌ Error de conexión: {e}")
         return []
-
