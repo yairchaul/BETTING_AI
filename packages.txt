@@ -1,7 +1,2 @@
-streamlit
-pandas
-numpy
-scipy
-selenium
-nba_api
-webdriver-manager  # Ayuda a manejar chromedriver automáticamente
+chromium
+chromium-driver
