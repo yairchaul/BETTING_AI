@@ -1,4 +1,7 @@
-chromium
-chromium-driver
-libnss3
-libgconf-2-4  # A veces ayuda con dependencias headless
+streamlit
+pandas
+numpy
+scipy
+selenium
+nba_api
+webdriver-manager  # Ayuda a manejar chromedriver automáticamente
