@@ -2,39 +2,37 @@ import streamlit as st
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
 
+# Corrección de estilos para evitar scroll excesivo
 st.set_page_config(page_title="Ticket Pro IA", layout="wide")
+st.markdown("<style>.stImage > img { max-height: 300px; width: auto; }</style>", unsafe_allow_html=True)
+
+st.title("🏆 Parlay Maestro: Datos Reales")
 engine = EVEngine()
 
-# CSS para diseño ultra-compacto
-st.markdown("<style> .stMetric { background: #1e1e1e; padding: 5px; border-radius: 5px;} </style>", unsafe_allow_html=True)
-
-st.title("🏆 Generador de Parlay Dinámico")
-
-archivo = st.file_uploader("Sube tu captura de Caliente", type=['png', 'jpg', 'jpeg'])
+archivo = st.file_uploader("Sube captura de Caliente/Liga MX", type=['png', 'jpg'])
 
 if archivo:
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.image(archivo, width=250) # Imagen pequeña, no desplaza hacia abajo
+    col_img, col_res = st.columns([1, 2])
     
-    with col2:
-        if st.button("🚀 ANALIZAR ÚLTIMOS 5 Y CREAR PARLAY", use_container_width=True):
-            datos = analyze_betting_image(archivo)
-            todos, parlay = engine.analyze_matches(datos)
-            
-            if parlay:
-                st.success("🔥 MEJOR PARLAY DETECTADO")
-                # Mostrar el Parlay en una caja destacada
-                with st.container(border=True):
-                    for p in parlay:
-                        st.write(f"✅ **{p['partido']}** ➔ `{p['pick']}` ({int(p['prob']*100)}%)")
-                
-                # Detalle compacto de todos los juegos
-                with st.expander("Ver análisis individual (Cascada)"):
-                    for j in todos:
-                        c1, c2, c3 = st.columns([2, 1, 1])
-                        c1.write(f"🏟️ {j['partido']}")
-                        c2.metric("Win", j['victoria']['val'])
-                        c3.metric("HT Goles", j['ht']['val'])
+    with col_img:
+        st.image(archivo, caption="Captura Detectada") # Tamaño controlado
 
+    with col_res:
+        if st.button("🚀 Generar Parlay con Datos Reales"):
+            with st.spinner("Buscando últimos 5 partidos en Google..."):
+                # Llamada segura al lector de Cloud Vision
+                try:
+                    datos = analyze_betting_image(archivo)
+                    todos, parlay = engine.analyze_matches(datos)
+                    
+                    if parlay:
+                        st.success("🔥 MEJOR PARLAY SUGERIDO (Alta Probabilidad)")
+                        for p in parlay:
+                            st.info(f"✅ **{p['partido']}** | Pick: {p['pick']} ({p['confianza_texto']})")
+                    
+                    with st.expander("Ver análisis de Cascada completo"):
+                        for j in todos:
+                            st.write(f"🏟️ {j['partido']} - Goles HT: {j['goles_ht']}")
+                except Exception as e:
+                    st.error(f"Error técnico: {e}. Revisa tus credenciales de Google Cloud.")
 
