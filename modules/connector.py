@@ -1,133 +1,71 @@
-# modules/connector.py
-
 import streamlit as st
 import os
-import time
-
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
+import requests
 
 # =========================================================
-# 🔐 OBTENER API KEY SEGURA
+# 🔐 OBTENER API KEYS SEGURAS
 # =========================================================
-def get_api_key():
-    """
-    Prioridad:
-    1. Streamlit Cloud Secrets
-    2. Variable de entorno local
-    """
+def get_gemini_key():
+    """Obtiene la llave de Gemini de secrets o entorno"""
     try:
-        return st.secrets["OPENAI_API_KEY"]
+        return st.secrets["GEMINI_API_KEY"]
     except:
-        return os.getenv("OPENAI_API_KEY")
+        return os.getenv("GEMINI_API_KEY")
 
-
-# =========================================================
-# 🤖 CONFIGURAR DRIVER ANTI-BOT
-# =========================================================
-def create_driver():
-
-    options = Options()
-
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--window-size=1920,1080")
-
-    # Anti detection
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-    )
-
-    options.binary_location = "/usr/bin/chromium"
-
-    service = Service("/usr/bin/chromedriver")
-
-    driver = webdriver.Chrome(service=service, options=options)
-
-    # Ocultar Selenium
-    driver.execute_cdp_cmd(
-        "Page.addScriptToEvaluateOnNewDocument",
-        {
-            "source": """
-            const newProto = navigator.__proto__;
-            delete newProto.webdriver;
-            navigator.__proto__ = newProto;
-            """
-        },
-    )
-
-    return driver
-
-
-# =========================================================
-# 📡 SCRAPER NBA CALIENTE
-# =========================================================
-def get_live_data():
-
-    url = "https://www.caliente.mx/sports/es_MX/basketball/NBA"
-
-    driver = None
-
+def get_odds_api_key():
+    """Obtiene la llave de The Odds API"""
     try:
-        driver = create_driver()
-        driver.get(url)
+        return st.secrets["ODDS_API_KEY"]
+    except:
+        return os.getenv("ODDS_API_KEY")
 
-        wait = WebDriverWait(driver, 30)
+# =========================================================
+# 📡 THE ODDS API (DATOS REALES EN TIEMPO REAL)
+# =========================================================
+def get_real_time_odds(sport="basketball_nba"):
+    """
+    Consulta momios reales para validar lo detectado por la IA.
+    """
+    api_key = get_odds_api_key()
+    if not api_key:
+        return None
 
-        # esperar eventos
-        wait.until(
-            EC.presence_of_element_located((By.CLASS_NAME, "event-row"))
-        )
-
-        driver.save_screenshot("debug_screen.png")
-
-        eventos = driver.find_elements(By.CLASS_NAME, "event-row")
-
-        data = []
-
-        for ev in eventos:
-            try:
-                lineas = ev.text.split("\n")
-
-                if len(lineas) >= 5:
-                    data.append(
-                        {
-                            "home": lineas[2],
-                            "away": lineas[3],
-                            "line": 0.0,
-                            "odds_over": lineas[5] if len(lineas) > 5 else "N/A",
-                        }
-                    )
-            except:
-                continue
-
-        return data
-
+    # URL para momios de NBA (puedes cambiar la región a 'us' o 'eu' para Caliente)
+    url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds/"
+    
+    params = {
+        'apiKey': api_key,
+        'regions': 'us', # Las casas mexicanas suelen seguir líneas de Las Vegas
+        'markets': 'h2h,spreads,totals',
+        'oddsFormat': 'american'
+    }
+    
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            return response.json()
+        return []
     except Exception as e:
-        print("ERROR SCRAPER:", e)
+        print(f"Error en The Odds API: {e}")
         return []
 
-    finally:
-        if driver:
-            driver.quit()
-
-
 # =========================================================
-# 🧪 TEST RÁPIDO
+# 🧪 TEST DE CONEXIÓN GLOBAL
 # =========================================================
 def test_connection():
-    key = get_api_key()
-
-    if key:
-        return "✅ API Key detectada"
+    results = []
+    
+    # Test Gemini
+    if get_gemini_key():
+        results.append("✅ Gemini API: Conectado")
     else:
-        return "❌ API Key NO encontrada"
+        results.append("❌ Gemini API: Error")
+        
+    # Test Odds API
+    if get_odds_api_key():
+        results.append("✅ Odds API: Conectado")
+    else:
+        results.append("❌ Odds API: Error")
+        
+    return " | ".join(results)
 
