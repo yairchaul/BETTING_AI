@@ -3,44 +3,47 @@ from PIL import Image
 import streamlit as st
 import json
 
-# Lee API key desde Secrets
+# --- CONFIG GEMINI ---
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 
-def analyze_betting_image(image_file):
+def analyze_betting_image(uploaded_file):
 
-    img = Image.open(image_file)
+    image = Image.open(uploaded_file)
 
     prompt = """
-    Analiza esta imagen de apuestas NBA.
+    Read this NBA betting screenshot.
 
-    Extrae TODOS los partidos visibles.
+    Extract ALL games visible.
 
-    Devuelve SOLO JSON con este formato:
+    Return ONLY valid JSON:
 
     [
         {
-            "home": "",
-            "away": "",
-            "spread": "",
-            "total": "",
-            "odds_home": "",
-            "odds_away": ""
+            "home":"",
+            "away":"",
+            "spread":"",
+            "total":"",
+            "odds_home":"",
+            "odds_away":""
         }
     ]
 
-    NO expliques nada.
-    SOLO JSON.
+    No explanation.
+    JSON only.
     """
 
-    response = model.generate_content([prompt, img])
+    response = model.generate_content([prompt, image])
 
     text = response.text.strip()
 
+    # Limpieza automática Gemini
+    text = text.replace("```json", "").replace("```", "")
+
     try:
-        data = json.loads(text)
-        return data
-    except:
+        return json.loads(text)
+    except Exception:
+        st.error("Gemini no devolvió JSON válido")
         return []
