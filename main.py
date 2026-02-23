@@ -1,13 +1,12 @@
-# main.py - Ticket Pro - NBA AI +EV (versión funcional Streamlit)
+# main.py - Ticket Pro - NBA AI +EV (versión funcional y modular Streamlit)
 import streamlit as st
-import pandas as pd
 
 # Imports limpios
 from modules.autopicks import generar_picks_auto
 from modules.bankroll import obtener_stake_sugerido, calcular_roi
-from modules.telegram_bot import enviar_pick
+from modules.telegram_bot import enviar_pick  # Asume existe; si no, cambia a nombre real o comenta
 from modules.connector import get_live_data
-from modules.montecarlo import simular_total
+from modules.montecarlo import simular_total  # Nueva simulación Monte Carlo
 from modules.ev_engine import calcular_ev
 from modules.injuries import verificar_lesiones
 from modules.ranking import ranking_edges
@@ -39,7 +38,7 @@ with st.sidebar:
     
     if st.button("Actualizar ROI"):
         try:
-            roi = calcular_roi(0, 0)  # Placeholder - reemplaza con lógica real si tienes datos
+            roi = calcular_roi(0, 0)  # Placeholder - ajusta con datos reales de tracker
             st.success(f"ROI calculado: {roi:.2f}%")
         except Exception as e:
             st.error(f"Error calculando ROI: {e}")
@@ -61,16 +60,19 @@ else:
     
     for g in juegos:
         try:
-            # Ajusta según la estructura real que devuelve get_live_data()
+            # Ajusta según la estructura real de g (de get_live_data)
             line = g.get("line", 0.0)
-            media_modelo = line + 4  # Tu ajuste
-            prob = simular_total(media_modelo)
+            media_modelo = line + 4  # Tu ajuste original
+            
+            # Nueva simulación Monte Carlo para prob
+            prob = simular_total(media_modelo)  # De montecarlo.py
+            
             ev = calcular_ev(prob)
-
+            
             if ev <= 0:
                 continue
-
-            # Clasificación de confianza
+            
+            # Clasificación de confianza (numérica para stake)
             if ev > 0.08:
                 confianza = "🔥 EXCELENTE"
                 css_class = "high"
@@ -78,16 +80,16 @@ else:
             elif ev > 0.04:
                 confianza = "⚡ BUENA"
                 css_class = "medium"
-                confianza_num = 75
+                confianza_num = 80
             else:
                 confianza = "➖ BAJA"
                 css_class = "low"
                 confianza_num = 60
-
+            
             stake = obtener_stake_sugerido(bankroll, confianza_num)
             lesiones = verificar_lesiones(g.get("home", "Unknown"))
             juego_txt = f"{g.get('away', '?')} @ {g.get('home', '?')}"
-
+            
             # Tarjeta visual
             with st.container():
                 st.markdown(f"""
@@ -100,11 +102,11 @@ else:
                         Lesiones: {lesiones}
                     </div>
                 """, unsafe_allow_html=True)
-
-            # Guardar y enviar si es buena apuesta
+            
+            # Guardar y enviar si buena
             guardar_pick(juego_txt, stake, ev)
             picks.append({"game": juego_txt, "ev": ev})
-
+            
             if ev > 0.04:
                 texto = f"""
 🔥 AUTO PICK
@@ -117,11 +119,11 @@ Stake: ${stake:.2f}
                     st.info(f"Pick enviado a Telegram: {juego_txt}")
                 except Exception as e:
                     st.error(f"Error enviando a Telegram: {e}")
-
+        
         except Exception as e:
             st.error(f"Error procesando juego {g}: {e}")
             continue
-
+    
     # Resumen final
     if picks:
         try:
@@ -132,3 +134,8 @@ Stake: ${stake:.2f}
             st.error(f"Error en ranking: {e}")
     else:
         st.info("No se encontraron picks con valor esperado positivo hoy.")
+    
+# Picks auto (opcional al final)
+if st.button("Generar Picks Auto"):
+    auto_picks = generar_picks_auto()
+    st.write("Picks Automáticos:", auto_picks)
