@@ -1,40 +1,50 @@
 import streamlit as st
+from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
-# Asegúrate de que vision_reader esté importado correctamente
 
+# Configuración inicial
 st.set_page_config(page_title="Ticket Pro IA", layout="wide")
 engine = EVEngine()
 
-st.title("🏟️ Ticket Pro IA: Análisis Dinámico")
+# CSS Inyectado para reducir tamaño de textos y métricas
+st.markdown("""
+    <style>
+    [data-testid="stMetricValue"] { font-size: 1.2rem !important; }
+    [data-testid="stMetricLabel"] { font-size: 0.8rem !important; }
+    h4 { font-size: 1rem !important; margin-bottom: 0px; }
+    </style>
+""", unsafe_allow_html=True)
 
-# ... (Tu lógica de carga de archivo y analyze_betting_image)
+st.title("🎯 Ticket Pro IA: Análisis Fútbol")
 
-if st.button("🚀 Iniciar Análisis Dinámico"):
-    # resultado_ia = analyze_betting_image(archivo)
-    picks = engine.analyze_matches(resultado_ia)
+# REINSTALADA LA OPCIÓN DE SUBIR IMAGEN
+archivo = st.file_uploader("Sube tu captura de Caliente/Liga MX", type=['png', 'jpg', 'jpeg'])
+
+if archivo:
+    st.image(archivo, use_container_width=True)
     
-    for p in picks:
-        # Recuperamos el diseño profesional de tarjetas
-        with st.container(border=True):
-            st.markdown(f"#### 🏟️ {p['partido']}")
-            col1, col2, col3, col4 = st.columns(4)
+    if st.button("🚀 Iniciar Análisis en Cascada", use_container_width=True):
+        with st.spinner("🤖 Procesando imagen con Cloud Vision..."):
+            resultado_ia = analyze_betting_image(archivo)
             
-            with col1:
-                st.caption("Victoria")
-                st.subheader(p['victoria']['pick'])
-                st.write(f"🟢 {p['victoria']['prob']}")
+            if resultado_ia and "juegos" in resultado_ia:
+                picks = engine.analyze_matches(resultado_ia)
                 
-            with col2:
-                st.caption("Goles HT")
-                st.subheader(p['goles_ht']['pick'])
-                st.write(f"🟢 {p['goles_ht']['prob']}")
+                st.subheader("📊 Resultados del Análisis")
                 
-            with col3:
-                st.caption("Ambos Anotan")
-                st.subheader(p['btts']['pick'])
-                st.write(f"🟢 {p['btts']['prob']}")
+                # Diseño compacto de tarjetas
+                for p in picks:
+                    with st.container(border=True):
+                        st.markdown(f"#### 🏟️ {p['partido']} | Momio: {p['momio']}")
+                        cols = st.columns(4)
+                        for i, capa in enumerate(p['capas']):
+                            # Metric más pequeña gracias al CSS arriba
+                            cols[i].metric(capa['nivel'], capa['pick'], capa['prob'])
                 
-            with col4:
-                st.caption("Tiros Esquina")
-                st.subheader(p['corners']['pick'])
-                st.write(f"🟢 {p['corners']['prob']}")
+                st.divider()
+                st.subheader("📝 Resumen para Compartir")
+                texto_social = engine.generar_resumen_social(picks)
+                st.text_area("Copia este texto para tus grupos:", texto_social, height=150)
+                st.button("📋 Copiar al portapapeles")
+            else:
+                st.error("Error: No se detectaron datos legibles. Intenta con una captura más clara.")
