@@ -1,21 +1,24 @@
 # modules/tracker.py
 import csv
 from datetime import datetime
+import os
 
-def guardar_apuesta_real(partido, seleccion, momio, confianza):
+def guardar_pick(juego, stake, ev):
     """
-    Registra el pick con nombres reales de Selenium para auditoría
+    Registra el pick generado en un archivo CSV para aprendizaje y auditoría.
     """
-    datos_apuesta = [
-        datetime.now().strftime("%Y-%m-%d %H:%M"),
-        partido,
-        seleccion,
-        momio,
-        confianza,
-        "Pendiente"
-    ]
+    archivo = 'modules/historial_picks.csv'
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
     
-    # Guarda en la carpeta de módulos para fácil acceso
-    with open('modules/historial_resultados.csv', 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(datos_apuesta)
+    # Crear encabezados si el archivo no existe
+    if not os.path.exists(archivo):
+        with open(archivo, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Fecha', 'Juego', 'Stake', 'EV', 'Resultado'])
+
+    try:
+        with open(archivo, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([ahora, juego, stake, f"{ev*100:.2f}%", "PENDIENTE"])
+    except Exception as e:
+        print(f"Error guardando en tracker: {e}")
