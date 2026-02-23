@@ -1,6 +1,6 @@
 # app.py - Dashboard con Mejor Parlay
 # ... (imports y sidebar mismo)
-
+from modules.vision_reader import analyze_betting_image
 individual_picks, best_parlay = engine.analyze_matches()
 
 if not individual_picks:
@@ -28,3 +28,4 @@ else:
             log_pick(best_parlay, best_parlay['prob'])  # Track
         else:
             st.info("No parlay viable con alta prob.")
+
