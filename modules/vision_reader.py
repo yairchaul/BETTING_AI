@@ -1,58 +1,53 @@
+import google.generativeai as genai
 import streamlit as st
-from google import genai
-from PIL import Image
+import PIL.Image
 import json
-
 
 def analyze_betting_image(uploaded_file):
 
-    try:
-        # ✅ API KEY desde Streamlit Secrets
-        client = genai.Client(
-            api_key=st.secrets["GEMINI_API_KEY"]
-        )
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
 
-        img = Image.open(uploaded_file)
+    model = genai.GenerativeModel("gemini-2.0-flash")
 
-        prompt = """
-        Actúa como analista profesional NBA betting.
+    image = PIL.Image.open(uploaded_file)
 
-        Analiza la imagen de momios.
+    prompt = """
+    Actúa como analista profesional de apuestas deportivas.
 
-        REGLAS IMPORTANTES:
-        - Handicap = +1.5 / -3
-        - Totales siempre empiezan con O o U
-        - Ignora columnas irrelevantes.
+    Analiza esta captura de apuestas NBA de Caliente.mx.
 
-        Devuelve SOLO JSON válido:
+    REGLAS IMPORTANTES:
+    - Handicap = números +1.5, -3, etc.
+    - Totales siempre tienen O (Over) o U (Under).
+    - NO confundas columnas.
 
+    Devuelve SOLO JSON válido:
+
+    {
+      "juegos":[
         {
-          "juegos":[
-            {
-              "home":"equipo local",
-              "away":"equipo visitante",
-              "total_line":232,
-              "odds_over":-110
-            }
-          ]
+          "away":"equipo visitante",
+          "home":"equipo local",
+          "total_line":number,
+          "odds_over":number,
+          "handicap_home":number
         }
-        """
+      ]
+    }
+    """
 
-        response = client.models.generate_content(
-            model="gemini-1.5-flash-latest",
-            contents=[prompt, img],
-        )
+    try:
+        response = model.generate_content([prompt, image])
 
         clean = (
             response.text
-            .replace("```json", "")
-            .replace("```", "")
+            .replace("```json","")
+            .replace("```","")
             .strip()
         )
 
-        data = json.loads(clean)
-
-        return data["juegos"]
+        return json.loads(clean)
 
     except Exception as e:
         st.error(f"Vision AI error: {e}")
