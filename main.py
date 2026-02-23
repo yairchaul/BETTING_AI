@@ -1,12 +1,17 @@
 # main.py - Ticket Pro - NBA AI +EV (versión funcional y modular Streamlit)
 import streamlit as st
+import sys
+import os
+
+# --- CORRECCIÓN DE RUTA: Asegura que Python vea la carpeta 'modules' ---
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'modules')))
 
 # Imports limpios
 from modules.autopicks import generar_picks_auto
 from modules.bankroll import obtener_stake_sugerido, calcular_roi
-from modules.telegram_bot import enviar_pick  # Asume existe; si no, cambia a nombre real o comenta
+from modules.telegram_bot import enviar_pick  # CORREGIDO: Eliminado caracter invisible que causaba SyntaxError
 from modules.connector import get_live_data
-from modules.montecarlo import simular_total  # Nueva simulación Monte Carlo
+from modules.montecarlo import simular_total  
 from modules.ev_engine import calcular_ev
 from modules.injuries import verificar_lesiones
 from modules.ranking import ranking_edges
@@ -21,9 +26,9 @@ st.markdown("""
         body {background-color: #121212; color: #ffffff;}
         .stApp {background-color: #121212;}
         .sidebar .sidebar-content {background-color: #0e1117;}
-        .high {border-left: 5px solid #00ff00; padding: 10px; margin: 5px 0; border-radius: 4px;}
-        .medium {border-left: 5px solid #ffff00; padding: 10px; margin: 5px 0; border-radius: 4px;}
-        .low {border-left: 5px solid #ff0000; padding: 10px; margin: 5px 0; border-radius: 4px;}
+        .high {border-left: 5px solid #00ff00; padding: 10px; margin: 5px 0; border-radius: 4px; background-color: #1e1e1e;}
+        .medium {border-left: 5px solid #ffff00; padding: 10px; margin: 5px 0; border-radius: 4px; background-color: #1e1e1e;}
+        .low {border-left: 5px solid #ff0000; padding: 10px; margin: 5px 0; border-radius: 4px; background-color: #1e1e1e;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -32,13 +37,14 @@ st.title("🔥 Ticket Pro - NBA AI +EV v10.0")
 # Sidebar: Bankroll y métricas
 with st.sidebar:
     st.header("Bankroll")
-    bankroll = st.number_input("💰 Bankroll actual (MXN)", min_value=0.0, value=10000.0, step=100.0)
+    bankroll = st.number_input("💰 Bankroll actual (MXN)", min_value=0.0, value=1000.0, step=100.0)
     st.metric("Inversión Sugerida (10%)", f"${bankroll * 0.10:,.2f}")
     st.metric("ROI Objetivo", "550%")
     
     if st.button("Actualizar ROI"):
         try:
-            roi = calcular_roi(0, 0)  # Placeholder - ajusta con datos reales de tracker
+            # Placeholder - Los datos reales vendrán del tracker.py
+            roi = calcular_roi(0, 0)  
             st.success(f"ROI calculado: {roi:.2f}%")
         except Exception as e:
             st.error(f"Error calculando ROI: {e}")
@@ -60,19 +66,18 @@ else:
     
     for g in juegos:
         try:
-            # Ajusta según la estructura real de g (de get_live_data)
+            # Lógica jerárquica de análisis
             line = g.get("line", 0.0)
-            media_modelo = line + 4  # Tu ajuste original
+            media_modelo = line + 4  
             
-            # Nueva simulación Monte Carlo para prob
-            prob = simular_total(media_modelo)  # De montecarlo.py
-            
+            # Simulación para aprendizaje dinámico
+            prob = simular_total(media_modelo)  
             ev = calcular_ev(prob)
             
             if ev <= 0:
                 continue
             
-            # Clasificación de confianza (numérica para stake)
+            # Clasificación de confianza visual
             if ev > 0.08:
                 confianza = "🔥 EXCELENTE"
                 css_class = "high"
@@ -90,7 +95,7 @@ else:
             lesiones = verificar_lesiones(g.get("home", "Unknown"))
             juego_txt = f"{g.get('away', '?')} @ {g.get('home', '?')}"
             
-            # Tarjeta visual
+            # Tarjeta visual "Ticket Pro"
             with st.container():
                 st.markdown(f"""
                     <div class="{css_class}">
@@ -103,17 +108,12 @@ else:
                     </div>
                 """, unsafe_allow_html=True)
             
-            # Guardar y enviar si buena
+            # Registrar para aprendizaje del sistema
             guardar_pick(juego_txt, stake, ev)
             picks.append({"game": juego_txt, "ev": ev})
             
             if ev > 0.04:
-                texto = f"""
-🔥 AUTO PICK
-Juego: {juego_txt}
-EV: {ev*100:.2f}%
-Stake: ${stake:.2f}
-                """
+                texto = f"🔥 AUTO PICK\nJuego: {juego_txt}\nEV: {ev*100:.2f}%\nStake: ${stake:.2f}"
                 try:
                     enviar_pick(texto)
                     st.info(f"Pick enviado a Telegram: {juego_txt}")
@@ -134,7 +134,7 @@ Stake: ${stake:.2f}
             st.error(f"Error en ranking: {e}")
     else:
         st.info("No se encontraron picks con valor esperado positivo hoy.")
-    
+
 # Picks auto (opcional al final)
 if st.button("Generar Picks Auto"):
     auto_picks = generar_picks_auto()
