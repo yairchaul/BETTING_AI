@@ -3,9 +3,10 @@ import pandas as pd
 
 def obtener_stake_sugerido(capital_total, confianza_pick):
     """
-    Calcula cuánto apostar basado en la confianza del pick.
+    Calcula stake basado en confianza.
     - 10% base
     - +20% si confianza >=90%
+    - Mejora: Agrega ajuste Kelly aproximado (fraccional para menos riesgo)
     """
     if capital_total <= 0:
         return 0.0
@@ -14,11 +15,18 @@ def obtener_stake_sugerido(capital_total, confianza_pick):
     
     # Ajuste por confianza
     if confianza_pick >= 90:
-        return round(unidad_base * 1.2, 2)
+        multiplier = 1.2
     elif confianza_pick >= 70:
-        return round(unidad_base, 2)
+        multiplier = 1.0
     else:
-        return round(unidad_base * 0.5, 2)  # Menos si baja confianza
+        multiplier = 0.5
+    
+    # Ajuste Kelly simple (asumiendo prob_win ~ confianza/100, odds even)
+    prob_win = confianza_pick / 100
+    kelly_frac = max(0, prob_win - (1 - prob_win))  # Simplificado
+    stake = unidad_base * multiplier * (kelly_frac * 0.5)  # Half-Kelly para seguridad
+    
+    return round(stake, 2)
 
 def calcular_roi(ganancia, inversion):
     """Calcula el retorno de inversión en porcentaje"""
