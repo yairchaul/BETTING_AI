@@ -1,32 +1,34 @@
 import google.generativeai as genai
 import streamlit as st
-import json
+from PIL import Image # <-- Fundamental para corregir el error de Blob
 
-def analyze_betting_image(image):
-    # Configuración de API con tu llave de Nivel 1 activa
-    api_key = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-
-    # El prompt ahora exige las llaves exactas: 'home', 'away', etc.
-    prompt = """
-    Analiza esta imagen de Caliente.mx y extrae los juegos en este formato JSON exacto:
-    [
-      {
-        "home": "Nombre Equipo Local",
-        "away": "Nombre Equipo Visitante",
-        "handicap": "valor y momio",
-        "total": "O/U valor y momio",
-        "moneyline": "momio"
-      }
-    ]
-    Importante: No inventes datos, si no los ves pon 'N/A'. Retorna solo JSON puro.
-    """
-
+def analyze_betting_image(uploaded_file):
     try:
-        response = model.generate_content([prompt, image])
-        # Limpieza de formato para asegurar que sea JSON válido
-        texto_limpio = response.text.replace('```json', '').replace('```', '').strip()
-        return texto_limpio
+        # 1. Convertir el archivo subido en una imagen que la IA entienda
+        img = Image.open(uploaded_file)
+        
+        # 2. Configuración
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+
+        prompt = """
+        Analiza esta imagen de Caliente.mx. Extrae los juegos en este formato JSON exacto:
+        [
+          {
+            "home": "Nombre Equipo Local",
+            "away": "Nombre Equipo Visitante",
+            "handicap": "valor y momio",
+            "total": "O/U valor y momio",
+            "moneyline": "momio"
+          }
+        ]
+        Retorna solo el JSON puro, sin explicaciones.
+        """
+
+        # 3. Llamada a la IA pasando la imagen convertida
+        response = model.generate_content([prompt, img])
+        return response.text.replace('```json', '').replace('```', '').strip()
+        
     except Exception as e:
         return f"Error en Vision AI: {str(e)}"
