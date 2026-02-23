@@ -5,3 +5,4 @@ scipy
 selenium>=4.0.0
 nba_api
 webdriver-manager
+nba_api
