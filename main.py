@@ -3,11 +3,12 @@ import os
 import sys
 
 # Asegurar que Streamlit encuentre tus módulos locales
+# Esto evita el SyntaxError al importar desde la carpeta 'modules'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'modules')))
 
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import calcular_ev
-from modules.tracker import guardar_pick_automatico # Importamos el guardado
+from modules.tracker import guardar_pick_automatico
 
 st.title("🏀 Ticket Pro - Vision Terminal")
 
@@ -25,36 +26,36 @@ if archivo:
     
     if st.button("🔥 Analizar con IA"):
         with st.spinner("IA leyendo mercados..."):
-            # Llama a Gemini Vision usando la API Key de tus Secrets
+            # Llama a Gemini Vision usando st.secrets internamente
             datos = analyze_betting_image(archivo)
             
             if datos and "juegos" in datos:
                 st.success(f"Se detectaron {len(datos['juegos'])} mercados")
                 
                 for juego in datos["juegos"]:
-                    # Validamos nombres de equipos para evitar errores de despliegue
+                    # Extraer nombres o usar valores por defecto
                     home = juego.get('home', 'Equipo Local')
                     away = juego.get('away', 'Equipo Visitante')
                     
                     with st.expander(f"📌 {away} @ {home}"):
                         col1, col2 = st.columns(2)
                         
-                        # Extraemos datos limpios de la IA
                         linea = juego.get('total_line', 'N/A')
                         momio = juego.get('odds_over', 'N/A')
                         
                         col1.write(f"**Línea Total:** {linea}")
                         col1.write(f"**Momio Over:** {momio}")
                         
-                        # Cálculo de EV (Ejemplo con probabilidad del 54%)
-                        probabilidad_modelo = 0.54 
-                        ev = calcular_ev(probabilidad_modelo)
+                        # Cálculo de EV (Ejemplo)
+                        ev = calcular_ev(0.55) 
                         col2.metric("Expected Value", f"{ev*100:.2f}%")
                         
-                        # BOTÓN DE GUARDADO: Registra la apuesta en el historial
-                        stake_sugerido = bankroll * 0.05 # 5% del bankroll
-                        if st.button(f"Guardar Pick: {away} vs {home}", key=f"btn_{home}"):
+                        # Guardado automático al detectar un edge positivo
+                        if ev > 0:
+                            stake_sugerido = bankroll * 0.05
+                            # Guardamos en el archivo CSV del servidor
                             guardar_pick_automatico(juego, ev, stake_sugerido)
-                            st.toast(f"✅ Pick guardado en historial")
+                            st.caption(f"✅ Registrado en picks.csv")
             else:
-                st.error("No se pudieron extraer datos. Verifica que la imagen sea clara y la API Key sea válida.")
+                st.error("No se pudieron extraer datos. Verifica la imagen o la configuración de la API Key.")
+
