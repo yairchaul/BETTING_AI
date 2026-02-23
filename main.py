@@ -1,64 +1,47 @@
 import streamlit as st
 import json
 import os
-import sys
 import pandas as pd
-
-# Configuración de rutas
-current_dir = os.path.dirname(__file__)
-modules_path = os.path.join(current_dir, 'modules')
-if modules_path not in sys.path:
-    sys.path.append(modules_path)
-
-from vision_reader import analyze_betting_image
-from tracker import guardar_pick_automatico
+from modules.vision_reader import analyze_betting_image
+from modules.tracker import guardar_pick_automatico
 
 st.set_page_config(page_title="Ticket Pro IA", layout="wide")
 
-tab1, tab2 = st.tabs(["🔥 Scanner", "📜 Historial"])
+# --- INTERFAZ DE PESTAÑAS ---
+tab1, tab2 = st.tabs(["🔥 Scanner de Mercados", "📜 Historial de Picks"])
 
 with tab1:
-    st.title("🏀 Ticket Pro IA")
-    archivo = st.file_uploader("Sube captura", type=['png', 'jpg', 'jpeg'])
+    st.title("🏀 Vision Terminal")
+    archivo = st.file_uploader("Sube captura de Caliente.mx", type=['png', 'jpg', 'jpeg'], key="uploader_principal")
 
     if archivo:
         st.image(archivo, width=500)
-        if st.button("🚀 Analizar Mercados"):
-            with st.spinner("Leyendo..."):
-                res = analyze_betting_image(archivo)
-                try:
-                    juegos = json.loads(res)
-                    for j in juegos:
-                        with st.expander(f"📌 {j.get('away')} @ {j.get('home')}"):
-                            st.write(f"Línea: {j.get('handicap')} | Momio: {j.get('moneyline')}")
+        
+        # Agregamos un 'key' único para evitar el error StreamlitDuplicateElementId
+        if st.button("🚀 Analizar Mercados", key="btn_analisis_unico"):
+            with st.spinner("🤖 Procesando imagen..."):
+                datos = analyze_betting_image(archivo)
+                
+                if datos and "juegos" in datos:
+                    st.success(f"✅ Detectados {len(datos['juegos'])} juegos")
+                    
+                    # Espacios organizados para resultados
+                    for idx, j in enumerate(datos["juegos"]):
+                        with st.container(border=True):
+                            c1, c2, c3 = st.columns([2,1,1])
+                            c1.subheader(f"{j.get('away')} @ {j.get('home')}")
+                            c2.metric("Línea/Total", j.get('handicap', j.get('total', 'N/A')))
+                            c3.metric("Momio", j.get('moneyline', 'N/A'))
+                            
+                            # Guardar automáticamente cada juego detectado
                             guardar_pick_automatico(j, 0.05, 100.0)
-                    st.success("Análisis completado")
-                except:
-                    st.error("La IA no devolvió un formato válido.")
-                    st.code(res)
+                else:
+                    st.error("No se pudo extraer JSON válido. Revisa la consola.")
 
 with tab2:
+    st.header("Historial de Análisis")
     if os.path.exists("data/picks.csv"):
-        st.dataframe(pd.read_csv("data/picks.csv"))
+        df = pd.read_csv("data/picks.csv")
+        st.dataframe(df.sort_index(ascending=False), use_container_width=True)
     else:
-        st.info("Historial vacío.")
-if archivo:
-    st.image(archivo, width=500)
-    if st.button("🚀 Analizar Mercados"):
-        with st.spinner("Buscando modelo compatible y analizando..."):
-            datos_ia = analyze_betting_image(archivo) # Ahora devuelve un Diccionario
-            
-            if datos_ia and "juegos" in datos_ia:
-                st.success(f"✅ Se detectaron {len(datos_ia['juegos'])} juegos.")
-                # Aquí creamos el 'espacio' para cada resultado
-                for j in datos_ia["juegos"]:
-                    with st.container(border=True): # Crea un recuadro para cada juego
-                        col1, col2, col3 = st.columns(3)
-                        col1.markdown(f"**🏠 {j.get('home')}**")
-                        col1.markdown(f"**✈️ {j.get('away')}**")
-                        col2.metric("Línea/Total", j.get('handicap', j.get('total')))
-                        col3.metric("Momio", j.get('moneyline'))
-            else:
-                st.error("No se pudo extraer la información. Intenta con otra captura.")
-
-
+        st.info("El historial aparecerá aquí después de tu primer análisis.")
