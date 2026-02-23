@@ -7,3 +7,4 @@ nba_api
 webdriver-manager
 google-genai
 Pillow
+google-generativeai>=0.7.0
