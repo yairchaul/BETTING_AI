@@ -3,18 +3,16 @@ from modules.connector import get_live_data
 
 def generar_picks_auto():
     """
-    Extrae datos reales de Caliente.mx y genera sugerencias automáticas.
+    Toma la información viva y la presenta como sugerencias de apuesta.
     """
-    datos_vivos = get_live_data()
+    datos = get_live_data()
     
-    if not datos_vivos:
-        return ["Esperando datos reales de Caliente.mx..."]
+    if not datos:
+        return ["Sin mercados detectados en este momento. Intenta en unos minutos."]
     
-    # Genera la lista basada en lo que Selenium encontró en la pantalla
-    picks_reales = []
-    for juego in datos_vivos:
-        jugador = juego.get('player', 'Jugador Desconocido')
-        linea = juego.get('line', '0.0')
-        picks_reales.append(f"{jugador} Over {linea}")
-        
-    return picks_reales
+    # Transformamos los datos del conector en frases legibles
+    sugerencias = []
+    for d in datos:
+        sugerencias.append(f"🔥 {d['player']} | Línea: {d['line']} | Momio: {d['odds_over']}")
+    
+    return sugerencias
