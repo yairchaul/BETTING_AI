@@ -1,4 +1,4 @@
-# En modules/connector.py (o donde inicies el driver)
+from selenium.webdriver.common.by import By
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
@@ -41,3 +41,4 @@ def get_live_data(url='https://caliente.mx/deportes/basquetbol/nba'):
     finally:
         if 'driver' in locals():
             driver.quit()
+
