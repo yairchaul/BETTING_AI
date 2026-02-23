@@ -1,56 +1,33 @@
 import google.generativeai as genai
 import streamlit as st
-import PIL.Image
-import json
+from PIL import Image
 
-def analyze_betting_image(uploaded_file):
-
+def analyze_betting_image(image):
+    """
+    Analiza una captura de pantalla de Caliente.mx usando Gemini 1.5 Flash.
+    """
+    # 1. Configurar la API Key desde los Secrets de Streamlit
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
 
-  # Así debe verse, sin espacios al principio de la línea
-model = genai.GenerativeModel('gemini-1.5-flash')
-
-    image = PIL.Image.open(uploaded_file)
+    # 2. Inicializar el modelo estable 1.5 Flash
+    # Usamos este porque el 2.0-flash dio error de disponibilidad
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
     prompt = """
-    Actúa como analista profesional de apuestas deportivas.
-
-    Analiza esta captura de apuestas NBA de Caliente.mx.
-
-    REGLAS IMPORTANTES:
-    - Handicap = números +1.5, -3, etc.
-    - Totales siempre tienen O (Over) o U (Under).
-    - NO confundas columnas.
-
-    Devuelve SOLO JSON válido:
-
-    {
-      "juegos":[
-        {
-          "away":"equipo visitante",
-          "home":"equipo local",
-          "total_line":number,
-          "odds_over":number,
-          "handicap_home":number
-        }
-      ]
-    }
+    Analiza esta imagen de apuestas deportivas y extrae los datos en formato JSON.
+    Para cada partido, necesito:
+    - equipo_local
+    - equipo_visitante
+    - handicap (puntos y momio)
+    - total_puntos (O/U y momio)
+    - moneyline (momios de ambos)
+    Retorna solo el JSON puro.
     """
 
     try:
+        # 3. Generar contenido con la imagen
         response = model.generate_content([prompt, image])
-
-        clean = (
-            response.text
-            .replace("```json","")
-            .replace("```","")
-            .strip()
-        )
-
-        return json.loads(clean)
-
+        return response.text
     except Exception as e:
-        st.error(f"Vision AI error: {e}")
-        return None
-st.write("KEY LOADED:", "GEMINI_API_KEY" in st.secrets)
+        return f"Error en Vision AI: {str(e)}"
