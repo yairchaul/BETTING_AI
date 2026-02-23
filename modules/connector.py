@@ -2,6 +2,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 import time
 
 def obtener_datos_reales():
@@ -24,3 +26,9 @@ def obtener_datos_reales():
     finally:
         if 'driver' in locals(): driver.quit()
 
+
+# En connector.py (ejemplo con webdriver-manager)
+
+
+service = Service(ChromeDriverManager().install())
+driver = webdriver.Chrome(service=service, options=options)
