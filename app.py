@@ -157,3 +157,19 @@ with tab5:
     st.subheader("Mejor Parlay IA")
 
     st.info("Próximo módulo: combinación automática de edges")
+    # Fragmento para insertar en app.py después de analizar la imagen
+if st.button("🔥 Analizar con IA"):
+    with st.spinner("IA leyendo mercados..."):
+        datos = analyze_betting_image(archivo)
+        
+        if datos and "juegos" in datos:
+            for juego in datos["juegos"]:
+                # 1. Calculamos la ventaja (ejemplo 5% de ventaja)
+                ev_detectado = 0.05 
+                stake_dinamico = bankroll * 0.02 # Arriesgamos 2% del bankroll
+                
+                # 2. Guardamos automáticamente en la base de datos
+                from modules.tracker import guardar_pick_automatico
+                guardar_pick_automatico(juego, ev_detectado, stake_dinamico)
+                
+                st.success(f"Apuesta registrada: {juego['away']} @ {juego['home']}")
