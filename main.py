@@ -42,5 +42,23 @@ with tab2:
         st.dataframe(pd.read_csv("data/picks.csv"))
     else:
         st.info("Historial vacío.")
+if archivo:
+    st.image(archivo, width=500)
+    if st.button("🚀 Analizar Mercados"):
+        with st.spinner("Buscando modelo compatible y analizando..."):
+            datos_ia = analyze_betting_image(archivo) # Ahora devuelve un Diccionario
+            
+            if datos_ia and "juegos" in datos_ia:
+                st.success(f"✅ Se detectaron {len(datos_ia['juegos'])} juegos.")
+                # Aquí creamos el 'espacio' para cada resultado
+                for j in datos_ia["juegos"]:
+                    with st.container(border=True): # Crea un recuadro para cada juego
+                        col1, col2, col3 = st.columns(3)
+                        col1.markdown(f"**🏠 {j.get('home')}**")
+                        col1.markdown(f"**✈️ {j.get('away')}**")
+                        col2.metric("Línea/Total", j.get('handicap', j.get('total')))
+                        col3.metric("Momio", j.get('moneyline'))
+            else:
+                st.error("No se pudo extraer la información. Intenta con otra captura.")
 
 
