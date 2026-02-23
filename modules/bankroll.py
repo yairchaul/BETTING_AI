@@ -1,9 +1,27 @@
-def obtener_stake_sugerido(capital_total, confianza_pick, prob_win=0.55):
+# modules/bankroll.py
+import pandas as pd
+
+def obtener_stake_sugerido(capital_total, confianza_pick):
     """
-    Versión simple con ajuste Kelly aproximado
+    Calcula cuánto apostar basado en la confianza del pick.
+    - 10% base
+    - +20% si confianza >=90%
     """
-    unidad_base = capital_total * 0.10
-    # Ajuste Kelly básico: f = (p*b - q)/b donde b=1 (odds ~even)
-    kelly_frac = (prob_win - (1 - prob_win))  # simplificado
-    stake = capital_total * max(0, kelly_frac * 0.5)  # half-Kelly para menos riesgo
-    return round(max(stake, unidad_base * 0.05), 2)  # mínimo 5% de unidad
+    if capital_total <= 0:
+        return 0.0
+    
+    unidad_base = capital_total * 0.10  # 10% sugerido
+    
+    # Ajuste por confianza
+    if confianza_pick >= 90:
+        return round(unidad_base * 1.2, 2)
+    elif confianza_pick >= 70:
+        return round(unidad_base, 2)
+    else:
+        return round(unidad_base * 0.5, 2)  # Menos si baja confianza
+
+def calcular_roi(ganancia, inversion):
+    """Calcula el retorno de inversión en porcentaje"""
+    if inversion == 0:
+        return 0.0
+    return round((ganancia / inversion) * 100, 2)
