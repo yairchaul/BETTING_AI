@@ -2,45 +2,36 @@ import streamlit as st
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
 
-# Configuración de página
-st.set_page_config(page_title="Ticket Pro IA - Fútbol", layout="wide")
-
-# Inicializar motor
+st.set_page_config(page_title="Ticket Pro IA", layout="wide")
 engine = EVEngine()
 
-st.title("🎯 Analizador de Cascada Fútbol")
-st.markdown("### Sube tu captura de Caliente para análisis exhaustivo")
-
-archivo = st.file_uploader("Arrastra tu imagen aquí", type=['png', 'jpg', 'jpeg'])
+st.title("🎯 Ticket Pro IA: Análisis Fútbol")
+archivo = st.file_uploader("Sube tu captura de Caliente/Liga MX", type=['png', 'jpg', 'jpeg'])
 
 if archivo:
-    st.image(archivo, caption="Captura Detectada", use_container_width=True)
+    st.image(archivo, use_container_width=True)
     
-    if st.button("🚀 Iniciar Análisis en Cascada", use_container_width=True):
-        with st.spinner("🤖 IA analizando capas de probabilidad..."):
-            # 1. Visión IA (Asegúrate que use gemini-1.5-flash)
+    if st.button("🚀 Iniciar Análisis en Cascada"):
+        with st.spinner("🤖 Aplicando Capas de Inteligencia..."):
+            # Usar la API de Cloud Vision (la de tu 1ra imagen) haría esto 100% exacto
             resultado_ia = analyze_betting_image(archivo)
             
             if resultado_ia and "juegos" in resultado_ia:
-                st.success(f"✅ Se detectaron {len(resultado_ia['juegos'])} encuentros.")
+                picks = engine.analyze_matches(resultado_ia)
                 
-                # 2. Ejecutar Motor de Cascada
-                analisis_final = engine.analyze_matches(resultado_ia)
-                
-                # 3. Mostrar Resultados (Estilo Tarjeta Parlay)
-                for p in analisis_final:
+                # Mostrar Tarjetas Visuales
+                for p in picks:
                     with st.container(border=True):
-                        st.subheader(f"⚽ {p['partido']}")
-                        st.caption(f"Momio detectado: {p['momio_origen']}")
-                        
-                        # Columnas para las 4 capas de cascada
+                        st.subheader(f"🏟️ {p['partido']}")
                         cols = st.columns(4)
                         for i, capa in enumerate(p['capas']):
-                            with cols[i]:
-                                st.write(f"**{capa['nivel']}**")
-                                st.write(capa['detalle'])
-                                st.metric(label="Confianza", value=capa['valor'], delta=capa['status'])
+                            cols[i].metric(capa['nivel'], capa['pick'], capa['prob'])
                 
-                st.info("💡 Consejo: Selecciona los niveles con 'Confianza ALTA' para tu parlay.")
+                # SECCIÓN DE RESUMEN PARA COPIAR
+                st.divider()
+                st.subheader("📝 Resumen para Compartir")
+                texto_social = engine.generar_resumen_social(picks)
+                st.text_area("Copia este texto:", texto_social, height=200)
+                st.button("📋 Copiar al portapapeles (Simulado)")
             else:
-                st.error("No se pudieron extraer datos. Verifica que los nombres de los equipos sean visibles.")
+                st.error("No se detectaron juegos. Revisa la imagen.")
