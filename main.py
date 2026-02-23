@@ -139,3 +139,21 @@ else:
 if st.button("Generar Picks Auto"):
     auto_picks = generar_picks_auto()
     st.write("Picks Automáticos:", auto_picks)
+# main.py - Sección de Extracción
+with st.spinner("Extrayendo mercados de Caliente.mx..."):
+    try:
+        juegos = get_live_data()
+        
+        # --- BLOQUE DE DEBUG VISUAL ---
+        if not juegos:
+            st.warning("No se detectaron juegos. Iniciando diagnóstico visual...")
+            # Buscamos si el conector generó la imagen
+            if os.path.exists("debug_screen.png"):
+                st.image("debug_screen.png", caption="Captura de pantalla del servidor (Selenium)")
+            else:
+                st.info("No se generó captura. Revisa los permisos de escritura.")
+        # ------------------------------
+        
+    except Exception as e:
+        st.error(f"Error en conector: {e}")
+        juegos = []
