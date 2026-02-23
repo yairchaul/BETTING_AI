@@ -1,78 +1,117 @@
+# main.py - Versión Streamlit de Ticket Pro
+import streamlit as st
+import pandas as pd
+
+# Imports limpios (sin duplicados)
 from modules.autopicks import generar_picks_auto
 from modules.bankroll import calcular_stake
 from modules.telegram_bot import enviar_pick
-from modules.connector import obtener_juegos
+from modules.connector import get_live_data  # Función real en tu connector.py
 from modules.montecarlo import simular_total
 from modules.ev_engine import calcular_ev
-from modules.bankroll import calcular_stake
 from modules.injuries import verificar_lesiones
 from modules.ranking import ranking_edges
 from modules.tracker import guardar_pick, calcular_roi
 
-print("\n🔥 NBA AI +EV v10.0")
+st.set_page_config(page_title="Ticket Pro - NBA AI", layout="wide")
+st.markdown("""
+    <style>
+        body {background-color: #121212; color: #ffffff;}
+        .stApp {background-color: #121212;}
+        .sidebar .sidebar-content {background-color: #0e1117;}
+        .high {border-left: 5px solid #00ff00; padding-left: 10px;}
+        .medium {border-left: 5px solid #ffff00; padding-left: 10px;}
+        .low {border-left: 5px solid #ff0000; padding-left: 10px;}
+    </style>
+""", unsafe_allow_html=True)
 
-bankroll = float(input("💰 Ingresa Bankroll MXN: "))
+st.title("🔥 Ticket Pro - NBA AI +EV v10.0")
 
-juegos = obtener_juegos()
+# Sidebar: Bankroll y métricas
+with st.sidebar:
+    st.header("Bankroll")
+    bankroll = st.number_input("💰 Bankroll actual (MXN)", min_value=0.0, value=10000.0, step=100.0)
+    st.metric("Inversión Sugerida (10%)", f"${bankroll * 0.1:,.2f}")
+    st.metric("ROI Objetivo", "550%")
+    if st.button("Actualizar ROI"):
+        roi = calcular_roi()
+        st.success(f"ROI actual: {roi:.2f}%")
+
+# Obtener datos vivos
+with st.spinner("Extrayendo mercados de Caliente.mx..."):
+    juegos = get_live_data()  # Usa la función real de connector.py
 
 if not juegos:
-    print("No hay juegos disponibles.")
-    exit()
+    st.warning("No hay juegos o mercados disponibles hoy. Revisa conexión o Caliente.mx.")
+else:
+    st.success(f"Encontrados {len(juegos)} eventos/juegos.")
 
-picks = []
+    picks = []
+    for g in juegos:
+        # Asume estructura de g (ajusta según lo que devuelva get_live_data)
+        # Ejemplo: g = {'away': '...', 'home': '...', 'line': 229.5, ...}
+        try:
+            media_modelo = g.get("line", 0) + 4  # Tu ajuste
+            prob = simular_total(media_modelo)
+            ev = calcular_ev(prob)
 
-for g in juegos:
+            if ev <= 0:
+                continue
 
-    media_modelo = g["line"] + 4
+            if ev > 0.08:
+                confianza = "🔥 EXCELENTE"
+                css_class = "high"
+            elif ev > 0.04:
+                confianza = "⚡ BUENA"
+                css_class = "medium"
+            else:
+                confianza = "➖ BAJA"
+                css_class = "low"
 
-    prob = simular_total(media_modelo)
+            stake = calcular_stake(bankroll, confianza)
+            lesiones = verificar_lesiones(g.get("home", "Unknown"))
 
-    ev = calcular_ev(prob)
+            juego_txt = f"{g.get('away', '?')} @ {g.get('home', '?')}"
 
-    if ev < 0:
-        continue
+            # Tarjeta visual
+            with st.container():
+                st.markdown(f"""
+                    <div class="{css_class}">
+                        <strong>{juego_txt}</strong><br>
+                        Prob Over: {prob*100:.1f}%  
+                        EV: {ev*100:.2f}%  
+                        Confianza: {confianza}<br>
+                        Stake sugerido: ${stake:.2f} MXN  
+                        Lesiones: {lesiones}
+                    </div>
+                """, unsafe_allow_html=True)
 
-    if ev > 0.08:
-        confianza = "🔥 EXCELENTE"
-    elif ev > 0.04:
-        confianza = "⚡ BUENA"
-    else:
-        confianza = "➖ BAJA"
+            guardar_pick(juego_txt, stake, ev)
+            picks.append({"game": juego_txt, "ev": ev})
 
-    stake = calcular_stake(bankroll, confianza)
-
-    lesiones = verificar_lesiones(g["home"])
-
-    juego_txt = f"{g['away']} vs {g['home']}"
-
-    print("\n====================")
-    print(juego_txt)
-    print("Prob Over:", round(prob*100,2),"%")
-    print("EV:", round(ev*100,2),"%")
-    print("Stake sugerido:", round(stake,2),"MXN")
-    print("Lesiones:", lesiones)
-
-    guardar_pick(juego_txt, stake, ev)
-
-    picks.append({
-        "game": juego_txt,
-        "ev": ev
-    })
-
-ranking_edges(picks)
-
-calcular_roi()
-picks = generar_picks_auto()
-
-for p in picks:
-    stake = calcular_stake(bankroll,p["ev"])
-
-    texto=f"""
+            # Enviar a Telegram si es buena/excelente
+            if ev > 0.04:
+                texto = f"""
 🔥 AUTO PICK
-Juego: {p['game']}
-EV: {round(p['ev']*100,2)}%
-Stake: ${round(stake,2)}
-"""
+Juego: {juego_txt}
+EV: {ev*100:.2f}%
+Stake: ${stake:.2f}
+                """
+                try:
+                    enviar_pick(texto)
+                    st.info("Pick enviado a Telegram")
+                except Exception as e:
+                    st.error(f"Error enviando a Telegram: {e}")
 
-    print(texto)
-    enviar_pick(texto)
+        except Exception as e:
+            st.error(f"Error procesando juego {g}: {e}")
+            continue
+
+    # Ranking y ROI final
+    if picks:
+        ranking_edges(picks)
+        roi = calcular_roi()
+        st.subheader("Resumen")
+        st.metric("ROI Calculado", f"{roi:.2f}%")
+    else:
+        st.info("No se encontraron picks con +EV hoy.")
