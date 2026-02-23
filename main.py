@@ -1,4 +1,8 @@
-# main.py - Versión Streamlit de Ticket Pro
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))  # Agrega raíz al path
+
+from modules.bankroll import calcular_stake# main.py - Versión Streamlit de Ticket Pro
 import streamlit as st
 import pandas as pd
 
@@ -115,3 +119,4 @@ Stake: ${stake:.2f}
         st.metric("ROI Calculado", f"{roi:.2f}%")
     else:
         st.info("No se encontraron picks con +EV hoy.")
+
