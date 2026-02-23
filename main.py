@@ -1,3 +1,14 @@
+# main.py - Versión debug mínima
+import streamlit as st
+
+try:
+    from modules.bankroll import calcular_stake
+    st.success("Import de bankroll OK!")
+except ImportError as e:
+    st.error(f"Error importando bankroll: {e}")
+
+st.title("Ticket Pro Debug")
+st.write("Si ves esto y el import OK, el problema está resuelto.")                               
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))  # Agrega raíz al path
@@ -119,4 +130,5 @@ Stake: ${stake:.2f}
         st.metric("ROI Calculado", f"{roi:.2f}%")
     else:
         st.info("No se encontraron picks con +EV hoy.")
+
 
