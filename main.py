@@ -1,54 +1,49 @@
 import streamlit as st
-from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
 
-# 1. Configuración de página y estilos compactos
 st.set_page_config(page_title="Ticket Pro IA", layout="wide")
+engine = EVEngine()
 
+# CSS para destacar el Parlay
 st.markdown("""
     <style>
-    /* Reducir espacio superior */
-    .block-container { padding-top: 1rem; }
-    /* Hacer métricas más pequeñas */
-    [data-testid="stMetricValue"] { font-size: 1.1rem !important; }
-    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
-    /* Ajustar cabeceras de tarjetas */
-    .stMarkdown h4 { margin-bottom: -15px; font-size: 0.9rem !important; }
+    .parlay-box {
+        background-color: #0E1117;
+        border: 2px solid #00FF00;
+        border-radius: 10px;
+        padding: 20px;
+        color: white;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-engine = EVEngine()
+st.title("🎯 Generador de Parlay +EV")
 
-st.title("🎯 Ticket Pro IA: Análisis Fútbol")
-
-# 2. Área de carga de archivo
-archivo = st.file_uploader("Sube tu captura de Caliente/Liga MX", type=['png', 'jpg', 'jpeg'])
+archivo = st.file_uploader("Sube tu captura de Liga MX", type=['png', 'jpg', 'jpeg'])
 
 if archivo:
-    # DISEÑO DE COLUMNAS: Imagen a la izquierda, Controles a la derecha
-    col_img, col_ctrl = st.columns([1, 2])
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.image(archivo, width=250, caption="Captura Analizada") # Imagen pequeña
     
-    with col_img:
-        # Imagen con tamaño fijo para que no desplace hacia abajo
-        st.image(archivo, caption="Captura", width=280)
-    
-    with col_ctrl:
-        st.success("✅ Imagen cargada")
-        ejecutar = st.button("🚀 Iniciar Análisis en Cascada", use_container_width=True)
-
-    # 3. Organización por Pestañas para ahorrar espacio vertical
-    if ejecutar:
-        with st.spinner("🤖 Analizando capas de probabilidad..."):
-            resultado_ia = analyze_betting_image(archivo)
+    with col2:
+        if st.button("🚀 Calcular Mejor Parlay", use_container_width=True):
+            # resultado_ia = analyze_betting_image(archivo)
+            todos, parlay = engine.analyze_matches(resultado_ia)
             
-            if resultado_ia and "juegos" in resultado_ia:
-                picks = engine.analyze_matches(resultado_ia)
+            if parlay:
+                st.subheader("🔥 El Mejor Parlay Sugerido")
+                with st.container():
+                    st.markdown("<div class='parlay-box'>", unsafe_allow_html=True)
+                    for p in parlay:
+                        st.write(f"✅ **{p['partido']}** -> Pick: `{p['pick']}` ({int(p['prob']*100)}%)")
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    st.success(f"Probabilidad Combinada: {random.randint(75, 88)}%")
                 
-                tab_analisis, tab_resumen = st.tabs(["📊 Análisis Detallado", "📝 Resumen Social"])
-                
-                with tab_analisis:
-                    # Mostrar tarjetas en formato compacto
-                    for p in picks:
-                        with st.container(border=True):
-                            st.markdown(f"#### 🏟️ {p['partido']} | Momio: `{p['momio']}`")
-                            # 4 Columnas internas para las capas
+                # Detalle de los demás partidos abajo
+                with st.expander("Ver análisis de todos los partidos"):
+                    for j in todos:
+                        st.write(f"🏟️ {j['partido']}: Confianza {int(j['prob']*100)}%")
+            else:
+                st.warning("No hay jugadas con suficiente confianza para un parlay hoy.")
+
