@@ -5,6 +5,5 @@ scipy
 selenium
 nba_api
 webdriver-manager
-nba_api
 google-generativeai
 Pillow
