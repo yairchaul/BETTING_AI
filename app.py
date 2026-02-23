@@ -10,6 +10,7 @@ from modules.tracker import log_pick
 from modules.ev_engine import calcular_ev
 from modules.montecarlo import simular_total
 from modules.bankroll import obtener_stake_sugerido
+from modules.ev_scanner import scan_ev_opportunities
 
 # ---------------- CONFIG ----------------
 
