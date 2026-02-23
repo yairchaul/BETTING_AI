@@ -8,7 +8,8 @@ def analyze_betting_image(uploaded_file):
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
 
-   model = genai.GenerativeModel('gemini-1.5-flash')
+  # Así debe verse, sin espacios al principio de la línea
+model = genai.GenerativeModel('gemini-1.5-flash')
 
     image = PIL.Image.open(uploaded_file)
 
