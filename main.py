@@ -1,42 +1,48 @@
+import streamlit as st
+from modules.vision_reader import analyze_betting_image
 from modules.connector import get_real_time_odds
+from modules.ev_engine import calcular_ev  # Tu motor de EV
 
-# ... (después de que la IA detecta los juegos)
-if datos_ia and "juegos" in datos_ia:
-    st.markdown("### 📈 Análisis de Valor en Tiempo Real")
-    
-    # 1. Obtenemos los momios reales del mercado (The Odds API)
-    market_data = get_real_time_odds()
-    
-    for j in datos_ia["juegos"]:
-        # 2. Buscamos el "Match" entre la foto y la API
-        equipo_foto = j.get('away')
-        odds_real = None
-        
-        if market_data:
-            # Lógica simple de búsqueda por nombre
-            match = next((item for item in market_data if equipo_foto in item['away_team']), None)
-            if match:
-                # Extraemos el momio promedio del mercado para comparar
-                # (Aquí es donde ocurre la magia del +EV)
-                odds_real = match['bookmakers'][0]['markets'][0]['outcomes']
+st.title("🎯 Ticket Pro IA: Análisis Exhaustivo +EV")
 
-        # 3. Visualización de la comparativa
-        with st.container(border=True):
-            col1, col2, col3 = st.columns([2, 1, 1])
-            col1.write(f"**{j.get('away')} vs {j.get('home')}**")
+archivo = st.file_uploader("Sube captura de Caliente.mx", type=['png', 'jpg', 'jpeg'])
+
+if archivo:
+    st.image(archivo, width=500)
+    
+    if st.button("🚀 Analizar Mercados", key="btn_analisis"):
+        with st.spinner("🤖 Consultando Visión e IA..."):
+            # 1. LA VARIABLE SE DEFINE AQUÍ
+            datos_ia = analyze_betting_image(archivo)
             
-            # Mostramos el momio de la captura
-            momio_captura = j.get('moneyline')
-            col2.metric("Momio Foto", momio_captura)
-            
-            # Si hay datos de API, comparamos
-            if odds_real:
-                # Supongamos que buscamos el momio del equipo visitante
-                api_val = next((o['price'] for o in odds_real if o['name'] == equipo_foto), "N/A")
+            # 2. VALIDAMOS SI LA VARIABLE EXISTE Y TIENE DATOS
+            if datos_ia and "juegos" in datos_ia:
+                st.success(f"✅ Detectados {len(datos_ia['juegos'])} juegos")
                 
-                # Cálculo de diferencia
-                delta = int(momio_captura) - int(api_val) if api_val != "N/A" else 0
-                col3.metric("Mercado Real", api_val, delta=f"{delta} pts")
+                # 3. FILTRO EN CASCADA: Traemos datos reales de la API
+                market_data = get_real_time_odds()
                 
-                if delta > 10: # Si Caliente paga mucho más que el promedio
-                    st.success("🔥 ¡OPORTUNIDAD +EV DETECTADA!")
+                for j in datos_ia["juegos"]:
+                    with st.container(border=True):
+                        # Extraemos el momio de la foto (Caliente)
+                        momio_foto = int(j.get('moneyline', 0))
+                        
+                        # Simulación de Probabilidad para el motor de EV 
+                        # (Aquí podrías conectar tus stats de jugadores)
+                        prob_real = 0.55 # Ejemplo: 55% de probabilidad
+                        
+                        # 4. APLICAMOS TU MOTOR DE EV
+                        valor_esperado = calcular_ev(prob_real, momio_foto)
+                        
+                        col1, col2, col3 = st.columns([2, 1, 1])
+                        col1.subheader(f"{j.get('away')} @ {j.get('home')}")
+                        col2.metric("Momio Captura", momio_foto)
+                        
+                        # Color según el valor esperado
+                        if valor_esperado > 0:
+                            col3.metric("Valor (EV)", f"{valor_esperado*100}%", delta="Riesgo Óptimo")
+                            st.info(f"🔥 Recomendación: El momio de {momio_foto} tiene valor matemático.")
+                        else:
+                            col3.metric("Valor (EV)", f"{valor_esperado*100}%", delta="Sin Valor", delta_color="inverse")
+            else:
+                st.error("La IA no pudo procesar los datos. Intenta con otra captura.")
