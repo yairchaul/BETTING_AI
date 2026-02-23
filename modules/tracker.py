@@ -1,24 +1,34 @@
 # modules/tracker.py
-import csv
-from datetime import datetime
+import pandas as pd
 import os
+from datetime import datetime
 
-def guardar_pick(juego, stake, ev):
+def guardar_pick_automatico(juego_data, ev, stake):
     """
-    Registra el pick generado en un archivo CSV para aprendizaje y auditoría.
+    Guarda el análisis de la IA en un archivo CSV para auditoría.
     """
-    archivo = 'modules/historial_picks.csv'
-    ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
+    path = "data/picks.csv"
     
-    # Crear encabezados si el archivo no existe
-    if not os.path.exists(archivo):
-        with open(archivo, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Fecha', 'Juego', 'Stake', 'EV', 'Resultado'])
-
-    try:
-        with open(archivo, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([ahora, juego, stake, f"{ev*100:.2f}%", "PENDIENTE"])
-    except Exception as e:
-        print(f"Error guardando en tracker: {e}")
+    # Asegurar que la carpeta data existe
+    if not os.path.exists("data"):
+        os.makedirs("data")
+    
+    # Crear la estructura de la nueva apuesta
+    nueva_apuesta = {
+        "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "Evento": f"{juego_data['away']} @ {juego_data['home']}",
+        "Linea": juego_data.get('total_line'),
+        "Momio": juego_data.get('odds_over'),
+        "EV": f"{ev*100:.2f}%",
+        "Stake_Sugerido": f"${stake:,.2f}",
+        "Estado": "Pendiente"
+    }
+    
+    df_nuevo = pd.DataFrame([nueva_apuesta])
+    
+    # Si el archivo no existe, lo creamos con cabeceras
+    if not os.path.exists(path):
+        df_nuevo.to_csv(path, index=False)
+    else:
+        # Si ya existe, añadimos la fila al final
+        df_nuevo.to_csv(path, mode='a', header=False, index=False)
