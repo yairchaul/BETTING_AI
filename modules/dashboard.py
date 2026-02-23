@@ -29,3 +29,27 @@ else:
         else:
             st.info("No parlay viable con alta prob.")
 
+
+st.subheader("📸 Subir Screenshot Caliente")
+
+uploaded = st.file_uploader(
+    "Sube captura de apuestas",
+    type=["png", "jpg", "jpeg"]
+)
+
+if uploaded:
+
+    st.image(uploaded)
+
+    st.info("Analizando imagen con IA...")
+
+    games = analyze_betting_image(uploaded)
+
+    if games:
+        st.success(f"{len(games)} juegos detectados")
+
+        for g in games:
+            st.write(g)
+
+    else:
+        st.warning("No se pudieron detectar juegos")
