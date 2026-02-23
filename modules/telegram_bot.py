@@ -1,19 +1,23 @@
-# telegram_bot.py
+# modules/telegram_bot.py
 import requests
-from config import TELEGRAM_TOKEN, CHAT_ID
+import streamlit as st
 
-def enviar_pick(msg): # CORREGIDO: Se añadieron paréntesis y el argumento 'msg'
+def enviar_pick(msg):
     """
-    Envía el pick analizado al chat de Telegram configurado.
+    Envía el pick usando los Secrets de Streamlit.
     """
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-
     try:
+        # Lee directamente de los Secrets de la nube
+        token = st.secrets["TELEGRAM_TOKEN"]
+        chat_id = st.secrets["CHAT_ID"]
+        
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        
         response = requests.post(url, data={
-            "chat_id": 939085593, # ID de chat directo
+            "chat_id": chat_id,
             "text": msg
         })
         return response.json()
     except Exception as e:
-        print(f"Error enviando a Telegram: {e}")
+        st.error(f"Error de configuración de Telegram: {e}")
         return None
