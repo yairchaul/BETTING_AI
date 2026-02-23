@@ -52,3 +52,4 @@ def analyze_betting_image(uploaded_file):
     except Exception as e:
         st.error(f"Vision AI error: {e}")
         return None
+st.write("KEY LOADED:", "GEMINI_API_KEY" in st.secrets)
