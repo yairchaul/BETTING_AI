@@ -14,7 +14,7 @@ def analyze_betting_image(uploaded_file):
 
         # 2. Inicialización del modelo con el nombre oficial para evitar errores 404
         # Usamos 'gemini-1.5-flash' que es la versión estable actual.
-        model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+        model = genai.GenerativeModel('models/gemini-1.5-flash')
 
         # 3. Procesamiento de la imagen
         img = PIL.Image.open(uploaded_file)
