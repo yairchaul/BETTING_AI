@@ -1,159 +1,34 @@
-# main.py - Ticket Pro - NBA AI +EV (versión funcional y modular Streamlit)
+# app.py
 import streamlit as st
-import sys
-import os
-
-# --- CORRECCIÓN DE RUTA: Asegura que Python vea la carpeta 'modules' ---
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'modules')))
-
-# Imports limpios
-from modules.autopicks import generar_picks_auto
-from modules.bankroll import obtener_stake_sugerido, calcular_roi
-from modules.telegram_bot import enviar_pick  # CORREGIDO: Eliminado caracter invisible que causaba SyntaxError
-from modules.connector import get_live_data
-from modules.montecarlo import simular_total  
+from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import calcular_ev
-from modules.injuries import verificar_lesiones
-from modules.ranking import ranking_edges
-from modules.tracker import guardar_pick
 
-# Configuración de página
-st.set_page_config(page_title="Ticket Pro - NBA AI", layout="wide")
+st.title("🏀 Ticket Pro - Vision Terminal")
 
-# Estilo oscuro "Ticket Pro"
-st.markdown("""
-    <style>
-        body {background-color: #121212; color: #ffffff;}
-        .stApp {background-color: #121212;}
-        .sidebar .sidebar-content {background-color: #0e1117;}
-        .high {border-left: 5px solid #00ff00; padding: 10px; margin: 5px 0; border-radius: 4px; background-color: #1e1e1e;}
-        .medium {border-left: 5px solid #ffff00; padding: 10px; margin: 5px 0; border-radius: 4px; background-color: #1e1e1e;}
-        .low {border-left: 5px solid #ff0000; padding: 10px; margin: 5px 0; border-radius: 4px; background-color: #1e1e1e;}
-    </style>
-""", unsafe_allow_html=True)
+# Sidebar: Gestión de Bankroll
+bankroll = st.sidebar.number_input("Bankroll actual (MXN)", value=1000.0)
 
-st.title("🔥 Ticket Pro - NBA AI +EV v10.0")
+# Carga de Imagen
+st.header("📸 Scanner de Mercados")
+archivo = st.file_uploader("Sube captura de Caliente.mx", type=['png', 'jpg', 'jpeg'])
 
-# Sidebar: Bankroll y métricas
-with st.sidebar:
-    st.header("Bankroll")
-    bankroll = st.number_input("💰 Bankroll actual (MXN)", min_value=0.0, value=1000.0, step=100.0)
-    st.metric("Inversión Sugerida (10%)", f"${bankroll * 0.10:,.2f}")
-    st.metric("ROI Objetivo", "550%")
+if archivo:
+    st.image(archivo, caption="Captura subida", use_column_width=True)
     
-    if st.button("Actualizar ROI"):
-        try:
-            # Placeholder - Los datos reales vendrán del tracker.py
-            roi = calcular_roi(0, 0)  
-            st.success(f"ROI calculado: {roi:.2f}%")
-        except Exception as e:
-            st.error(f"Error calculando ROI: {e}")
-
-# Extracción de datos vivos
-with st.spinner("Extrayendo mercados de Caliente.mx..."):
-    try:
-        juegos = get_live_data()
-    except Exception as e:
-        st.error(f"Error en conector: {e}")
-        juegos = []
-
-if not juegos:
-    st.warning("No hay juegos o mercados disponibles hoy. Revisa conexión o Caliente.mx.")
-else:
-    st.success(f"Encontrados {len(juegos)} eventos/juegos.")
-    
-    picks = []
-    
-    for g in juegos:
-        try:
-            # Lógica jerárquica de análisis
-            line = g.get("line", 0.0)
-            media_modelo = line + 4  
+    if st.button("🔥 Analizar con IA"):
+        with st.spinner("IA leyendo mercados..."):
+            datos = analyze_betting_image(archivo)
             
-            # Simulación para aprendizaje dinámico
-            prob = simular_total(media_modelo)  
-            ev = calcular_ev(prob)
-            
-            if ev <= 0:
-                continue
-            
-            # Clasificación de confianza visual
-            if ev > 0.08:
-                confianza = "🔥 EXCELENTE"
-                css_class = "high"
-                confianza_num = 90
-            elif ev > 0.04:
-                confianza = "⚡ BUENA"
-                css_class = "medium"
-                confianza_num = 80
+            if datos and "juegos" in datos:
+                st.success("Mercados extraídos con éxito")
+                for juego in datos["juegos"]:
+                    with st.expander(f"📌 {juego['away']} @ {juego['home']}"):
+                        col1, col2 = st.columns(2)
+                        col1.write(f"Línea Total: {juego['total_line']}")
+                        col1.write(f"Momio Over: {juego['odds_over']}")
+                        
+                        # Aquí conectaríamos el EV Engine
+                        ev = calcular_ev(0.55) # Probabilidad ejemplo
+                        st.metric("Expected Value", f"{ev*100:.2f}%")
             else:
-                confianza = "➖ BAJA"
-                css_class = "low"
-                confianza_num = 60
-            
-            stake = obtener_stake_sugerido(bankroll, confianza_num)
-            lesiones = verificar_lesiones(g.get("home", "Unknown"))
-            juego_txt = f"{g.get('away', '?')} @ {g.get('home', '?')}"
-            
-            # Tarjeta visual "Ticket Pro"
-            with st.container():
-                st.markdown(f"""
-                    <div class="{css_class}">
-                        <strong>{juego_txt}</strong><br>
-                        Prob Over: {prob*100:.1f}%  
-                        EV: {ev*100:.2f}%  
-                        Confianza: {confianza}<br>
-                        Stake sugerido: ${stake:.2f} MXN  
-                        Lesiones: {lesiones}
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            # Registrar para aprendizaje del sistema
-            guardar_pick(juego_txt, stake, ev)
-            picks.append({"game": juego_txt, "ev": ev})
-            
-            if ev > 0.04:
-                texto = f"🔥 AUTO PICK\nJuego: {juego_txt}\nEV: {ev*100:.2f}%\nStake: ${stake:.2f}"
-                try:
-                    enviar_pick(texto)
-                    st.info(f"Pick enviado a Telegram: {juego_txt}")
-                except Exception as e:
-                    st.error(f"Error enviando a Telegram: {e}")
-        
-        except Exception as e:
-            st.error(f"Error procesando juego {g}: {e}")
-            continue
-    
-    # Resumen final
-    if picks:
-        try:
-            ranking_edges(picks)
-            st.subheader("Resumen de Picks")
-            st.write(f"Picks con +EV encontrados: {len(picks)}")
-        except Exception as e:
-            st.error(f"Error en ranking: {e}")
-    else:
-        st.info("No se encontraron picks con valor esperado positivo hoy.")
-
-# Picks auto (opcional al final)
-if st.button("Generar Picks Auto"):
-    auto_picks = generar_picks_auto()
-    st.write("Picks Automáticos:", auto_picks)
-# main.py - Sección de Extracción
-with st.spinner("Extrayendo mercados de Caliente.mx..."):
-    try:
-        juegos = get_live_data()
-        
-        # --- BLOQUE DE DEBUG VISUAL ---
-        if not juegos:
-            st.warning("No se detectaron juegos. Iniciando diagnóstico visual...")
-            # Buscamos si el conector generó la imagen
-            if os.path.exists("debug_screen.png"):
-                st.image("debug_screen.png", caption="Captura de pantalla del servidor (Selenium)")
-            else:
-                st.info("No se generó captura. Revisa los permisos de escritura.")
-        # ------------------------------
-        
-    except Exception as e:
-        st.error(f"Error en conector: {e}")
-        juegos = []
+                st.error("No se pudieron extraer datos. Intenta con una imagen más clara.")
