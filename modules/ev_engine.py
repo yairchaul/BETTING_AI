@@ -1,89 +1,107 @@
-# ev_engine.py - Eficiente: Vectorizado, cache, limits
+# modules/ev_engine.py
 import functools
 import itertools
 import numpy as np
 import pandas as pd
 from scipy.stats import poisson
-# Importante: Asegúrate de que estos módulos existan en tu carpeta /modules
-from connector import get_live_data 
-# from stats_fetch import get_player_avg # Descomenta si usas este módulo externo
+import math
 
-# --- CORRECCIÓN PARA MAIN.PY: Función global requerida ---
-def calcular_ev(probabilidad_over, momio_americano=-110):
+# Importe relativo para evitar el ImportError en Streamlit Cloud
+try:
+    from .connector import get_live_data, get_real_time_odds
+except ImportError:
+    # Fallback para ejecución local o pruebas
+    from connector import get_live_data, get_real_time_odds
+
+# =========================================================
+# 📊 CÁLCULOS MATEMÁTICOS BASE
+# =========================================================
+
+def calcular_ev(probabilidad_modelo, momio_americano):
     """
-    Calcula el Valor Esperado (EV) de forma individual para el dashboard.
+    Calcula el Valor Esperado (EV). 
+    Fórmula: (Probabilidad * Ganancia) - (Probabilidad de Perder * Apuesta)
     """
+    momio_americano = float(momio_americano)
     if momio_americano > 0:
-        momio_decimal = (momio_americano / 100) + 1
+        payout = momio_americano / 100
     else:
-        momio_decimal = (100 / abs(momio_americano)) + 1
+        payout = 100 / abs(momio_americano)
     
-    # Probabilidad * Ganancia - Probabilidad de perder * Apuesta (1)
-    ev = (probabilidad_over * (momio_decimal - 1)) - (1 - probabilidad_over)
+    ev = (probabilidad_modelo * payout) - (1 - probabilidad_modelo)
     return round(ev, 4)
 
-@functools.lru_cache(maxsize=128)  # Cache stats para optimizar rendimiento
+def american_to_probability(odds):
+    """Convierte momio americano a probabilidad implícita de la casa."""
+    odds = float(odds)
+    if odds > 0:
+        return 100 / (odds + 100)
+    else:
+        return abs(odds) / (abs(odds) + 100)
+
+@functools.lru_cache(maxsize=128)
 def cached_player_avg(player, stat):
-    # Simulación si get_player_avg no está disponible, o integración real
+    """Obtiene promedios históricos (Simulado o desde stats_fetch)."""
     try:
-        from stats_fetch import get_player_avg
+        from .stats_fetch import get_player_avg
         return get_player_avg(player, stat)
-    except ImportError:
+    except:
         return 0.0
+
+# =========================================================
+# 🧠 MOTOR DE ANÁLISIS (EVEngine)
+# =========================================================
 
 class EVEngine:
     def __init__(self):
-        self.high_prob_threshold = 0.7 # Filtro del 70% solicitado
-        self.ev_threshold = 1.05
-        self.max_legs = 4
+        self.high_prob_threshold = 0.70  # 70% solicitado para picks de alta confianza
+        self.ev_threshold = 0.05        # 5% de ventaja mínima sobre la casa
         self.top_n_picks = 5  
 
-    def analyze_matches(self):
-        live_data = get_live_data()
-        if not live_data:
-            return [], None
-        df_props = pd.DataFrame(live_data)  
-        individual_picks = self._batch_filter_layers(df_props)
-        best_parlay = self._find_best_parlay(individual_picks)
-        return individual_picks, best_parlay
+    def analyze_matches(self, datos_ia=None):
+        """
+        Analiza juegos. Puede recibir datos de la Visión IA o del Scraper.
+        """
+        if datos_ia:
+            df = pd.DataFrame(datos_ia)
+        else:
+            live_data = get_live_data()
+            if not live_data: return [], None
+            df = pd.DataFrame(live_data)
+        
+        individual_picks = self._scan_ev_opportunities(df)
+        return individual_picks
 
-    def _batch_filter_layers(self, df):
+    def _scan_ev_opportunities(self, df):
+        """Aplica el modelo de Poisson y probabilidad de mercado."""
         picks = []
-        # Jerarquía de 4 capas: Triples, Puntos, Equipo, ML
-        layers = [self._over_triples, self._over_points_player, self._over_team_points, self._moneyline]
-        for layer in layers:
-            layer_picks = layer(df)
-            if not layer_picks.empty:
-                picks.extend(layer_picks.to_dict('records'))
-                break # Detenerse al encontrar la capa con mayor valor
-        return sorted(picks, key=lambda x: x.get('ev', 0), reverse=True)[:self.top_n_picks]
-
-    def _over_triples(self, df):
-        triples_df = df[df['type'] == 'triples'].copy()
-        if triples_df.empty:
-            return pd.DataFrame()
         
-        triples_df['avg_3pm'] = triples_df.apply(lambda row: cached_player_avg(row['player'], '3PM'), axis=1)
-        # Poisson para calcular probabilidad real
-        triples_df['prob_over'] = triples_df.apply(lambda row: 1 - poisson.cdf(row['line'], row['avg_3pm']) if row['avg_3pm'] > 0 else 0, axis=1)
+        for _, row in df.iterrows():
+            # 1. Obtener Probabilidad del Mercado (Sharp)
+            market_prob = american_to_probability(row.get('odds_over', -110))
+            
+            # 2. Calcular Probabilidad del Modelo (Poisson/Stats)
+            # Si es por triples, usamos Poisson. Si es por puntos, modelo base.
+            if row.get('type') == 'triples':
+                avg = cached_player_avg(row.get('player'), '3PM')
+                model_prob = 1 - poisson.cdf(row.get('line', 0.5), avg) if avg > 0 else 0.50
+            else:
+                # Modelo base estilo Sharp para totales/hándicaps
+                line = float(row.get('line', 220))
+                model_prob = 0.50 + ((line - 220) * 0.001)
+                model_prob = max(min(model_prob, 0.65), 0.40)
+
+            # 3. Calcular EV Final
+            ev = calcular_ev(model_prob, row.get('odds_over', -110))
+            
+            if ev > 0:
+                picks.append({
+                    "juego": f"{row.get('away')} @ {row.get('home')}",
+                    "ev": round(ev, 3),
+                    "confianza": round(model_prob, 2),
+                    "momio": row.get('odds_over'),
+                    "ventaja": "ALTA" if model_prob >= self.high_prob_threshold else "NORMAL"
+                })
         
-        # Cálculo de cuota implícita
-        triples_df['implied'] = np.where(triples_df['odds_over'] < 0, 
-                                         abs(triples_df['odds_over']) / (abs(triples_df['odds_over']) + 100), 
-                                         100 / (triples_df['odds_over'] + 100))
-        
-        triples_df['ev'] = triples_df['prob_over'] / triples_df['implied']
-        return triples_df[(triples_df['prob_over'] > self.high_prob_threshold) & (triples_df['ev'] > self.ev_threshold)]
-
-    # Capas adicionales (Mantenlas con tu lógica original)
-    def _over_points_player(self, df): return pd.DataFrame() 
-    def _over_team_points(self, df): return pd.DataFrame()
-    def _moneyline(self, df): return pd.DataFrame()
-
-    def _find_best_parlay(self, picks):
-        if len(picks) < 2: return None
-        # Lógica de combinaciones itertools...
-        return None
-
-    # _calculate_parlay_odds mismo
+        return sorted(picks, key=lambda x: x["ev"], reverse=True)[:self.top_n_picks]
 
