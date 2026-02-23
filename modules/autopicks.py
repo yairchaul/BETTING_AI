@@ -1,11 +1,7 @@
-from modules.connector import get_live_data
-def generar_picks():
+# En autopicks.py
+# from modules.connector import obtener_eventos_nba_hoy   # Comentado para debug
 
-    juegos = obtener_eventos_nba_hoy()
-    picks = []
-
-    for g in juegos:
-        picks.append(g)
-
-
-    return picks
+def generar_picks_auto():
+    # data = obtener_eventos_nba_hoy()   # Comentado
+    data = []  # Placeholder para probar que carga
+    return data
