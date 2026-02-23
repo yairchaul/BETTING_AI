@@ -2,7 +2,7 @@ streamlit>=1.30.0
 pandas
 numpy
 scipy
-selenium>=4.0.0
+selenium
 nba_api
 webdriver-manager
 nba_api
