@@ -11,22 +11,34 @@ def get_live_data(url='https://www.caliente.mx/sports/es_MX/basketball/NBA'):
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    # Evita que el sitio detecte que es una automatización
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--start-maximized')
     options.binary_location = "/usr/bin/chromium"
     
+    # User-agent más realista para evitar la pantalla de carga infinita
+    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
+
     driver = None
     try:
         service = Service("/usr/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=options)
+        
+        # Inyectamos script para ocultar rastros de Selenium
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+          "source": "const newProto = navigator.__proto__; delete newProto.webdriver; navigator.__proto__ = newProto;"
+        })
+        
         driver.get(url)
         
-        # Espera para que cargue el contenido dinámico
-        time.sleep(12) 
+        # Aumentamos el tiempo a 20 segundos para que pase la pantalla de carga
+        time.sleep(20) 
         
-        # --- CAPTURA DE DIAGNÓSTICO ---
-        # Guardamos lo que ve Selenium antes de procesar
+        # Tomamos captura para verificar si ya cargó la tabla
         driver.save_screenshot("debug_screen.png") 
         
-        eventos = driver.find_elements(By.CSS_SELECTOR, 'tr.event-row')
+        # Intentamos capturar los juegos reales
+        eventos = driver.find_elements(By.CSS_SELECTOR, 'tr.event-row, .coupon-row-item')
         
         data = []
         for ev in eventos:
