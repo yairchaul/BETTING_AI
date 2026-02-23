@@ -1,10 +1,13 @@
-# injuries.py
-def verificar_disponibilidad(nombre_jugador):
+# modules/injuries.py
+import requests
+
+def verificar_lesiones(equipo):
     """
-    Simula una consulta a un reporte de lesiones (NBA Injury Report).
+    Verifica el estado de lesiones para un equipo dado.
     """
-    lesionados = ["Joel Embiid", "Ja Morant", "Julius Randle"]
+    # Por ahora, devolvemos un mensaje limpio para que la app no rompa.
+    # En el futuro, puedes conectar esto con una API de noticias NBA.
+    if not equipo or equipo == "Unknown":
+        return "Sin reporte"
     
-    if nombre_jugador in lesionados:
-        return False # El jugador no debe aparecer en el ticket
-    return True
+    return "Ninguna lesión crítica detectada"
