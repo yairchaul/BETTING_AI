@@ -1,35 +1,22 @@
-# modules/bankroll.py
-import pandas as pd
+# modules/montecarlo.py - Simulación Monte Carlo para NBA props
+import numpy as np
 
-def obtener_stake_sugerido(capital_total, confianza_pick):
+def simular_total(media_modelo, num_simulaciones=10000, desv_est=10):
     """
-    Calcula stake basado en confianza.
-    - 10% base
-    - +20% si confianza >=90%
-    - Mejora: Agrega ajuste Kelly aproximado (fraccional para menos riesgo)
+    Simula total de puntos (o triples) con Monte Carlo.
+    - Usa distribución normal (para totales) o Poisson (para conteos).
+    - Devuelve prob de over (supera línea implícita).
+    - Para qué sirve: Estima probs reales con incertidumbre.
     """
-    if capital_total <= 0:
-        return 0.0
+    # Asume Poisson para conteos (triples/puntos jugador) o normal para totales equipo
+    simulaciones = np.random.poisson(media_modelo, num_simulaciones)  # Poisson para discreto
+    # Alternativa: normal para continuos
+    # simulaciones = np.random.normal(media_modelo, desv_est, num_simulaciones)
     
-    unidad_base = capital_total * 0.10  # 10% sugerido
+    # Línea implícita (ajusta si tienes línea real)
+    linea = media_modelo - 4  # Tu ajuste inverso
     
-    # Ajuste por confianza
-    if confianza_pick >= 90:
-        multiplier = 1.2
-    elif confianza_pick >= 70:
-        multiplier = 1.0
-    else:
-        multiplier = 0.5
+    # Prob over
+    prob_over = np.mean(simulaciones > linea)
     
-    # Ajuste Kelly simple (asumiendo prob_win ~ confianza/100, odds even)
-    prob_win = confianza_pick / 100
-    kelly_frac = max(0, prob_win - (1 - prob_win))  # Simplificado
-    stake = unidad_base * multiplier * (kelly_frac * 0.5)  # Half-Kelly para seguridad
-    
-    return round(stake, 2)
-
-def calcular_roi(ganancia, inversion):
-    """Calcula el retorno de inversión en porcentaje"""
-    if inversion == 0:
-        return 0.0
-    return round((ganancia / inversion) * 100, 2)
+    return prob_over
