@@ -1,94 +1,66 @@
 import streamlit as st
-
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
-from modules.results_tracker import save_result, load_results, update_result
 
-st.title("🤖 BETTING AI — TEST MODE")
+st.set_page_config(page_title="Parlay Maestro IA", layout="wide")
 
-engine = EVEngine()
+st.title("🤖 Parlay Maestro — Betting AI")
+st.markdown("---")
 
-# ==========================
-# UPLOAD IMAGEN
-# ==========================
-archivo = st.file_uploader("Sube ticket o partidos", type=["png", "jpg", "jpeg"])
+# Sidebar para configuración
+st.sidebar.header("Configuración de Simulación")
+monto_base = st.sidebar.number_input("💰 Monto a apostar ($)", value=100.0, step=10.0)
+
+archivo = st.file_uploader("Subir captura de pantalla (Caliente, Codere, etc.)", type=["png", "jpg", "jpeg"])
 
 if archivo:
+    # 1. Procesamiento de imagen
+    with st.spinner("IA analizando mercados..."):
+        equipos = analyze_betting_image(archivo)
 
-    equipos = analyze_betting_image(archivo)
+    if equipos:
+        st.success(f"Se detectaron {len(equipos)} posibles equipos/mercados.")
+        
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.subheader("📍 Equipos Detectados")
+            st.write(equipos)
 
-    st.success("Equipos detectados:")
-    st.write(equipos)
+        # 2. Motor de Análisis
+        if len(equipos) >= 2:
+            engine = EVEngine()
+            resultados, parlay = engine.build_parlay(equipos)
 
-    resultados, parlay = engine.build_parlay(equipos)
+            with col2:
+                st.subheader("📊 Análisis de Valor (EV+)")
+                for r in resultados:
+                    color = "green" if r['probabilidad'] >= 80 else "white"
+                    st.markdown(f"**{r['partido']}**")
+                    st.caption(f"Pick: {r['pick']} | Prob: {r['probabilidad']}% | Cuota: {r['cuota']}")
 
-    st.subheader("📊 Análisis IA")
+            # 3. Generación de Parlay
+            st.markdown("---")
+            if parlay:
+                st.header("🔥 Parlay Sugerido (Alta Probabilidad)")
+                
+                cuota_total = 1.0
+                for p in parlay:
+                    cuota_total *= p["cuota"]
+                    st.info(f"✅ {p['partido']} → {p['pick']} (Prob: {p['probabilidad']}%)")
 
-    for r in resultados:
-        st.write(
-            f"{r['partido']} | {r['pick']} | Prob: {r['probabilidad']}% | Cuota {r['cuota']}"
-        )
+                pago_total = monto_base * cuota_total
+                ganancia_neta = pago_total - monto_base
 
-    # ==========================
-    # PARLAY
-    # ==========================
-    if parlay:
-
-        st.subheader("🔥 Parlay Detectado")
-
-        for p in parlay:
-            st.write(f"{p['partido']} → {p['pick']}")
-
-        monto = st.number_input(
-            "💰 Monto a apostar",
-            min_value=1.0,
-            value=10.0,
-            step=1.0
-        )
-
-        simulacion = engine.simulate_parlay_profit(parlay, monto)
-
-        st.success(
-            f"""
-            Cuota Total: {simulacion['cuota_total']}
-            Pago Total: ${simulacion['pago_total']}
-            Ganancia Neta: ${simulacion['ganancia_neta']}
-            """
-        )
-
-        if st.button("💾 Guardar Parlay para Testing"):
-            save_result(
-                {"teams": [p["partido"] for p in parlay]},
-                "PARLAY"
-            )
-            st.success("Parlay guardado.")
-
-# ==========================
-# TRACKING PANEL
-# ==========================
-st.divider()
-st.subheader("📈 Performance Tracker")
-
-results = load_results()
-
-for i, bet in enumerate(results):
-
-    col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-
-    col1.write(bet["teams"])
-    col2.write(bet["prediction"])
-    col3.write(bet["result"])
-
-    outcome = col4.selectbox(
-        "Resultado",
-        ["PENDING", "WIN", "LOSS"],
-        index=["PENDING", "WIN", "LOSS"].index(bet["result"]),
-        key=i
-    )
-
-    if outcome != bet["result"]:
-        update_result(i, outcome)
-
-st.text("DEBUG OCR:")
-st.text(equipos)
+                # Métricas finales
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Cuota Total", f"{cuota_total:.2f}")
+                c2.metric("Pago Estimado", f"${pago_total:.2f}")
+                c3.metric("Ganancia Neta", f"${ganancia_neta:.2f}", delta=f"{cuota_total:.1f}x")
+            else:
+                st.warning("La IA no encontró picks con probabilidad > 80% para armar un parlay seguro.")
+    else:
+        st.error("No se pudieron extraer equipos. Intenta con una imagen más clara.")
+else:
+    st.info("Esperando imagen para iniciar análisis...")
 
