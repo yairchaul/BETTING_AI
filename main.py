@@ -57,22 +57,23 @@ if archivo:
                         f"**Razón:** {r.get('razon', 'Modelo universal Poisson')}\n"
                         f"**Goles esperados totales:** {r.get('expected_total', '?')}")
 
-        if parlay:
-            st.markdown("---")
-            st.header("🔥 Parlay Maestro Detectado")
+     if parlay:
+    st.markdown("---")
+    st.header("🔥 Parlay Maestro Detectado")
 
-            monto = st.number_input("💰 Monto a apostar (MXN)", value=100.0, step=10.0, min_value=10.0)
+    monto = st.number_input("💰 Monto a apostar (MXN)", value=10.0, step=5.0, min_value=5.0, format="%.2f")
 
-            sim = engine.simulate_parlay_profit(parlay, monto)
+    sim = engine.simulate_parlay_profit(parlay, monto)
 
-            for p in parlay:
-                st.write(f"✅ {p['partido']} → {p['pick']} (Cuota {p['cuota']})")
+    for p in parlay:
+        st.write(f"✅ {p['partido']} → {p['pick']} (Cuota {p['cuota']})")
 
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Cuota Total", f"{sim['cuota_total']}")
-            m2.metric("Pago Total", f"${sim['pago_total']}")
-            m3.metric("Ganancia Neta", f"${sim['ganancia_neta']}")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Cuota Total", f"{sim['cuota_total']:.2f}")
+    m2.metric("Pago Total", f"${sim['pago_total']:.2f}")
+    m3.metric("Ganancia Neta", f"${sim['ganancia_neta']:.2f}")
 
+         
             # === BOTÓN PARA REGISTRAR EN HISTÓRICO ===
             if st.button("💾 Registrar Parlay como Apostado", type="primary"):
                 history_file = "parlay_history.csv"
@@ -109,3 +110,4 @@ if os.path.exists("parlay_history.csv"):
     st.dataframe(hist, use_container_width=True)
 else:
     st.info("Aún no hay registros. Apuesta y regístralos para ver el seguimiento.")
+
