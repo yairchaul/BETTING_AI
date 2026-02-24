@@ -1,36 +1,15 @@
-import cv2
-import numpy as np
-import pytesseract
-from PIL import Image
+from google.cloud import vision
+import streamlit as st
 import re
 
 
-def preprocess_image(file):
+def get_vision_client():
 
-    img = Image.open(file).convert("RGB")
-    img = np.array(img)
+    creds_dict = dict(st.secrets["google_credentials"])
 
-    # Escalar imagen (CRÍTICO)
-    img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-
-    # Escala de grises
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # Aumentar contraste
-    gray = cv2.equalizeHist(gray)
-
-    # Blur ligero
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-
-    # Threshold fuerte
-    _, thresh = cv2.threshold(
-        blur,
-        0,
-        255,
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    return vision.ImageAnnotatorClient.from_service_account_info(
+        creds_dict
     )
-
-    return thresh
 
 
 def extract_teams(text):
@@ -43,13 +22,12 @@ def extract_teams(text):
 
         line = line.strip()
 
-        # quitar números y momios
+        # limpiar momios
         clean = re.sub(r'[\+\-\d\.]+', '', line)
 
-        # solo palabras largas (equipos)
-        if len(clean.split()) >= 1 and len(clean) > 3:
-            if not any(char.isdigit() for char in clean):
-                equipos.append(clean)
+        # ignorar ruido
+        if len(clean) > 4 and "Empate" not in clean:
+            equipos.append(clean)
 
     # eliminar duplicados
     equipos = list(dict.fromkeys(equipos))
@@ -57,14 +35,17 @@ def extract_teams(text):
     return equipos
 
 
-def analyze_betting_image(file):
+def analyze_betting_image(uploaded_file):
 
-    processed = preprocess_image(file)
+    client = get_vision_client()
 
-    text = pytesseract.image_to_string(
-        processed,
-        config="--psm 6"
-    )
+    content = uploaded_file.read()
+
+    image = vision.Image(content=content)
+
+    response = client.text_detection(image=image)
+
+    text = response.text_annotations[0].description
 
     equipos = extract_teams(text)
 
