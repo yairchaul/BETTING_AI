@@ -33,102 +33,101 @@ class EVEngine:
             market_type = g.get("market", "1X2")
             partido = f"{g.get('home','')} vs {g.get('away','')}".strip()
             
-            # ==================== 1X2 ====================
+            # 1X2
             if market_type == "1X2":
-                lambda_home = 1.62
-                lambda_away = 1.10
+                lambda_home = 1.55
+                lambda_away = 1.15
                 
-                # Boost fuerte si es claro favorito local
                 try:
-                    home_odd = float(g.get("home_odd", 200))
-                    if home_odd < 150:
-                        lambda_home += 0.38
+                    if float(g.get("home_odd", 200)) < 160:
+                        lambda_home += 0.45
                 except:
                     pass
                 
-                last_home = get_last_5_matches(g["home"])
-                inj_home = get_injuries(g["home"])
-                last_away = get_last_5_matches(g["away"])
-                inj_away = get_injuries(g["away"])
+                last_home = get_last_5_matches(g.get("home"))
+                inj_home = get_injuries(g.get("home"))
+                last_away = get_last_5_matches(g.get("away"))
+                inj_away = get_injuries(g.get("away"))
                 
-                if any(word in str(i).lower() for i in inj_away for word in ["ankle","knee","hamstring","defensa","defender"]):
+                if any(word in str(i).lower() for i in inj_away for word in ["ankle","knee","hamstring","defensa"]):
                     lambda_home += 0.40
-                if any(word in str(i).lower() for i in inj_home for word in ["ankle","knee","hamstring","defensa","defender"]):
-                    lambda_away += 0.40
-                
-                if last_home:
-                    recent = sum(int(m.get('score','0-0').split('-')[0]) for m in last_home if '-' in m.get('score','')) / max(1, len(last_home))
-                    lambda_home = (lambda_home * 0.5) + (recent * 0.5)
-                if last_away:
-                    recent_conceded = sum(int(m.get('score','0-0').split('-')[1]) for m in last_away if '-' in m.get('score','')) / max(1, len(last_away))
-                    lambda_away = (lambda_away * 0.5) + (recent_conceded * 0.5)
                 
                 p_home, p_draw, p_away = get_poisson_probs(lambda_home, lambda_away)
                 expected_total = lambda_home + lambda_away
                 
-                for outcome, odds_key, model_p in [("home", "home_odd", p_home), ("draw", "draw_odd", p_draw), ("away", "away_odd", p_away)]:
+                for outcome, odds_key, model_p in [("home","home_odd",p_home), ("draw","draw_odd",p_draw), ("away","away_odd",p_away)]:
                     odds_str = g.get(odds_key)
                     if not odds_str or not str(odds_str).strip(): continue
-                    try:
-                        odds = float(odds_str)
-                    except: continue
-                    
+                    odds = float(odds_str)
                     if odds > self.max_odds_allowed and model_p < 0.50: continue
-                    
                     ev = calculate_ev(model_p, odds)
                     if ev > self.min_ev_threshold:
                         pick_name = f"{g['home']} gana" if outcome=="home" else "Empate" if outcome=="draw" else f"{g['away']} gana"
-                        razon = f"λH {lambda_home:.2f} | λA {lambda_away:.2f} | Goles esperados: {expected_total:.1f}"
-                        
                         resultados.append({
                             "partido": partido,
                             "pick": pick_name,
                             "probabilidad": round(model_p*100, 1),
                             "cuota": odds_str,
                             "ev": round(ev, 3),
-                            "razon": razon,
+                            "razon": f"λH {lambda_home:.2f} | λA {lambda_away:.2f} | Goles: {expected_total:.1f}",
                             "expected_total": round(expected_total, 1),
                             "market": "1X2"
                         })
             
-            # ==================== OVER / UNDER ====================
+            # Over/Under (incluye 1.5 1T y 2.5)
             elif "Over/Under" in market_type:
                 line = float(g.get("line", 2.5))
                 odd = float(g.get("odd", 0))
                 o_type = g.get("type", "Over")
-                expected_total = 2.7  # default
+                expected_total = 2.7
                 
                 prob_over = 0.0
                 for h in range(10):
                     for a in range(10):
                         if (h + a) > line:
-                            prob_over += poisson_pmf(h, 1.62) * poisson_pmf(a, 1.10)
+                            prob_over += poisson_pmf(h, 1.55) * poisson_pmf(a, 1.15)
                 
                 ev = calculate_ev(prob_over, odd) if o_type == "Over" else calculate_ev(1-prob_over, odd)
-                
-                if ev > self.min_ev_threshold and expected_total > 2.75:
+                if ev > self.min_ev_threshold and expected_total > 2.6:
                     pick_name = f"{o_type} {line}"
-                    razon = f"Goles esperados {expected_total:.1f} → Prob {o_type}: {prob_over*100:.1f}%"
                     resultados.append({
                         "partido": partido,
                         "pick": pick_name,
                         "probabilidad": round(prob_over*100, 1),
                         "cuota": str(odd),
                         "ev": round(ev, 3),
-                        "razon": razon,
+                        "razon": f"Goles esperados {expected_total:.1f}",
                         "expected_total": round(expected_total, 1),
                         "market": market_type
                     })
 
-        # Filtro final: 1 mejor pick por partido
+        # Filtro final + combinados Win + Over
         picks_by_match = defaultdict(list)
         for r in resultados:
             picks_by_match[r["partido"]].append(r)
         
-        best_picks = [max(picks, key=lambda x: x["ev"]) for picks in picks_by_match.values()]
-        best_picks.sort(key=lambda x: x["ev"], reverse=True)
+        best_picks = []
+        for partido_picks in picks_by_match.values():
+            best = max(partido_picks, key=lambda x: x["ev"])
+            best_picks.append(best)
+            
+            # Combinado Win + Over si ambos tienen buen EV
+            win_pick = next((p for p in partido_picks if "gana" in p["pick"].lower()), None)
+            over_pick = next((p for p in partido_picks if "Over" in p["pick"]), None)
+            if win_pick and over_pick and win_pick["ev"] > 0.12 and over_pick["ev"] > 0.12:
+                combined = {
+                    "partido": win_pick["partido"],
+                    "pick": f"{win_pick['pick'].split(' gana')[0]} gana + {over_pick['pick']}",
+                    "probabilidad": round(win_pick["probabilidad"] * over_pick["probabilidad"] / 100, 1),
+                    "cuota": str(round(float(win_pick["cuota"]) * float(over_pick["cuota"]) / 100, 2)),
+                    "ev": round(win_pick["ev"] + over_pick["ev"], 3),
+                    "razon": "Combinado Win + Over (alta probabilidad)",
+                    "market": "Combined"
+                }
+                best_picks.append(combined)
         
-        parlay = best_picks[:4]
+        best_picks.sort(key=lambda x: x["ev"], reverse=True)
+        parlay = best_picks[:5]
         return resultados, parlay
 
     def simulate_parlay_profit(self, parlay: list, monto: float):
