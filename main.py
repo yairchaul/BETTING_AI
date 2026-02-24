@@ -88,3 +88,7 @@ for i, bet in enumerate(results):
 
     if outcome != bet["result"]:
         update_result(i, outcome)
+
+st.text("DEBUG OCR:")
+st.text(equipos)
+
