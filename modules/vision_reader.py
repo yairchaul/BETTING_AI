@@ -1,54 +1,57 @@
-def extract_teams_by_rows(response):
-    """
-    Analiza la posición Y (vertical) de cada palabra para agrupar 
-    elementos que pertenecen a la misma fila del ticket.
-    """
-    document = response.full_text_annotation
-    lines = []
+from google.cloud import vision
+import streamlit as st
+
+def get_vision_client():
+    creds_dict = dict(st.secrets["google_credentials"])
+    return vision.ImageAnnotatorClient.from_service_account_info(creds_dict)
+
+def analyze_betting_image(uploaded_file):
+    client = get_vision_client()
+    content = uploaded_file.read()
+    image = vision.Image(content=content)
     
-    # Extraemos bloques de texto con su coordenada vertical media
-    for page in document.pages:
+    # Usamos document_text_detection para obtener coordenadas densas
+    response = client.document_text_detection(image=image)
+    
+    lines = []
+    # Extraer texto con su posición Y (vertical)
+    for page in response.full_text_annotation.pages:
         for block in page.blocks:
             for paragraph in block.paragraphs:
-                # Unimos las palabras del párrafo
-                text = "".join([
-                    "".join([symbol.text for symbol in word.symbols]) 
-                    for word in paragraph.words
-                ])
-                
-                # Obtenemos la altura media del bloque
-                vertices = paragraph.bounding_box.vertices
-                y_center = sum([v.y for v in vertices]) / 4
-                
-                lines.append({"text": text, "y": y_center})
+                text = "".join(["".join([s.text for s in w.symbols]) for w in paragraph.words])
+                # Tomar el promedio de Y de los 4 vértices del bloque
+                y_coord = sum([v.y for v in paragraph.bounding_box.vertices]) / 4
+                lines.append({"text": text, "y": y_coord})
 
-    # Ordenamos por posición vertical
+    # 1. Ordenar de arriba hacia abajo
     lines.sort(key=lambda x: x['y'])
 
-    # Agrupamos los que tengan una Y similar (margen de 20px)
-    rows = []
+    # 2. Agrupar por filas (umbral de 20-30 píxeles de diferencia)
+    grouped_rows = []
     if not lines: return []
-    
-    current_row = [lines[0]["text"]]
-    last_y = lines[0]["y"]
-    
-    for i in range(1, len(lines)):
-        if abs(lines[i]["y"] - last_y) < 25: # Umbral de misma fila
-            current_row.append(lines[i]["text"])
-        else:
-            rows.append(current_row)
-            current_row = [lines[i]["text"]]
-            last_y = lines[i]["y"]
-    rows.append(current_row)
 
-    # Filtrado final: Solo filas que parezcan un partido (Local, Empate, Visitante)
-    partidos_reales = []
-    for row in rows:
-        # Limpiamos términos basura
-        clean_row = [t for t in row if "Empate" not in t and not any(c.isdigit() for c in t)]
+    current_row = [lines[0]]
+    for i in range(1, len(lines)):
+        if abs(lines[i]['y'] - current_row[-1]['y']) < 25: 
+            current_row.append(lines[i])
+        else:
+            grouped_rows.append(current_row)
+            current_row = [lines[i]]
+    grouped_rows.append(current_row)
+
+    # 3. Filtrar solo nombres de equipos
+    # Ignoramos momios (+123), "Empate" y símbolos de candado
+    equipos_finales = []
+    ignore_list = ["Empate", "vix", "en vivo", "hoy"]
+    
+    for row in grouped_rows:
+        textos_fila = [item['text'] for item in row]
+        # Limpiamos momios y términos basura
+        clean_row = [t for t in textos_fila if not any(c.isdigit() for c in t) and t not in ignore_list]
+        
         if len(clean_row) >= 2:
-            # El primero suele ser Local y el último Visitante de esa fila
-            partidos_reales.append(clean_row[0]) # Local
-            partidos_reales.append(clean_row[-1]) # Visitante
-            
-    return partidos_reales
+            # Tomamos el primero (Local) y el último (Visitante) de esa fila
+            equipos_finales.append(clean_row[0])
+            equipos_finales.append(clean_row[-1])
+
+    return equipos_finales
