@@ -41,3 +41,20 @@ if archivo:
                     st.success(f"✅ Se recomienda un Parlay de {len(parlay)} partidos.")
             else:
                 st.warning("No se detectaron equipos. Asegúrate de que la imagen sea clara.")
+
+if archivo:
+    # Mostramos la imagen para confirmar que se cargó bien
+    st.image(archivo, caption="Captura cargada", use_container_width=True)
+    
+    if st.button("🚀 ANALIZAR PARTIDOS"):
+        # Importante: resetear el puntero del archivo para que Vision pueda leerlo desde el inicio
+        archivo.seek(0) 
+        
+        with st.spinner("🤖 Leyendo imagen..."):
+            equipos = analyze_betting_image(archivo)
+            
+            if equipos and len(equipos) > 0:
+                # ... resto del código del motor de análisis ...
+                st.success(f"Detectadas {len(equipos)} líneas de texto.")
+            else:
+                st.error("No se pudo extraer texto. Revisa que la imagen no esté borrosa.")
