@@ -1,19 +1,23 @@
-from google.cloud import vision
-from google.oauth2 import service_account
-import streamlit as st
+from modules.schemas import BetData
+from modules.ev_engine import calculate_ev
 
 
-def get_vision_client():
+def analyze_betting_image(image):
+    """
+    Simulated OCR + AI parsing
+    """
 
-    creds_dict = dict(st.secrets["google_credentials"])
+    # ⚠️ luego aquí conectas OpenAI Vision / OCR
+    extracted_team = "Team A"
+    extracted_odds = 2.10
+    predicted_probability = 0.55
 
-    # 🔥 FIX CRÍTICO
-    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-
-    credentials = service_account.Credentials.from_service_account_info(
-        creds_dict
+    bet = BetData(
+        team=extracted_team,
+        odds=extracted_odds,
+        probability=predicted_probability
     )
 
-    client = vision.ImageAnnotatorClient(credentials=credentials)
+    result = calculate_ev(bet)
 
-    return client
+    return bet, result
