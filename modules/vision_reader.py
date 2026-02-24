@@ -1,58 +1,93 @@
-import pytesseract
 from PIL import Image
-import platform
+import pytesseract
+import cv2
+import numpy as np
 import re
 
-# ============================
-# FIX STREAMLIT CLOUD
-# ============================
+# =============================
+# PREPROCESS IMAGE (CLAVE)
+# =============================
 
-if platform.system() == "Linux":
-    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+def preprocess_image(file):
 
+    img = Image.open(file).convert("RGB")
+    img = np.array(img)
 
-# ============================
-# LIMPIEZA TEXTO OCR
-# ============================
+    # Convertir a escala de grises
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-def clean_line(line):
+    # Aumentar contraste
+    gray = cv2.equalizeHist(gray)
 
-    line = line.strip()
+    # Blur suave
+    blur = cv2.GaussianBlur(gray, (5,5), 0)
 
-    # quitar momios +120 -150 etc
-    line = re.sub(r"[+-]\d+", "", line)
-
-    # quitar números sueltos
-    line = re.sub(r"\d+", "", line)
-
-    return line.strip()
-
-
-# ============================
-# DETECTOR PARTIDOS
-# ============================
-
-def analyze_betting_image(image_file):
-
-    img = Image.open(image_file)
-
-    text = pytesseract.image_to_string(
-        img,
-        lang="spa+eng"
+    # Threshold para limpiar fondo gris
+    _, thresh = cv2.threshold(
+        blur,
+        150,
+        255,
+        cv2.THRESH_BINARY_INV
     )
+
+    return thresh
+
+
+# =============================
+# EXTRAER EQUIPOS
+# =============================
+
+def extract_teams(text):
 
     lines = text.split("\n")
 
-    posibles_equipos = []
+    equipos = []
 
     for line in lines:
 
-        line = clean_line(line)
+        line = line.strip()
 
-        if len(line) > 3 and "empate" not in line.lower():
-            posibles_equipos.append(line)
+        # eliminar momios
+        line = re.sub(r"[+-]\d+", "", line)
+
+        # eliminar palabras basura
+        if len(line) < 3:
+            continue
+
+        if "Empate" in line:
+            continue
+
+        # solo letras y espacios
+        clean = re.sub(r"[^A-Za-zÁÉÍÓÚÜÑáéíóúñ ]", "", line)
+
+        if len(clean.split()) >= 1:
+            equipos.append(clean.strip())
 
     # eliminar duplicados
-    equipos = list(dict.fromkeys(posibles_equipos))
+    equipos = list(dict.fromkeys(equipos))
 
     return equipos
+
+
+# =============================
+# MAIN OCR FUNCTION
+# =============================
+
+def analyze_betting_image(file):
+
+    try:
+
+        processed = preprocess_image(file)
+
+        text = pytesseract.image_to_string(
+            processed,
+            config="--oem 3 --psm 6"
+        )
+
+        equipos = extract_teams(text)
+
+        return equipos
+
+    except Exception as e:
+        print("OCR ERROR:", e)
+        return []
