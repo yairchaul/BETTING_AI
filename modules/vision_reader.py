@@ -10,48 +10,57 @@ def analyze_betting_image(uploaded_file):
     content = uploaded_file.read()
     image = vision.Image(content=content)
     
-    # Usamos document_text_detection para obtener coordenadas densas
+    # Usamos document_text_detection para mejor lectura de tablas
     response = client.document_text_detection(image=image)
     
-    lines = []
-    # Extraer texto con su posición Y (vertical)
+    words_data = []
     for page in response.full_text_annotation.pages:
         for block in page.blocks:
             for paragraph in block.paragraphs:
                 text = "".join(["".join([s.text for s in w.symbols]) for w in paragraph.words])
-                # Tomar el promedio de Y de los 4 vértices del bloque
-                y_coord = sum([v.y for v in paragraph.bounding_box.vertices]) / 4
-                lines.append({"text": text, "y": y_coord})
+                # Centro vertical del bloque
+                y_center = sum([v.y for v in paragraph.bounding_box.vertices]) / 4
+                words_data.append({"text": text, "y": y_center})
 
-    # 1. Ordenar de arriba hacia abajo
-    lines.sort(key=lambda x: x['y'])
+    if not words_data:
+        return []
 
-    # 2. Agrupar por filas (umbral de 20-30 píxeles de diferencia)
-    grouped_rows = []
-    if not lines: return []
+    # 1. Ordenar por altura
+    words_data.sort(key=lambda x: x['y'])
 
-    current_row = [lines[0]]
-    for i in range(1, len(lines)):
-        if abs(lines[i]['y'] - current_row[-1]['y']) < 25: 
-            current_row.append(lines[i])
-        else:
-            grouped_rows.append(current_row)
-            current_row = [lines[i]]
-    grouped_rows.append(current_row)
-
-    # 3. Filtrar solo nombres de equipos
-    # Ignoramos momios (+123), "Empate" y símbolos de candado
-    equipos_finales = []
-    ignore_list = ["Empate", "vix", "en vivo", "hoy"]
+    # 2. Agrupar en filas usando un umbral más amplio (40px suele ser el estándar de filas en móvil)
+    rows = []
+    current_row = [words_data[0]]
     
-    for row in grouped_rows:
+    for i in range(1, len(words_data)):
+        # Si la palabra está a menos de 35 píxeles de la anterior, es la misma fila
+        if abs(words_data[i]['y'] - current_row[-1]['y']) < 35:
+            current_row.append(words_data[i])
+        else:
+            rows.append(current_row)
+            current_row = [words_data[i]]
+    rows.append(current_row)
+
+    equipos_finales = []
+    # Palabras prohibidas que ensucian la detección de equipos
+    blacklist = ["empate", "vix", "en", "vivo", "hoy", "mañana", "apostar", "ver"]
+
+    for row in rows:
+        # Extraer solo el texto y limpiar
         textos_fila = [item['text'] for item in row]
-        # Limpiamos momios y términos basura
-        clean_row = [t for t in textos_fila if not any(c.isdigit() for c in t) and t not in ignore_list]
         
+        # Filtro: Ignorar números (momios), "Empate" y palabras de la blacklist
+        clean_row = []
+        for t in textos_fila:
+            # Si tiene números o es palabra prohibida, ignorar
+            if any(char.isdigit() for char in t) or t.lower() in blacklist:
+                continue
+            if len(t) > 2: # Evitar basura de 1 o 2 letras
+                clean_row.append(t)
+
+        # En la interfaz de Caliente, el primer texto es Local y el último es Visitante
         if len(clean_row) >= 2:
-            # Tomamos el primero (Local) y el último (Visitante) de esa fila
-            equipos_finales.append(clean_row[0])
-            equipos_finales.append(clean_row[-1])
+            equipos_finales.append(clean_row[0])  # Local
+            equipos_finales.append(clean_row[-1]) # Visitante
 
     return equipos_finales
