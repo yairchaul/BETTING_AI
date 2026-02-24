@@ -10,7 +10,6 @@ st.set_page_config(page_title="BETTING AI — PARLAY MAESTRO", layout="wide")
 st.title("🤖 BETTING AI — PARLAY MAESTRO")
 st.markdown("---")
 
-# Sidebar historial
 with st.sidebar:
     st.header("📊 Historial")
     if os.path.exists("parlay_history.csv"):
@@ -33,25 +32,24 @@ if archivo:
         st.subheader("🏟️ Verificación de Partidos")
         check_df = []
         for i, g in enumerate(games, 1):
-            if "home" in g:  # 1X2
+            if "home" in g:
                 check_df.append({
                     "Partido": i,
                     "Local": g["home"],
-                    "Odd Local": g["home_odd"],
-                    "Empate": g["draw_odd"],
-                    "Visitante": g["away"],
-                    "Odd Visitante": g["away_odd"]
+                    "Odd Local": g.get("home_odd"),
+                    "Empate": g.get("draw_odd"),
+                    "Visitante": g.get("away"),
+                    "Odd Visitante": g.get("away_odd")
                 })
-            else:  # Over/Under
+            else:
                 check_df.append({
                     "Partido": i,
-                    "Mercado": g.get("market", "Over/Under"),
-                    "Línea": g.get("line", "?"),
-                    "Odd": g.get("odd", "?")
+                    "Mercado": g.get("market"),
+                    "Línea": g.get("line"),
+                    "Odd": g.get("odd")
                 })
         st.dataframe(check_df, use_container_width=True)
 
-        # Análisis EV + Parlay
         engine = EVEngine()
         resultados, parlay = engine.build_parlay(games)
 
@@ -61,8 +59,8 @@ if archivo:
             with (col1 if idx % 2 == 0 else col2):
                 st.caption(f"**{r['partido']}**")
                 st.info(f"Pick: **{r['pick']}**  \n"
-                        f"Prob: {r['probabilidad']}%  |  Cuota: {r['cuota']}  |  EV: {r['ev']}  \n"
-                        f"**Razón:** {r.get('razon', 'Modelo universal Poisson')}  \n"
+                        f"Prob: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}  \n"
+                        f"**Razón:** {r.get('razon')}  \n"
                         f"Goles esperados: {r.get('expected_total', '?')}")
 
         if parlay:
@@ -107,11 +105,10 @@ if archivo:
 else:
     st.info("Sube una captura para empezar...")
 
-# Histórico
 st.markdown("---")
 st.subheader("📜 Historial Completo de Parlays")
 if os.path.exists("parlay_history.csv"):
     hist = pd.read_csv("parlay_history.csv")
     st.dataframe(hist, use_container_width=True)
 else:
-    st.info("Aún no hay registros. Regístralos para ver el seguimiento.")
+    st.info("Aún no hay registros.")
