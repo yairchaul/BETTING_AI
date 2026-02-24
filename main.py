@@ -91,3 +91,11 @@ if archivo:
                     f"✅ Parlay recomendado con {len(parlay)} selecciones."
                 )
 
+engine = EVEngine()
+
+for i in range(0, len(equipos), 2):
+
+    local = equipos[i]
+    visitante = equipos[i+1]
+
+    pick, prob = engine.cascade_pick(local, visitante)
