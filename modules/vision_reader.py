@@ -1,24 +1,37 @@
+import streamlit as st
+from google.oauth2 import service_account
+from google.cloud import vision
+import io
+
 def get_vision_client():
     try:
-        # Hacemos una copia profunda para no alterar st.secrets original
-        creds_info = {k: v for k, v in st.secrets["google_credentials"].items()}
+        # Extraemos las credenciales
+        creds_info = dict(st.secrets["google_credentials"])
         
-        # LIMPIEZA EXTREMA DE LA LLAVE
-        pk = creds_info["private_key"]
-        
-        # 1. Quitar comillas accidentales y espacios en los extremos
-        pk = pk.strip().strip("'").strip('"')
-        
-        # 2. Convertir los \n literales en saltos de línea reales
-        pk = pk.replace("\\n", "\n")
-        
-        # 3. Eliminar posibles espacios en blanco al inicio de cada línea interna
-        pk = "\n".join([line.strip() for line in pk.split("\n")])
-        
+        # Limpieza profunda de la llave para evitar el error de longitud (PEM)
+        pk = creds_info["private_key"].replace("\\n", "\n").strip()
         creds_info["private_key"] = pk
         
         credentials = service_account.Credentials.from_service_account_info(creds_info)
         return vision.ImageAnnotatorClient(credentials=credentials)
     except Exception as e:
-        st.error(f"Error de autenticación: {e}")
+        st.error(f"Error técnico en Vision: {e}")
         return None
+
+def analyze_betting_image(image_file):
+    client = get_vision_client()
+    if not client: return []
+
+    # Resetear el puntero de la imagen
+    image_file.seek(0)
+    content = image_file.read()
+    image = vision.Image(content=content)
+    
+    response = client.text_detection(image=image)
+    texts = response.text_annotations
+    
+    if not texts: return []
+
+    # Extraer texto y limpiar
+    lineas = texts[0].description.split('\n')
+    return [l.strip() for l in lineas if len(l.strip()) > 3]
