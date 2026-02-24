@@ -1,38 +1,75 @@
 import random
-from googleapiclient.discovery import build
 from modules.schemas import MatchResult
 
 
 class EVEngine:
 
-    def __init__(self, api_key: str, cse_id: str):
+    def __init__(self, api_key, cse_id):
         self.api_key = api_key
         self.cse_id = cse_id
 
-        self.service = build(
-            "customsearch",
-            "v1",
-            developerKey=self.api_key
-        )
+    # -------------------------
+    # SIMULADORES PROBABILIDAD
+    # (Luego se conectan APIs reales)
+    # -------------------------
 
-    def analyze_matches(self, teams_list):
+    def prob_first_half_over(self):
+        return random.randint(30, 85)
+
+    def prob_total_goals(self):
+        return random.randint(40, 90)
+
+    def prob_corners(self):
+        return random.randint(35, 80)
+
+    def prob_winner(self):
+        return random.randint(45, 95)
+
+    # -------------------------
+    # CASCADE LOGIC
+    # -------------------------
+
+    def cascade_analysis(self, local, visitante):
+
+        # 1️⃣ Over 1.5 HT
+        p1 = self.prob_first_half_over()
+        if p1 >= 75:
+            return "Over 1.5 goles 1T", p1
+
+        # 2️⃣ Over Total
+        p2 = self.prob_total_goals()
+        if p2 >= 70:
+            return "Over goles totales", p2
+
+        # 3️⃣ Corners
+        p3 = self.prob_corners()
+        if p3 >= 70:
+            return "Over tiros de esquina", p3
+
+        # 4️⃣ Ganador
+        p4 = self.prob_winner()
+        if p4 >= 65:
+            return f"Gana {local}", p4
+
+        # 5️⃣ Combo premium
+        p5 = random.randint(60, 95)
+        return f"{local} gana + Over goles", p5
+
+    # -------------------------
+    # ANALISIS GENERAL
+    # -------------------------
+
+    def analyze_matches(self, equipos):
 
         resultados = []
-        parlay_sugerido = []
+        parlay = []
 
-        # agrupar equipos
-        for i in range(0, len(teams_list) - 1, 2):
+        for i in range(0, len(equipos) - 1, 2):
 
-            local = teams_list[i]
-            visitante = teams_list[i + 1]
+            local = equipos[i]
+            visitante = equipos[i + 1]
 
-            prob = random.randint(45, 95)
-
-            pick = (
-                f"Gana {local}"
-                if prob >= 70
-                else "Doble Oportunidad / Empate"
-            )
+            pick, prob = self.cascade_analysis(local, visitante)
 
             match = MatchResult(
                 partido=f"{local} vs {visitante}",
@@ -43,6 +80,6 @@ class EVEngine:
             resultados.append(match)
 
             if prob >= 75:
-                parlay_sugerido.append(match)
+                parlay.append(match)
 
-        return resultados, parlay_sugerido
+        return resultados, parlay
