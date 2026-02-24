@@ -110,3 +110,6 @@ if os.path.exists("parlay_history.csv"):
     st.dataframe(hist, use_container_width=True)
 else:
     st.info("Aún no hay registros. Apuesta y regístralos para ver el seguimiento.")
+st.info(f"**{r['partido']}**\n"
+        f"Pick: {r['pick']} | Prob: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}\n"
+        f"**Razón:** {r.get('razon', 'Modelo universal Poisson')}")
