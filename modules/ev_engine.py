@@ -23,24 +23,27 @@ def get_poisson_probs(lambda_home: float, lambda_away: float):
 
 class EVEngine:
     def __init__(self):
-        self.min_ev_threshold = 0.10
-        self.max_odds_allowed = 220
+        self.min_ev_threshold = 0.11
+        self.max_odds_allowed = 180  # más estricto para evitar cuotas altas
 
     def build_parlay(self, games: list):
         resultados = []
         
         for g in games:
             market_type = g.get("market", "1X2")
-            partido = f"{g.get('home','')} vs {g.get('away','')}".strip()
+            partido = f"{g.get('home','Equipo A')} vs {g.get('away','Equipo B')}"
             
             # 1X2
             if market_type == "1X2":
-                lambda_home = 1.55
-                lambda_away = 1.15
+                lambda_home = 1.65
+                lambda_away = 1.08
                 
                 try:
-                    if float(g.get("home_odd", 200)) < 160:
-                        lambda_home += 0.45
+                    home_odd = float(g.get("home_odd", 200))
+                    if home_odd < 160:
+                        lambda_home += 0.55  # boost fuerte para favoritos claros
+                    elif home_odd < 200:
+                        lambda_home += 0.30
                 except:
                     pass
                 
@@ -49,7 +52,7 @@ class EVEngine:
                 last_away = get_last_5_matches(g.get("away"))
                 inj_away = get_injuries(g.get("away"))
                 
-                if any(word in str(i).lower() for i in inj_away for word in ["ankle","knee","hamstring","defensa"]):
+                if any(word in str(i).lower() for i in inj_away for word in ["ankle","knee","hamstring","defensa","defender"]):
                     lambda_home += 0.40
                 
                 p_home, p_draw, p_away = get_poisson_probs(lambda_home, lambda_away)
@@ -59,7 +62,7 @@ class EVEngine:
                     odds_str = g.get(odds_key)
                     if not odds_str or not str(odds_str).strip(): continue
                     odds = float(odds_str)
-                    if odds > self.max_odds_allowed and model_p < 0.50: continue
+                    if odds > self.max_odds_allowed and model_p < 0.52: continue
                     ev = calculate_ev(model_p, odds)
                     if ev > self.min_ev_threshold:
                         pick_name = f"{g['home']} gana" if outcome=="home" else "Empate" if outcome=="draw" else f"{g['away']} gana"
@@ -73,8 +76,28 @@ class EVEngine:
                             "expected_total": round(expected_total, 1),
                             "market": "1X2"
                         })
+                
+                # Recomendación Over aunque no esté en la imagen
+                if expected_total > 2.75:
+                    prob_over_2_5 = 0.0
+                    for h in range(10):
+                        for a in range(10):
+                            if h + a > 2.5:
+                                prob_over_2_5 += poisson_pmf(h, lambda_home) * poisson_pmf(a, lambda_away)
+                    ev_over = calculate_ev(prob_over_2_5, 1.80)  # cuota aproximada
+                    if ev_over > self.min_ev_threshold:
+                        resultados.append({
+                            "partido": partido,
+                            "pick": "Over 2.5",
+                            "probabilidad": round(prob_over_2_5*100, 1),
+                            "cuota": "1.80 (aprox)",
+                            "ev": round(ev_over, 3),
+                            "razon": f"Goles esperados {expected_total:.1f} → Prob Over 2.5: {prob_over_2_5*100:.1f}%",
+                            "expected_total": round(expected_total, 1),
+                            "market": "Over/Under"
+                        })
             
-            # Over/Under (incluye 1.5 1T y 2.5)
+            # Over/Under detectado
             elif "Over/Under" in market_type:
                 line = float(g.get("line", 2.5))
                 odd = float(g.get("odd", 0))
@@ -101,7 +124,7 @@ class EVEngine:
                         "market": market_type
                     })
 
-        # Filtro final + combinados Win + Over
+        # Filtro + combinados
         picks_by_match = defaultdict(list)
         for r in resultados:
             picks_by_match[r["partido"]].append(r)
@@ -111,13 +134,12 @@ class EVEngine:
             best = max(partido_picks, key=lambda x: x["ev"])
             best_picks.append(best)
             
-            # Combinado Win + Over si ambos tienen buen EV
             win_pick = next((p for p in partido_picks if "gana" in p["pick"].lower()), None)
             over_pick = next((p for p in partido_picks if "Over" in p["pick"]), None)
             if win_pick and over_pick and win_pick["ev"] > 0.12 and over_pick["ev"] > 0.12:
                 combined = {
                     "partido": win_pick["partido"],
-                    "pick": f"{win_pick['pick'].split(' gana')[0]} gana + {over_pick['pick']}",
+                    "pick": f"{win_pick['pick']} + {over_pick['pick']}",
                     "probabilidad": round(win_pick["probabilidad"] * over_pick["probabilidad"] / 100, 1),
                     "cuota": str(round(float(win_pick["cuota"]) * float(over_pick["cuota"]) / 100, 2)),
                     "ev": round(win_pick["ev"] + over_pick["ev"], 3),
