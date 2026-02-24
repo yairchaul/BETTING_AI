@@ -1,4 +1,27 @@
-import streamlit as st
+import numpy as np
+from scipy.stats import poisson
+
+def poisson_probabilities(lambda_home, lambda_away):
+    """Devuelve probs de Home, Draw, Away usando Poisson"""
+    max_goals = 10  # suficiente para 99.9% de casos
+    home_goals_prob = poisson.pmf(np.arange(max_goals+1), lambda_home)
+    away_goals_prob = poisson.pmf(np.arange(max_goals+1), lambda_away)
+    
+    p_home = 0
+    p_draw = 0
+    p_away = 0
+    
+    for h in range(max_goals+1):
+        for a in range(max_goals+1):
+            prob = home_goals_prob[h] * away_goals_prob[a]
+            if h > a:
+                p_home += prob
+            elif h == a:
+                p_draw += prob
+            else:
+                p_away += prob
+    
+    return p_home, p_draw, p_away  import streamlit as st
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine   # lo mejoramos abajo
 
@@ -55,6 +78,7 @@ if archivo:
         st.error("No se detectaron partidos. Prueba otra captura.")
 else:
     st.info("Sube una captura de cualquier liga...")
+
 
 
 
