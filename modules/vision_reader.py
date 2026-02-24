@@ -5,43 +5,51 @@ import io
 
 def get_vision_client():
     try:
-        # Cargamos las credenciales desde los secretos
+        # Extraemos las credenciales del diccionario de secretos
         creds_info = dict(st.secrets["google_credentials"])
         
-        # LIMPIEZA CRÍTICA: Eliminamos cualquier problema de formato en la llave
-        # Esto soluciona el error InvalidLength(1625)
-        pk = creds_info["private_key"]
-        pk = pk.replace("\\n", "\n").strip()
-        
-        # Aseguramos que los encabezados PEM sean correctos
-        if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
-            pk = f"-----BEGIN PRIVATE KEY-----\n{pk}"
-        if not pk.endswith("-----END PRIVATE KEY-----"):
-            pk = f"{pk}\n-----END PRIVATE KEY-----"
-            
+        # LIMPIEZA DEFINITIVA DEL PEM: Elimina errores de longitud e invalid bytes
+        pk = creds_info["private_key"].replace("\\n", "\n").strip()
         creds_info["private_key"] = pk
         
         credentials = service_account.Credentials.from_service_account_info(creds_info)
         return vision.ImageAnnotatorClient(credentials=credentials)
     except Exception as e:
-        st.error(f"Error de autenticación: {e}")
+        st.error(f"Error de autenticación (PEM): {e}")
         return None
 
 def analyze_betting_image(image_file):
     client = get_vision_client()
-    if not client: return []
+    if not client: 
+        return []
 
-    # Leemos la imagen cargada por el usuario
+    # Leemos el contenido de la imagen cargada
     image_file.seek(0)
     content = image_file.read()
     image = vision.Image(content=content)
     
-    # Análisis de texto mediante IA
+    # Ejecutamos la detección de texto
     response = client.text_detection(image=image)
     texts = response.text_annotations
     
-    if not texts: return []
+    if not texts:
+        return []
 
-    # Extraemos equipos y momios (ej: Atlético Madrid -264)
-    lineas = texts[0].description.split('\n')
-    return [l.strip() for l in lineas if len(l.strip()) > 3]
+    # Procesamos el texto detectado
+    # La primera entrada de 'texts' contiene todo el bloque de texto
+    full_text = texts[0].description
+    lineas = full_text.split('\n')
+    
+    # Filtro inteligente: ignoramos momios y palabras genéricas
+    equipos_limpios = []
+    palabras_ignorar = ["empate", "vs", "caliente", "apuesta", "liga"]
+    
+    for linea in lineas:
+        linea_clean = linea.strip()
+        # Evitamos números (momios como +400), líneas vacías o palabras de sistema
+        if (len(linea_clean) > 3 and 
+            not linea_clean.startswith(('-', '+')) and 
+            not any(p in linea_clean.lower() for p in palabras_ignorar)):
+            equipos_limpios.append(linea_clean)
+            
+    return equipos_limpios
