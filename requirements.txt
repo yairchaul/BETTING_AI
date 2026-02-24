@@ -13,3 +13,4 @@ google-auth
 requests
 opencv-python-headless
 numpy
+beautifulsoup4>=4.12.0
