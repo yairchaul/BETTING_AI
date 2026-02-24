@@ -2,29 +2,36 @@ import streamlit as st
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
 
-# Configuración inicial segura
 st.set_page_config(page_title="Ticket Pro IA", layout="wide")
 
-# Inicializar motor con llaves ocultas
-try:
-    API_KEY = st.secrets["GOOGLE_API_KEY"]
-    CSE_ID = st.secrets["GOOGLE_CSE_ID"]
-    engine = EVEngine(API_KEY, CSE_ID)
-except Exception as e:
-    st.error("Error: Configura las llaves en los Secrets de Streamlit.")
+# Inicialización segura
+if 'engine' not in st.session_state:
+    st.session_state.engine = EVEngine(st.secrets["GOOGLE_API_KEY"], st.secrets["GOOGLE_CSE_ID"])
 
-st.title("🎯 Ticket Pro IA: Análisis Fútbol")
+st.title("🎯 Parlay Maestro: Análisis Dinámico")
 
 archivo = st.file_uploader("Sube tu captura de Caliente/Liga MX", type=['png', 'jpg', 'jpeg'])
 
 if archivo:
-    col_img, col_info = st.columns([1, 2])
-    with col_img:
-        st.image(archivo, width=280)
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.image(archivo, width=250, caption="Captura")
     
-    with col_info:
-        if st.button("🚀 Iniciar Análisis con Datos Reales"):
-            # Lógica de análisis aquí...
-            st.info("Buscando últimos 5 partidos en Google...")
-
-
+    with col2:
+        if st.button("🚀 GENERAR EL MEJOR PARLAY"):
+            try:
+                # Definición de la variable para evitar NameError
+                with st.spinner("Analizando equipos y buscando rachas reales..."):
+                    resultado_ia = analyze_betting_image(archivo)
+                    todos, parlay = st.session_state.engine.analyze_matches(resultado_ia)
+                
+                if parlay:
+                    st.success("🔥 MEJOR PARLAY DE LA SEMANA")
+                    for p in parlay:
+                        st.info(f"✅ **{p['partido']}** | Pick: `{p['pick']}` (Confianza: {p['victoria']})")
+                
+                with st.expander("Ver desglose detallado"):
+                    for t in todos:
+                        st.write(f"🏟️ {t['partido']} | Prob. Goles HT: {t['goles_ht']}")
+            except Exception as e:
+                st.error(f"Error en el proceso: {e}")
