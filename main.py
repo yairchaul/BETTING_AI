@@ -1,68 +1,39 @@
 import streamlit as st
+# Vinculación directa con módulos
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
 
-# Configuración inicial
-st.set_page_config(page_title="Parlay Maestro IA", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="Parlay Maestro", layout="wide")
+st.title("🎯 Parlay Maestro: Sistema Sincronizado")
 
-st.title("🎯 Parlay Maestro: Análisis de Imagen")
-st.markdown("---")
-
-# 1. Verificación de Seguridad para evitar KeyError
-if "google_credentials" not in st.secrets or "GOOGLE_API_KEY" not in st.secrets:
-    st.error("⚠️ Faltan llaves en los Secrets de Streamlit.")
+# Verificación de credenciales
+if "google_credentials" not in st.secrets:
+    st.error("❌ Configuración faltante en Secrets.")
     st.stop()
 
-# 2. Interfaz de carga
-archivo = st.file_uploader("Sube tu captura de pantalla (Caliente / Liga MX)", type=['png', 'jpg', 'jpeg'])
+archivo = st.file_uploader("Sube tu captura", type=['png', 'jpg', 'jpeg'])
 
 if archivo:
-    st.image(archivo, caption="Imagen cargada", width=400)
-    
-    if st.button("🚀 ANALIZAR PARTIDOS"):
-        with st.spinner("🤖 Analizando probabilidades..."):
-            try:
-                # Paso A: Procesar imagen
-                equipos = analyze_betting_image(archivo)
-                
-                if equipos and len(equipos) >= 2:
-                    # Paso B: Motor de análisis
-                    engine = EVEngine(
-                        st.secrets["GOOGLE_API_KEY"], 
-                        st.secrets["GOOGLE_CSE_ID"]
-                    )
-                    
-                    todos, parlay = engine.analyze_matches(equipos)
-                    
-                    # 3. Visualización con Semáforo
-                    st.subheader("📊 Resultados del Análisis")
-                    
-                    for p in todos:
-                        prob = p.get('probabilidad', 50)
-                        
-                        if prob >= 75:
-                            color, emoji = "#28a745", "🔥" # Verde
-                        elif prob >= 55:
-                            color, emoji = "#ffc107", "⚖️" # Naranja
-                        else:
-                            color, emoji = "#dc3545", "⚠️" # Rojo
-                        
-                        st.markdown(f"""
-                            <div style="border-left: 5px solid {color}; padding: 15px; margin-bottom: 10px; background-color: #1e1e1e; border-radius: 5px;">
-                                <span style="font-size: 20px;">{emoji}</span> 
-                                <b>{p['partido']}</b> | Pick: <span style="color:{color}; font-weight:bold;">{p['pick']}</span> 
-                                <br><small>Confianza: {prob}%</small>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Corrección del error de cierre de f-string
-                    if parlay:
-                        st.success(f"✅ Se recomienda un Parlay con {len(parlay)} partidos seleccionados.")
-                else:
-                    st.warning("No se detectaron suficientes equipos en la imagen.")
-                    
-            except Exception as e:
-                st.error(f"Error al procesar: {e}")
-else:
-    st.info("Sube una imagen para comenzar.")
+    if st.button("🚀 ANALIZAR AHORA"):
+        # 1. Lectura
+        equipos = analyze_betting_image(archivo)
+        
+        if equipos:
+            # 2. Análisis (Vinculado a EVEngine)
+            engine = EVEngine(st.secrets["GOOGLE_API_KEY"], st.secrets["GOOGLE_CSE_ID"])
+            todos, parlay = engine.analyze_matches(equipos)
+            
+            # 3. Interfaz de Semáforo
+            for p in todos:
+                color = "#28a745" if p['probabilidad'] >= 75 else "#ffc107" if p['probabilidad'] >= 55 else "#dc3545"
+                st.markdown(f"""
+                    <div style="border-left: 5px solid {color}; padding: 10px; background: #1e1e1e; margin-bottom: 5px; border-radius: 5px;">
+                        <b>{p['partido']}</b> | Pick: {p['pick']} ({p['probabilidad']}%)
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            if parlay:
+                st.success(f"✅ Sugerencia: Parlay de {len(parlay)} partidos listo.") # Error f-string corregido
+        else:
+            st.warning("No se detectaron equipos. Revisa la calidad de la imagen.")
 
