@@ -1,108 +1,90 @@
 import streamlit as st
-from modules.results_tracker import save_result, load_results, update_result
+
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
+from modules.results_tracker import save_result, load_results, update_result
 
+st.title("🤖 BETTING AI — TEST MODE")
 
-# ======================
-# CONFIG
-# ======================
-st.set_page_config(
-    page_title="Parlay Maestro IA",
-    layout="wide"
-)
+engine = EVEngine()
 
-st.title("🎯 Parlay Maestro IA — EDGE ENGINE")
-
-
-# ======================
-# UPLOADER
-# ======================
-archivo = st.file_uploader(
-    "Sube captura de apuestas",
-    type=["png", "jpg", "jpeg"]
-)
-
+# ==========================
+# UPLOAD IMAGEN
+# ==========================
+archivo = st.file_uploader("Sube ticket o partidos", type=["png", "jpg", "jpeg"])
 
 if archivo:
 
-    st.image(archivo, width=400)
+    equipos = analyze_betting_image(archivo)
 
-    if st.button("🚀 INICIAR ANÁLISIS"):
+    st.success("Equipos detectados:")
+    st.write(equipos)
 
-        with st.spinner("Analizando mercados..."):
+    resultados, parlay = engine.build_parlay(equipos)
 
-            equipos = analyze_betting_image(archivo)
+    st.subheader("📊 Análisis IA")
 
-            if len(equipos) < 2:
-                st.error("No se detectaron suficientes equipos.")
-                st.stop()
+    for r in resultados:
+        st.write(
+            f"{r['partido']} | {r['pick']} | Prob: {r['probabilidad']}% | Cuota {r['cuota']}"
+        )
 
-            engine = EVEngine()
+    # ==========================
+    # PARLAY
+    # ==========================
+    if parlay:
 
-            resultados, parlay = engine.build_parlay(equipos)
+        st.subheader("🔥 Parlay Detectado")
 
-        # ======================
-        # RESULTADOS
-        # ======================
-        st.header("📊 Resultados del Análisis")
+        for p in parlay:
+            st.write(f"{p['partido']} → {p['pick']}")
 
-        for r in resultados:
+        monto = st.number_input(
+            "💰 Monto a apostar",
+            min_value=1.0,
+            value=10.0,
+            step=1.0
+        )
 
-            prob = r["probabilidad"]
+        simulacion = engine.simulate_parlay_profit(parlay, monto)
 
-            if prob >= 80:
-                color = "#28a745"
-                emoji = "🔥"
-            elif prob >= 65:
-                color = "#ffc107"
-                emoji = "⚖️"
-            else:
-                color = "#dc3545"
-                emoji = "⚠️"
+        st.success(
+            f"""
+            Cuota Total: {simulacion['cuota_total']}
+            Pago Total: ${simulacion['pago_total']}
+            Ganancia Neta: ${simulacion['ganancia_neta']}
+            """
+        )
 
-            st.markdown(
-                f"""
-                <div style="border-left:6px solid {color};
-                            padding:15px;
-                            background:#1e1e1e;
-                            margin-bottom:10px;
-                            border-radius:8px;">
-
-                {emoji} <b>{r['partido']}</b><br>
-                Pick: <span style="color:{color}">{r['pick']}</span><br>
-                Confianza: {prob}%
-
-                </div>
-                """,
-                unsafe_allow_html=True
+        if st.button("💾 Guardar Parlay para Testing"):
+            save_result(
+                {"teams": [p["partido"] for p in parlay]},
+                "PARLAY"
             )
+            st.success("Parlay guardado.")
 
-        # ======================
-        # PARLAY
-        # ======================
-        if parlay:
-            st.success(f"✅ Parlay recomendado con {len(parlay)} selecciones")
+# ==========================
+# TRACKING PANEL
+# ==========================
 st.divider()
-st.subheader("📊 Testing Tracker")
+st.subheader("📈 Performance Tracker")
 
 results = load_results()
 
 for i, bet in enumerate(results):
 
-    col1, col2, col3, col4 = st.columns([3,2,2,2])
+    col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
 
-    col1.write(f"{bet['teams']} | {bet['market']}")
-    col2.write(f"Pick: {bet['prediction']}")
-    col3.write(f"Estado: {bet['result']}")
+    col1.write(bet["teams"])
+    col2.write(bet["prediction"])
+    col3.write(bet["result"])
 
     outcome = col4.selectbox(
         "Resultado",
         ["PENDING", "WIN", "LOSS"],
-        index=["PENDING","WIN","LOSS"].index(bet["result"]),
+        index=["PENDING", "WIN", "LOSS"].index(bet["result"]),
         key=i
     )
 
     if outcome != bet["result"]:
         update_result(i, outcome)
-
