@@ -26,12 +26,12 @@ with st.sidebar:
 archivo = st.file_uploader("Sube captura de cualquier liga", type=["png", "jpg", "jpeg"])
 
 if archivo:
-    with st.spinner("Procesando..."):
+    with st.spinner("Procesando captura..."):
         games = analyze_betting_image(archivo)
     
     if games:
         st.subheader("🏟️ Verificación de Partidos")
-        st.dataframe(games, use_container_width=True)   # temporal
+        st.dataframe(games, use_container_width=True)  # temporal, puedes mejorarlo después
 
         engine = EVEngine()
         resultados, parlay = engine.build_parlay(games)
@@ -41,17 +41,16 @@ if archivo:
         for idx, r in enumerate(resultados):
             with (col1 if idx % 2 == 0 else col2):
                 st.caption(f"**{r['partido']}**")
-                st.info(f"Pick: **{r['pick']}**  \nProb: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}")
+                st.info(f"Pick: **{r['pick']}**  \n"
+                        f"Prob: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}")
 
         if parlay:
             st.markdown("---")
-            st.header("🔥 Parlay Maestro Detectado")
+            st.header("🔥 Tu Ticket Profesional")
 
             monto = st.number_input("💰 Monto a apostar (MXN)", value=10.0, step=5.0, min_value=5.0, format="%.2f")
             sim = engine.simulate_parlay_profit(parlay, monto)
 
-            # === DISEÑO DE TICKET PROFESIONAL ===
-            st.markdown("### 🎟️ Tu Ticket")
             for p in parlay:
                 with st.container():
                     st.markdown(f"""
@@ -68,15 +67,34 @@ if archivo:
             m3.metric("Ganancia Neta", f"${sim['ganancia_neta']:.2f}")
 
             if st.button("💾 Registrar Parlay como Apostado", type="primary"):
-                # (código de guardado igual que antes)
-                st.success("✅ Guardado en historial")
+                history_file = "parlay_history.csv"
+                new_row = {
+                    "fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "monto": monto,
+                    "cuota_total": sim['cuota_total'],
+                    "pago_total": sim['pago_total'],
+                    "ganancia_neta": sim['ganancia_neta'],
+                    "num_legs": len(parlay),
+                    "picks": " | ".join([f"{p['partido']} → {p['pick']}" for p in parlay]),
+                    "status": "Pendiente"
+                }
+                if os.path.exists(history_file):
+                    df = pd.read_csv(history_file)
+                    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                else:
+                    df = pd.DataFrame([new_row])
+                df.to_csv(history_file, index=False)
+                st.success("✅ Parlay guardado en historial!")
                 st.rerun()
 
+    else:
+        st.error("No se detectaron partidos válidos en la captura.")
 else:
-    st.info("Sube una captura...")
+    st.info("Sube una captura para empezar...")
 
 st.markdown("---")
-st.subheader("📜 Historial")
+st.subheader("📜 Historial Completo de Parlays")
 if os.path.exists("parlay_history.csv"):
     st.dataframe(pd.read_csv("parlay_history.csv"), use_container_width=True)
-
+else:
+    st.info("Aún no hay registros.")
