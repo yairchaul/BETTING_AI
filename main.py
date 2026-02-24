@@ -10,7 +10,7 @@ st.set_page_config(page_title="BETTING AI — PARLAY MAESTRO", layout="wide")
 st.title("🤖 BETTING AI — PARLAY MAESTRO")
 st.markdown("---")
 
-# --- Sidebar con historial rápido ---
+# Sidebar historial
 with st.sidebar:
     st.header("📊 Historial")
     if os.path.exists("parlay_history.csv"):
@@ -23,28 +23,35 @@ with st.sidebar:
     else:
         st.info("Aún no hay parlays registrados")
 
-archivo = st.file_uploader("Sube captura de cualquier liga (Caliente.mx)",
-                          type=["png", "jpg", "jpeg"])
+archivo = st.file_uploader("Sube captura de cualquier liga (Caliente.mx)", type=["png", "jpg", "jpeg"])
 
 if archivo:
     with st.spinner("🔍 Detectando partidos con IA visual..."):
         games = analyze_betting_image(archivo)
-   
+    
     if games:
         st.subheader("🏟️ Verificación de Partidos")
         check_df = []
         for i, g in enumerate(games, 1):
-            check_df.append({
-                "Partido": i,
-                "Local": g["home"],
-                "Odd Local": g["home_odd"],
-                "Empate": g["draw_odd"],
-                "Visitante": g["away"],
-                "Odd Visitante": g["away_odd"]
-            })
+            if "home" in g:  # 1X2
+                check_df.append({
+                    "Partido": i,
+                    "Local": g["home"],
+                    "Odd Local": g["home_odd"],
+                    "Empate": g["draw_odd"],
+                    "Visitante": g["away"],
+                    "Odd Visitante": g["away_odd"]
+                })
+            else:  # Over/Under
+                check_df.append({
+                    "Partido": i,
+                    "Mercado": g.get("market", "Over/Under"),
+                    "Línea": g.get("line", "?"),
+                    "Odd": g.get("odd", "?")
+                })
         st.dataframe(check_df, use_container_width=True)
 
-        # === ANÁLISIS EV + PARLAY ===
+        # Análisis EV + Parlay
         engine = EVEngine()
         resultados, parlay = engine.build_parlay(games)
 
@@ -52,29 +59,28 @@ if archivo:
         col1, col2 = st.columns(2)
         for idx, r in enumerate(resultados):
             with (col1 if idx % 2 == 0 else col2):
-                st.info(f"**{r['partido']}**\n"
-                        f"Pick: {r['pick']} | Prob: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}\n"
-                        f"**Razón:** {r.get('razon', 'Modelo universal Poisson')}\n"
-                        f"**Goles esperados totales:** {r.get('expected_total', '?')}")
+                st.caption(f"**{r['partido']}**")
+                st.info(f"Pick: **{r['pick']}**  \n"
+                        f"Prob: {r['probabilidad']}%  |  Cuota: {r['cuota']}  |  EV: {r['ev']}  \n"
+                        f"**Razón:** {r.get('razon', 'Modelo universal Poisson')}  \n"
+                        f"Goles esperados: {r.get('expected_total', '?')}")
 
-     if parlay:
-    st.markdown("---")
-    st.header("🔥 Parlay Maestro Detectado")
+        if parlay:
+            st.markdown("---")
+            st.header("🔥 Parlay Maestro Detectado")
 
-    monto = st.number_input("💰 Monto a apostar (MXN)", value=10.0, step=5.0, min_value=5.0, format="%.2f")
+            monto = st.number_input("💰 Monto a apostar (MXN)", value=10.0, step=5.0, min_value=5.0, format="%.2f")
 
-    sim = engine.simulate_parlay_profit(parlay, monto)
+            sim = engine.simulate_parlay_profit(parlay, monto)
 
-    for p in parlay:
-        st.write(f"✅ {p['partido']} → {p['pick']} (Cuota {p['cuota']})")
+            for p in parlay:
+                st.caption(f"✅ {p['partido']} → **{p['pick']}** (Cuota {p['cuota']})")
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Cuota Total", f"{sim['cuota_total']:.2f}")
-    m2.metric("Pago Total", f"${sim['pago_total']:.2f}")
-    m3.metric("Ganancia Neta", f"${sim['ganancia_neta']:.2f}")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Cuota Total", f"{sim['cuota_total']:.2f}")
+            m2.metric("Pago Total", f"${sim['pago_total']:.2f}")
+            m3.metric("Ganancia Neta", f"${sim['ganancia_neta']:.2f}")
 
-         
-            # === BOTÓN PARA REGISTRAR EN HISTÓRICO ===
             if st.button("💾 Registrar Parlay como Apostado", type="primary"):
                 history_file = "parlay_history.csv"
                 new_row = {
@@ -87,14 +93,13 @@ if archivo:
                     "picks": " | ".join([f"{p['partido']} → {p['pick']}" for p in parlay]),
                     "status": "Pendiente"
                 }
-
                 if os.path.exists(history_file):
                     df = pd.read_csv(history_file)
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                 else:
                     df = pd.DataFrame([new_row])
                 df.to_csv(history_file, index=False)
-                st.success("✅ Parlay guardado en historial!")
+                st.success("✅ Parlay guardado!")
                 st.rerun()
 
     else:
@@ -102,12 +107,11 @@ if archivo:
 else:
     st.info("Sube una captura para empezar...")
 
-# === HISTÓRICO COMPLETO ===
+# Histórico
 st.markdown("---")
 st.subheader("📜 Historial Completo de Parlays")
 if os.path.exists("parlay_history.csv"):
     hist = pd.read_csv("parlay_history.csv")
     st.dataframe(hist, use_container_width=True)
 else:
-    st.info("Aún no hay registros. Apuesta y regístralos para ver el seguimiento.")
-
+    st.info("Aún no hay registros. Regístralos para ver el seguimiento.")
