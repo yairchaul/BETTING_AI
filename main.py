@@ -83,4 +83,26 @@ if archivo:
         # ======================
         if parlay:
             st.success(f"✅ Parlay recomendado con {len(parlay)} selecciones")
+st.divider()
+st.subheader("📊 Testing Tracker")
+
+results = load_results()
+
+for i, bet in enumerate(results):
+
+    col1, col2, col3, col4 = st.columns([3,2,2,2])
+
+    col1.write(f"{bet['teams']} | {bet['market']}")
+    col2.write(f"Pick: {bet['prediction']}")
+    col3.write(f"Estado: {bet['result']}")
+
+    outcome = col4.selectbox(
+        "Resultado",
+        ["PENDING", "WIN", "LOSS"],
+        index=["PENDING","WIN","LOSS"].index(bet["result"]),
+        key=i
+    )
+
+    if outcome != bet["result"]:
+        update_result(i, outcome)
 
