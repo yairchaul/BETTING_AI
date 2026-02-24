@@ -1,21 +1,20 @@
-import requests
-
-
-BASE_URL = "https://www.caliente.mx/sports/api"
+import random
 
 
 def get_events():
+    """
+    Simulación de mercados reales.
+    """
 
-    url = f"{BASE_URL}/sportsbook/events"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json"
+    return {
+        "totals": [1.5, 2.5, 3.5],
+        "corners": [8.5, 9.5, 10.5],
+        "winner": True
     }
 
-    r = requests.get(url, headers=headers)
 
-    if r.status_code != 200:
-        return []
+def get_market_lines(local, visitante):
 
-    return r.json()
+    markets = get_events()
+
+    return markets
