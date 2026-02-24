@@ -12,7 +12,24 @@ if platform.system() == "Linux":
 
 
 # ============================
-# OCR ANALYSIS
+# LIMPIEZA TEXTO OCR
+# ============================
+
+def clean_line(line):
+
+    line = line.strip()
+
+    # quitar momios +120 -150 etc
+    line = re.sub(r"[+-]\d+", "", line)
+
+    # quitar números sueltos
+    line = re.sub(r"\d+", "", line)
+
+    return line.strip()
+
+
+# ============================
+# DETECTOR PARTIDOS
 # ============================
 
 def analyze_betting_image(image_file):
@@ -24,16 +41,18 @@ def analyze_betting_image(image_file):
         lang="spa+eng"
     )
 
-    # limpiar texto
     lines = text.split("\n")
 
-    equipos = []
+    posibles_equipos = []
 
     for line in lines:
-        line = line.strip()
 
-        if "vs" in line.lower():
-            parts = re.split(r"vs|VS|Vs", line)
-            equipos.extend([p.strip() for p in parts])
+        line = clean_line(line)
+
+        if len(line) > 3 and "empate" not in line.lower():
+            posibles_equipos.append(line)
+
+    # eliminar duplicados
+    equipos = list(dict.fromkeys(posibles_equipos))
 
     return equipos
