@@ -9,63 +9,53 @@ def analyze_betting_image(uploaded_file):
     client = get_vision_client()
     content = uploaded_file.read()
     image = vision.Image(content=content)
-    
-    # Detección de texto denso para obtener coordenadas exactas
     response = client.document_text_detection(image=image)
     
-    words_data = []
+    raw_data = []
     for page in response.full_text_annotation.pages:
         for block in page.blocks:
             for paragraph in block.paragraphs:
                 text = "".join(["".join([s.text for s in w.symbols]) for w in paragraph.words])
-                vertices = paragraph.bounding_box.vertices
-                # Calculamos el centro vertical (Y) y horizontal (X)
-                y_center = sum([v.y for v in vertices]) / 4
-                x_center = sum([v.x for v in vertices]) / 4
-                words_data.append({"text": text, "y": y_center, "x": x_center})
+                v = paragraph.bounding_box.vertices
+                y_center = sum([p.y for p in v]) / 4
+                x_center = sum([p.x for p in v]) / 4
+                raw_data.append({"text": text, "y": y_center, "x": x_center})
 
-    if not words_data:
-        return []
+    if not raw_data: return []
 
     # 1. Ordenar por altura (Y)
-    words_data.sort(key=lambda x: x['y'])
+    raw_data.sort(key=lambda x: x['y'])
 
-    # 2. Agrupar en filas (Threshold de 35px para evitar mezclar partidos)
+    # 2. Agrupar en filas (Margen de 30px para no mezclar equipos de arriba/abajo)
     rows = []
-    current_row = [words_data[0]]
-    for i in range(1, len(words_data)):
-        if abs(words_data[i]['y'] - current_row[-1]['y']) < 35:
-            current_row.append(words_data[i])
+    current_row = [raw_data[0]]
+    for i in range(1, len(raw_data)):
+        if abs(raw_data[i]['y'] - current_row[-1]['y']) < 30:
+            current_row.append(raw_data[i])
         else:
             rows.append(current_row)
-            current_row = [words_data[i]]
+            current_row = [raw_data[i]]
     rows.append(current_row)
 
     equipos_finales = []
-    blacklist = ["empate", "vix", "en vivo", "hoy", "apostar", "ver", "mañana", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+    # Palabras que suelen confundir al OCR en Caliente
+    blacklist = ["empate", "vix", "en vivo", "apostar", "ver", "hoy", "mañana"]
 
     for row in rows:
-        # Ordenar elementos de la fila de IZQUIERDA a DERECHA (X)
+        # Ordenar cada fila de izquierda a derecha (X)
         row.sort(key=lambda x: x['x'])
         
-        # Filtrar solo palabras que no tengan números (para quitar momios como +120)
-        clean_elements = []
+        # Filtrar solo nombres (sin números y fuera de blacklist)
+        clean_row = []
         for item in row:
-            txt = item['text'].strip()
-            # Si no tiene números, no es "Empate" y es suficientemente largo
-            if (not any(char.isdigit() for char in txt) and 
-                txt.lower() not in blacklist and 
-                len(txt) > 2):
-                clean_elements.append(txt)
+            t = item['text'].strip()
+            if not any(char.isdigit() for char in t) and t.lower() not in blacklist and len(t) > 2:
+                clean_row.append(t)
 
-        # SI LA FILA ES UN PARTIDO: tendrá al menos el Local y el Visitante
-        if len(clean_elements) >= 2:
-            # El primero es el que está más a la izquierda (Local)
-            # El último es el que está más a la derecha (Visitante)
-            local = clean_elements[0]
-            visitante = clean_elements[-1]
-            
-            # Verificación de seguridad: que no sea el mismo nombre
+        # Si la fila tiene al menos 2 nombres, el primero es LOCAL y el último VISITANTE
+        if len(clean_row) >= 2:
+            local = clean_row[0]
+            visitante = clean_row[-1]
             if local.lower() != visitante.lower():
                 equipos_finales.append(local)
                 equipos_finales.append(visitante)
