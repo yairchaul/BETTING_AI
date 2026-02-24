@@ -36,4 +36,15 @@ class EVEngine:
                 parlay_sugerido.append(match_data)
                 
         return resultados, parlay_sugerido
+from modules.schemas import BetData, EVResult
+
+def calculate_ev(bet: BetData) -> EVResult:
+    implied_prob = 1 / bet.odds
+    ev = (bet.probability * bet.odds) - 1
+    edge = bet.probability - implied_prob
+
+    return EVResult(
+        ev=ev,
+        edge=edge
+    )
 
