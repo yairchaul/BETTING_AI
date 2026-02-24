@@ -10,7 +10,6 @@ st.set_page_config(page_title="BETTING AI — PARLAY MAESTRO", layout="wide")
 st.title("🤖 BETTING AI — PARLAY MAESTRO")
 st.markdown("---")
 
-# Sidebar historial
 with st.sidebar:
     st.header("📊 Historial")
     if os.path.exists("parlay_history.csv"):
@@ -26,12 +25,12 @@ with st.sidebar:
 archivo = st.file_uploader("Sube captura de cualquier liga", type=["png", "jpg", "jpeg"])
 
 if archivo:
-    with st.spinner("Procesando captura..."):
+    with st.spinner("Procesando..."):
         games = analyze_betting_image(archivo)
     
     if games:
         st.subheader("🏟️ Verificación de Partidos")
-        st.dataframe(games, use_container_width=True)  # temporal, puedes mejorarlo después
+        st.dataframe(games, use_container_width=True)
 
         engine = EVEngine()
         resultados, parlay = engine.build_parlay(games)
@@ -41,8 +40,7 @@ if archivo:
         for idx, r in enumerate(resultados):
             with (col1 if idx % 2 == 0 else col2):
                 st.caption(f"**{r['partido']}**")
-                st.info(f"Pick: **{r['pick']}**  \n"
-                        f"Prob: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}")
+                st.info(f"Pick: **{r['pick']}**  \nProb: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}")
 
         if parlay:
             st.markdown("---")
@@ -54,10 +52,10 @@ if archivo:
             for p in parlay:
                 with st.container():
                     st.markdown(f"""
-                    <div style="background:#1e1e1e; padding:15px; border-radius:10px; margin:8px 0;">
+                    <div style="background:#1e1e1e; padding:18px; border-radius:12px; margin:10px 0; border-left: 5px solid #00ff9d;">
                         <strong>{p['partido']}</strong><br>
-                        <span style="color:#00ff9d">Sí → {p['pick']}</span><br>
-                        <small>Cuota: {p['cuota']} | Prob: {p['probabilidad']}%</small>
+                        <span style="color:#00ff9d; font-size:18px;">Sí → {p['pick']}</span><br>
+                        <small>Cuota: <b>{p['cuota']}</b> | Prob: {p['probabilidad']}%</small>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -67,6 +65,7 @@ if archivo:
             m3.metric("Ganancia Neta", f"${sim['ganancia_neta']:.2f}")
 
             if st.button("💾 Registrar Parlay como Apostado", type="primary"):
+                # código de guardado (mantengo el tuyo)
                 history_file = "parlay_history.csv"
                 new_row = {
                     "fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -84,11 +83,9 @@ if archivo:
                 else:
                     df = pd.DataFrame([new_row])
                 df.to_csv(history_file, index=False)
-                st.success("✅ Parlay guardado en historial!")
+                st.success("✅ Parlay guardado!")
                 st.rerun()
 
-    else:
-        st.error("No se detectaron partidos válidos en la captura.")
 else:
     st.info("Sube una captura para empezar...")
 
@@ -98,3 +95,4 @@ if os.path.exists("parlay_history.csv"):
     st.dataframe(pd.read_csv("parlay_history.csv"), use_container_width=True)
 else:
     st.info("Aún no hay registros.")
+
