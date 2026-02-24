@@ -23,13 +23,13 @@ with st.sidebar:
     else:
         st.info("Aún no hay parlays registrados")
 
-archivo = st.file_uploader("Sube captura de cualquier liga (Caliente.mx)", 
+archivo = st.file_uploader("Sube captura de cualquier liga (Caliente.mx)",
                           type=["png", "jpg", "jpeg"])
 
 if archivo:
     with st.spinner("🔍 Detectando partidos con IA visual..."):
         games = analyze_betting_image(archivo)
-    
+   
     if games:
         st.subheader("🏟️ Verificación de Partidos")
         check_df = []
@@ -54,7 +54,7 @@ if archivo:
             with (col1 if idx % 2 == 0 else col2):
                 st.info(f"**{r['partido']}**\n"
                         f"Pick: {r['pick']} | Prob: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}\n"
-                        f"**Razón:** {r.get('razon', 'Modelo base Poisson')}\n"
+                        f"**Razón:** {r.get('razon', 'Modelo universal Poisson')}\n"
                         f"**Goles esperados totales:** {r.get('expected_total', '?')}")
 
         if parlay:
@@ -98,7 +98,6 @@ if archivo:
 
     else:
         st.error("No se detectaron partidos.")
-
 else:
     st.info("Sube una captura para empezar...")
 
@@ -110,6 +109,3 @@ if os.path.exists("parlay_history.csv"):
     st.dataframe(hist, use_container_width=True)
 else:
     st.info("Aún no hay registros. Apuesta y regístralos para ver el seguimiento.")
-st.info(f"**{r['partido']}**\n"
-        f"Pick: {r['pick']} | Prob: {r['probabilidad']}% | Cuota: {r['cuota']} | EV: {r['ev']}\n"
-        f"**Razón:** {r.get('razon', 'Modelo universal Poisson')}")
