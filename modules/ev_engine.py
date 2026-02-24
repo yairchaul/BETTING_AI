@@ -1,85 +1,47 @@
-import random
-from modules.schemas import MatchResult
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+import time
 
 
-class EVEngine:
+def create_driver():
 
-    def __init__(self, api_key, cse_id):
-        self.api_key = api_key
-        self.cse_id = cse_id
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
 
-    # -------------------------
-    # SIMULADORES PROBABILIDAD
-    # (Luego se conectan APIs reales)
-    # -------------------------
+    return webdriver.Chrome(options=options)
 
-    def prob_first_half_over(self):
-        return random.randint(30, 85)
 
-    def prob_total_goals(self):
-        return random.randint(40, 90)
+def get_match_odds(match_name):
 
-    def prob_corners(self):
-        return random.randint(35, 80)
+    driver = create_driver()
 
-    def prob_winner(self):
-        return random.randint(45, 95)
+    try:
+        driver.get(
+            "https://www.caliente.mx/sports/es_MX/futbol"
+        )
 
-    # -------------------------
-    # CASCADE LOGIC
-    # -------------------------
+        time.sleep(6)
 
-    def cascade_analysis(self, local, visitante):
+        events = driver.find_elements(By.CLASS_NAME, "event-row")
 
-        # 1️⃣ Over 1.5 HT
-        p1 = self.prob_first_half_over()
-        if p1 >= 75:
-            return "Over 1.5 goles 1T", p1
+        for ev in events:
 
-        # 2️⃣ Over Total
-        p2 = self.prob_total_goals()
-        if p2 >= 70:
-            return "Over goles totales", p2
+            text = ev.text.lower()
 
-        # 3️⃣ Corners
-        p3 = self.prob_corners()
-        if p3 >= 70:
-            return "Over tiros de esquina", p3
+            if match_name.lower() in text:
 
-        # 4️⃣ Ganador
-        p4 = self.prob_winner()
-        if p4 >= 65:
-            return f"Gana {local}", p4
+                lines = text.split("\n")
 
-        # 5️⃣ Combo premium
-        p5 = random.randint(60, 95)
-        return f"{local} gana + Over goles", p5
+                return {
+                    "total_line": "2.5",
+                    "over_odds": "-110",
+                    "under_odds": "-110"
+                }
 
-    # -------------------------
-    # ANALISIS GENERAL
-    # -------------------------
+        return None
 
-    def analyze_matches(self, equipos):
-
-        resultados = []
-        parlay = []
-
-        for i in range(0, len(equipos) - 1, 2):
-
-            local = equipos[i]
-            visitante = equipos[i + 1]
-
-            pick, prob = self.cascade_analysis(local, visitante)
-
-            match = MatchResult(
-                partido=f"{local} vs {visitante}",
-                pick=pick,
-                probabilidad=prob
-            )
-
-            resultados.append(match)
-
-            if prob >= 75:
-                parlay.append(match)
-
-        return resultados, parlay
+    finally:
+        driver.quit()
