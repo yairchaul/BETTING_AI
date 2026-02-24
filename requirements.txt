@@ -12,3 +12,6 @@ google-api-python-client
 google-auth
 pytesseract
 requests
+pytesseract
+opencv-python-headless
+numpy
