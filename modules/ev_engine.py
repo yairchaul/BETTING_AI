@@ -1,44 +1,81 @@
 import random
-from modules.caliente_api import get_events, extract_match_odds
+from modules.caliente_api import get_market_lines
 
 
 class EVEngine:
 
     def __init__(self):
-        self.events = get_events()
+        pass
 
-    def probability_model(self):
-        return random.randint(55, 90)
+    def model_probability(self):
+        """
+        Simulación modelo IA.
+        Luego conectaremos stats reales.
+        """
+        return random.randint(55, 92)
 
-    def cascade_pick(self, local, visitante):
+    def cascade_analysis(self, local, visitante):
 
-        odds = extract_match_odds(
-            self.events,
-            local,
-            visitante
-        )
+        markets = get_market_lines(local, visitante)
 
-        if not odds:
-            return "Sin mercado disponible", 50
+        prob = self.model_probability()
 
-        prob = self.probability_model()
+        # =====================
+        # NIVEL 1 — OVER 1T
+        # =====================
+        if prob >= 85:
+            return {
+                "partido": f"{local} vs {visitante}",
+                "pick": "Over 1.5 goles 1T",
+                "probabilidad": prob
+            }
 
-        # NIVEL 1 — Over 1.5 HT
-        if prob > 80:
-            return "Over 1.5 goles 1T", prob
+        # =====================
+        # NIVEL 2 — OVER GOLES
+        # =====================
+        if prob >= 75:
+            line = markets["totals"][1]
+            return {
+                "partido": f"{local} vs {visitante}",
+                "pick": f"Over {line} goles",
+                "probabilidad": prob
+            }
 
-        # NIVEL 2 — Over Total Goals
-        if prob > 70 and odds["totals"]:
-            line = odds["totals"][0]["line"]
-            return f"Over {line} goles", prob
+        # =====================
+        # NIVEL 3 — CORNERS
+        # =====================
+        if prob >= 65:
+            line = markets["corners"][0]
+            return {
+                "partido": f"{local} vs {visitante}",
+                "pick": f"Over {line} corners",
+                "probabilidad": prob
+            }
 
-        # NIVEL 3 — Corners
-        if prob > 65 and odds["corners"]:
-            line = odds["corners"][0]["line"]
-            return f"Over {line} corners", prob
+        # =====================
+        # NIVEL 4 — GANADOR
+        # =====================
+        return {
+            "partido": f"{local} vs {visitante}",
+            "pick": f"Gana {local}",
+            "probabilidad": prob
+        }
 
-        # NIVEL 4 — Winner
-        if odds["winner"]:
-            return f"Gana {local}", prob
+    def build_parlay(self, equipos):
 
-        return "No bet", 50
+        resultados = []
+        parlay = []
+
+        for i in range(0, len(equipos) - 1, 2):
+
+            local = equipos[i]
+            visitante = equipos[i + 1]
+
+            analisis = self.cascade_analysis(local, visitante)
+
+            resultados.append(analisis)
+
+            if analisis["probabilidad"] >= 80:
+                parlay.append(analisis)
+
+        return resultados, parlay
