@@ -1,47 +1,44 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-import time
+import random
+from modules.caliente_api import get_events, extract_match_odds
 
 
-def create_driver():
+class EVEngine:
 
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+    def __init__(self):
+        self.events = get_events()
 
-    return webdriver.Chrome(options=options)
+    def probability_model(self):
+        return random.randint(55, 90)
 
+    def cascade_pick(self, local, visitante):
 
-def get_match_odds(match_name):
-
-    driver = create_driver()
-
-    try:
-        driver.get(
-            "https://www.caliente.mx/sports/es_MX/futbol"
+        odds = extract_match_odds(
+            self.events,
+            local,
+            visitante
         )
 
-        time.sleep(6)
+        if not odds:
+            return "Sin mercado disponible", 50
 
-        events = driver.find_elements(By.CLASS_NAME, "event-row")
+        prob = self.probability_model()
 
-        for ev in events:
+        # NIVEL 1 — Over 1.5 HT
+        if prob > 80:
+            return "Over 1.5 goles 1T", prob
 
-            text = ev.text.lower()
+        # NIVEL 2 — Over Total Goals
+        if prob > 70 and odds["totals"]:
+            line = odds["totals"][0]["line"]
+            return f"Over {line} goles", prob
 
-            if match_name.lower() in text:
+        # NIVEL 3 — Corners
+        if prob > 65 and odds["corners"]:
+            line = odds["corners"][0]["line"]
+            return f"Over {line} corners", prob
 
-                lines = text.split("\n")
+        # NIVEL 4 — Winner
+        if odds["winner"]:
+            return f"Gana {local}", prob
 
-                return {
-                    "total_line": "2.5",
-                    "over_odds": "-110",
-                    "under_odds": "-110"
-                }
-
-        return None
-
-    finally:
-        driver.quit()
+        return "No bet", 50
