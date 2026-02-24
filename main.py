@@ -59,3 +59,4 @@ else:
     st.info("Esperando captura de pantalla para iniciar el análisis...")
 
 
+
