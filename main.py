@@ -2,32 +2,31 @@ import streamlit as st
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
 
-# Configuración inicial de la página
+# Configuración inicial
 st.set_page_config(page_title="Parlay Maestro IA", page_icon="🎯", layout="wide")
 
 st.title("🎯 Parlay Maestro: Análisis de Imagen")
 st.markdown("---")
 
-# 1. Verificación de Secrets para evitar errores de llave faltante
+# 1. Verificación de Seguridad para evitar KeyError
 if "google_credentials" not in st.secrets or "GOOGLE_API_KEY" not in st.secrets:
-    st.error("⚠️ Configuración incompleta: Faltan las llaves en los Secrets de Streamlit.")
-    st.info("Asegúrate de haber pegado el bloque [google_credentials] y las llaves API en Settings.")
+    st.error("⚠️ Faltan llaves en los Secrets de Streamlit.")
     st.stop()
 
 # 2. Interfaz de carga
 archivo = st.file_uploader("Sube tu captura de pantalla (Caliente / Liga MX)", type=['png', 'jpg', 'jpeg'])
 
 if archivo:
-    st.image(archivo, caption="Imagen cargada correctamente", width=400)
+    st.image(archivo, caption="Imagen cargada", width=400)
     
     if st.button("🚀 ANALIZAR PARTIDOS"):
-        with st.spinner("🤖 Procesando imagen y analizando probabilidades..."):
+        with st.spinner("🤖 Analizando probabilidades..."):
             try:
-                # Paso A: Extraer texto de la imagen
+                # Paso A: Procesar imagen
                 equipos = analyze_betting_image(archivo)
                 
-                if equipos and len(equipos) > 0:
-                    # Paso B: Inicializar motor de análisis
+                if equipos and len(equipos) >= 2:
+                    # Paso B: Motor de análisis
                     engine = EVEngine(
                         st.secrets["GOOGLE_API_KEY"], 
                         st.secrets["GOOGLE_CSE_ID"]
@@ -35,21 +34,19 @@ if archivo:
                     
                     todos, parlay = engine.analyze_matches(equipos)
                     
-                    # 3. Visualización con Semáforo (Aquí estaba el error de indentación)
-                    st.subheader("📊 Análisis Probabilístico")
+                    # 3. Visualización con Semáforo
+                    st.subheader("📊 Resultados del Análisis")
                     
                     for p in todos:
                         prob = p.get('probabilidad', 50)
                         
-                        # Definición de colores y emojis según confianza
                         if prob >= 75:
-                            color, emoji = "#28a745", "🔥" # Verde (Alta)
+                            color, emoji = "#28a745", "🔥" # Verde
                         elif prob >= 55:
-                            color, emoji = "#ffc107", "⚖️" # Naranja (Media)
+                            color, emoji = "#ffc107", "⚖️" # Naranja
                         else:
-                            color, emoji = "#dc3545", "⚠️" # Rojo (Baja)
+                            color, emoji = "#dc3545", "⚠️" # Rojo
                         
-                        # Cuadro de resultado visual
                         st.markdown(f"""
                             <div style="border-left: 5px solid {color}; padding: 15px; margin-bottom: 10px; background-color: #1e1e1e; border-radius: 5px;">
                                 <span style="font-size: 20px;">{emoji}</span> 
@@ -58,6 +55,14 @@ if archivo:
                             </div>
                         """, unsafe_allow_html=True)
                     
+                    # Corrección del error de cierre de f-string
                     if parlay:
-                        st.success(f"✅ Se recomienda un Parl
+                        st.success(f"✅ Se recomienda un Parlay con {len(parlay)} partidos seleccionados.")
+                else:
+                    st.warning("No se detectaron suficientes equipos en la imagen.")
+                    
+            except Exception as e:
+                st.error(f"Error al procesar: {e}")
+else:
+    st.info("Sube una imagen para comenzar.")
 
