@@ -1,41 +1,37 @@
-from PIL import Image
-import pytesseract
 import cv2
 import numpy as np
+import pytesseract
+from PIL import Image
 import re
 
-# =============================
-# PREPROCESS IMAGE (CLAVE)
-# =============================
 
 def preprocess_image(file):
 
     img = Image.open(file).convert("RGB")
     img = np.array(img)
 
-    # Convertir a escala de grises
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    # Escalar imagen (CRÍTICO)
+    img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+    # Escala de grises
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Aumentar contraste
     gray = cv2.equalizeHist(gray)
 
-    # Blur suave
-    blur = cv2.GaussianBlur(gray, (5,5), 0)
+    # Blur ligero
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Threshold para limpiar fondo gris
+    # Threshold fuerte
     _, thresh = cv2.threshold(
         blur,
-        150,
+        0,
         255,
-        cv2.THRESH_BINARY_INV
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
     return thresh
 
-
-# =============================
-# EXTRAER EQUIPOS
-# =============================
 
 def extract_teams(text):
 
@@ -47,21 +43,13 @@ def extract_teams(text):
 
         line = line.strip()
 
-        # eliminar momios
-        line = re.sub(r"[+-]\d+", "", line)
+        # quitar números y momios
+        clean = re.sub(r'[\+\-\d\.]+', '', line)
 
-        # eliminar palabras basura
-        if len(line) < 3:
-            continue
-
-        if "Empate" in line:
-            continue
-
-        # solo letras y espacios
-        clean = re.sub(r"[^A-Za-zÁÉÍÓÚÜÑáéíóúñ ]", "", line)
-
-        if len(clean.split()) >= 1:
-            equipos.append(clean.strip())
+        # solo palabras largas (equipos)
+        if len(clean.split()) >= 1 and len(clean) > 3:
+            if not any(char.isdigit() for char in clean):
+                equipos.append(clean)
 
     # eliminar duplicados
     equipos = list(dict.fromkeys(equipos))
@@ -69,25 +57,15 @@ def extract_teams(text):
     return equipos
 
 
-# =============================
-# MAIN OCR FUNCTION
-# =============================
-
 def analyze_betting_image(file):
 
-    try:
+    processed = preprocess_image(file)
 
-        processed = preprocess_image(file)
+    text = pytesseract.image_to_string(
+        processed,
+        config="--psm 6"
+    )
 
-        text = pytesseract.image_to_string(
-            processed,
-            config="--oem 3 --psm 6"
-        )
+    equipos = extract_teams(text)
 
-        equipos = extract_teams(text)
-
-        return equipos
-
-    except Exception as e:
-        print("OCR ERROR:", e)
-        return []
+    return equipos
