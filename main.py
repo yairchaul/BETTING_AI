@@ -9,12 +9,22 @@ st.set_page_config(page_title="BETTING AI — PARLAY MAESTRO", layout="wide")
 st.title("🤖 BETTING AI — PARLAY MAESTRO")
 st.markdown("---")
 
+# --- SIDEBAR: HISTORIAL CON VISUALIZACIÓN ---
 with st.sidebar:
     st.header("📊 Historial")
     if os.path.exists("parlay_history.csv"):
         hist = pd.read_csv("parlay_history.csv")
+        # Métricas principales
         st.metric("ROI Total", f"{(hist['ganancia_neta'].sum() / hist['monto'].sum() * 100):.1f}%")
         st.metric("Apostado", f"${hist['monto'].sum():.2f}")
+        
+        st.markdown("---")
+        st.subheader("📝 Últimos Registros")
+        # Mostramos las últimas 5 apuestas con color según estado
+        for _, row in hist.tail(5).iterrows():
+            estado_color = "🟢" if row['ganancia_neta'] > 0 else "⚪"
+            st.write(f"{estado_color} **{row['Fecha']}**")
+            st.caption(f"Neto: ${row['ganancia_neta']:.2f} | M: ${row['monto']}")
     else:
         st.info("Aún no hay parlays registrados")
 
@@ -25,11 +35,11 @@ if archivo:
         games = analyze_betting_image(archivo)
     
     if games:
-        # SECCIÓN COLAPSABLE (Oculta el debug por defecto)
         with st.expander("🏟️ Verificación de Partidos (Click para ver/ocultar)", expanded=False):
             st.dataframe(games, use_container_width=True)
 
         engine = EVEngine()
+        # Aquí entra la nueva lógica de cascada
         resultados, parlay = engine.build_parlay(games)
 
         st.header("📊 Análisis de Valor IA")
@@ -49,7 +59,7 @@ if archivo:
                 <div style="background:#1e1e1e; padding:15px; border-radius:10px; border-left: 5px solid #00ff9d; margin-bottom:10px;">
                     <small style="color:gray;">{p['partido']}</small><br>
                     <b style="color:#00ff9d; font-size:18px;"> {p['pick']}</b><br>
-                    <small>Cuota: {p['cuota']} | Confianza: {'⭐' * (int(p['probabilidad']/20))}</small>
+                    <small>Cuota: {p['cuota']} | Confianza: {'⭐' * (max(1, int(p['probabilidad']/20)))}</small>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -59,5 +69,15 @@ if archivo:
             m3.metric("Ganancia", f"${sim['ganancia_neta']}")
 
             if st.button("💾 Registrar como Apostado"):
+                # Lógica de guardado directo
+                nuevo_registro = pd.DataFrame([{
+                    "Fecha": datetime.datetime.now().strftime("%Y-%m-%d"),
+                    "monto": monto,
+                    "cuota": sim['cuota_total'],
+                    "ganancia_neta": sim['ganancia_neta'],
+                    "picks": " | ".join([p['pick'] for p in parlay])
+                }])
+                nuevo_registro.to_csv("parlay_history.csv", mode='a', header=not os.path.exists("parlay_history.csv"), index=False)
                 st.success("¡Parlay guardado!")
+                st.rerun()
 
