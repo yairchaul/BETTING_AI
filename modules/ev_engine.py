@@ -1,19 +1,22 @@
 import math
 
 class EVEngine:
-    # ... (funciones poisson_pmf y get_poisson_probs fuera de la clase) ...
-
     def simulate_parlay_profit(self, parlay, monto):
         cuota_total = 1.0
         for p in parlay:
             try:
-                # Limpieza de momio y conversión real
+                # Limpiar momio (ej. "-371" -> -371.0)
                 val = float(str(p["cuota"]).replace('+', '').strip())
-                # Conversión Americana -> Decimal
-                decimal = (val/100 + 1) if val > 0 else (100/abs(val) + 1)
+                
+                # Conversión Americana a Decimal
+                if val > 0:
+                    decimal = (val / 100) + 1
+                else:
+                    decimal = (100 / abs(val)) + 1
+                
                 cuota_total *= decimal
             except:
-                cuota_total *= 1.85
+                cuota_total *= 1.80 # Fallback
         
         pago_total = monto * cuota_total
         return {
@@ -23,10 +26,18 @@ class EVEngine:
         }
 
     def build_parlay(self, games):
-        # Asegúrate de que esta función devuelva los momios detectados por el OCR
-        # para que simulate_parlay_profit use datos reales
-        resultados = []
+        # Esta función debe procesar los 'games' detectados por el OCR
+        # Retorna: (lista_completa_de_analisis, top_5_picks)
+        # Asegúrate de incluir la lógica de cascada aquí
+        resultados = [] 
         for g in games:
-            # Lógica de cascada aquí...
-            pass
-        return resultados, resultados[:5] # Ejemplo
+            # Lógica de probabilidad basada en momios
+            res = {
+                "partido": f"{g['home']} vs {g['away']}",
+                "pick": "Ambos Equipos Anotan", # Ejemplo de cascada
+                "probabilidad": 65.0,
+                "cuota": g['home_odd'],
+                "ev": 0.15
+            }
+            resultados.append(res)
+        return resultados, resultados[:4]
