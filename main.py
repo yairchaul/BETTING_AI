@@ -48,7 +48,7 @@ if archivo:
                 st.markdown(f"""
                 <div style="background:#1e1e1e; padding:15px; border-radius:10px; border-left: 5px solid #00ff9d; margin-bottom:10px;">
                     <small style="color:gray;">{p['partido']}</small><br>
-                    <b style="color:#00ff9d; font-size:18px;">Sí → {p['pick']}</b><br>
+                    <b style="color:#00ff9d; font-size:18px;"> {p['pick']}</b><br>
                     <small>Cuota: {p['cuota']} | Confianza: {'⭐' * (int(p['probabilidad']/20))}</small>
                 </div>
                 """, unsafe_allow_html=True)
@@ -60,3 +60,4 @@ if archivo:
 
             if st.button("💾 Registrar como Apostado"):
                 st.success("¡Parlay guardado!")
+
