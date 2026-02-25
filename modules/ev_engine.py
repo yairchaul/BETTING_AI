@@ -1,7 +1,6 @@
 import math
 from modules.ev_scanner import calculate_ev
 
-# 1. Definir funciones matemáticas FUERA de la clase para que sean globales
 def poisson_pmf(k, lam):
     if lam <= 0: return 1.0 if k == 0 else 0.0
     return math.exp(-lam) * (lam ** k) / math.factorial(k)
@@ -27,28 +26,23 @@ class EVEngine:
         for g in games:
             partido = f"{g.get('home','')} vs {g.get('away','')}"
             
-            # Ajuste dinámico de fuerza (Lambda) basado en momios reales detectados
-            # Esto evita que todos los partidos den el mismo resultado
-            l_home, l_away = 1.65, 1.20 # Valores base
+            # Ajuste de lambdas según momios del OCR
+            l_home, l_away = 1.65, 1.20
             try:
-                h_odd = float(str(g.get("home_odd", "0")).replace('+', ''))
-                if h_odd < 0: l_home += 0.8  # Favorito pesado (ej. PSG -371)
-                elif h_odd < 150: l_home += 0.4
+                h_odd = float(str(g.get("home_odd", "0")).replace('+', '').strip())
+                if h_odd < 0: l_home += 0.7 # Favorito claro
             except: pass
 
             ph, pd, pa = get_poisson_probs(l_home, l_away)
             
-            # --- CÁLCULO DE PROBABILIDADES DE MERCADOS ---
             p_over_1_5 = 1 - (poisson_pmf(0, l_home)*poisson_pmf(0, l_away) + 
                              poisson_pmf(1, l_home)*poisson_pmf(0, l_away) + 
                              poisson_pmf(0, l_home)*poisson_pmf(1, l_away))
-            
             p_btts = (1 - poisson_pmf(0, l_home)) * (1 - poisson_pmf(0, l_away))
-            p_over_1t = p_over_1_5 * 0.42 # Estimación para 1er Tiempo
+            p_over_1t = p_over_1_5 * 0.42
             p_over_2_5 = p_over_1_5 * 0.75
 
-            # --- CASCADA DE DECISIÓN REAL ---
-            chosen = None
+            # --- CASCADA ---
             if p_over_1t >= 0.68:
                 chosen = {"pick": "Over 1.5 1T", "prob": p_over_1t, "cuota": 1.85}
             elif p_btts >= 0.62:
@@ -56,17 +50,16 @@ class EVEngine:
             elif p_over_2_5 >= 0.58:
                 chosen = {"pick": "Over 2.5", "prob": p_over_2_5, "cuota": 1.80}
             else:
-                # Si nada cumple la cascada, el ganador más probable
                 opts = [(f"{g['home']} gana", ph), ("Empate", pd), (f"{g['away']} gana", pa)]
                 best_o, best_p = max(opts, key=lambda x: x[1])
-                chosen = {"pick": best_o, "prob": best_p, "cuota": g.get("home_odd") if "gana" in best_o else 1.90}
+                chosen = {"pick": best_o, "prob": best_p, "cuota": g.get("home_odd") if "gana" in best_o else "+280"}
 
             resultados.append({
                 "partido": partido,
                 "pick": chosen["pick"],
                 "probabilidad": round(chosen["prob"] * 100, 1),
                 "cuota": str(chosen["cuota"]),
-                "ev": round(calculate_ev(chosen["prob"], 1.80), 3) # EV simplificado para visualización
+                "ev": round(calculate_ev(chosen["prob"], 1.80), 3)
             })
 
         parlay = sorted(resultados, key=lambda x: x["probabilidad"], reverse=True)[:5]
@@ -76,10 +69,17 @@ class EVEngine:
         cuota_total = 1.0
         for p in parlay:
             try:
-                val = float(str(p["cuota"]).replace('+', ''))
-                dec = (val/100 + 1) if val > 0 else (100/abs(val) + 1)
-                cuota_total *= dec
-            except: cuota_total *= 1.85
+                val = float(str(p["cuota"]).replace('+', '').strip())
+                # Conversión real: si es positivo (ej +150) o negativo (ej -200)
+                decimal = (val/100 + 1) if val > 0 else (100/abs(val) + 1)
+                cuota_total *= decimal
+            except: 
+                cuota_total *= 1.85 # Valor fallback
         
         pago = monto * cuota_total
-        return {"cuota_total": round(cuota_total, 2), "pago_total": round(pago, 2), "ganancia_neta": round(pago - monto, 2)}
+        return {
+            "cuota_total": round(cuota_total, 2),
+            "pago_total": round(pago, 2),
+            "ganancia_neta": round(pago - monto, 2)
+        }
+
