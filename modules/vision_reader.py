@@ -3,17 +3,16 @@ import streamlit as st
 from google.cloud import vision
 
 def is_odd(text: str) -> bool:
+    # Detecta momios americanos (+120, -110)
     cleaned = re.sub(r'[^0-9+-]', '', text.strip())
     if not cleaned: return False
     try:
         val = int(cleaned)
         return abs(val) >= 100
-    except:
-        return False
+    except: return False
 
 def analyze_betting_image(uploaded_file):
     content = uploaded_file.getvalue()
-    # Usamos tus secretos para Cloud Vision
     client = vision.ImageAnnotatorClient.from_service_account_info(dict(st.secrets["google_credentials"]))
     image = vision.Image(content=content)
     response = client.document_text_detection(image=image)
@@ -33,25 +32,33 @@ def analyze_betting_image(uploaded_file):
 
     if not word_list: return []
 
+    # Agrupamos por "franjas" de altura (Y) más anchas (Tolerancia de 50px)
     matches = []
-    word_list.sort(key=lambda w: w["y"])
     odds_found = [w for w in word_list if is_odd(w["text"])]
     
-    # Agrupación por filas (cada 3 momios usualmente es un partido 1X2)
+    # Ordenar momios de arriba hacia abajo
+    odds_found.sort(key=lambda o: o["y"])
+
+    # Procesamos por grupos de 3 (Local, Empate, Visita)
     for i in range(0, len(odds_found), 3):
         chunk = odds_found[i:i+3]
         if len(chunk) < 2: continue
         
+        # Centro de la fila basado en los momios
         avg_y = sum(o["y"] for o in chunk) / len(chunk)
-        # Filtramos palabras que están en la misma altura (Y) que los momios
-        nearby_text = [w["text"] for w in word_list if abs(w["y"] - avg_y) < 40 and not is_odd(w["text"]) and len(w["text"]) > 3]
+        
+        # Buscamos equipos: Palabras largas cerca de esa altura Y, pero a la IZQUIERDA (X menor)
+        nearby_text = [w["text"] for w in word_list 
+                       if abs(w["y"] - avg_y) < 50 
+                       and not is_odd(w["text"]) 
+                       and len(w["text"]) > 3]
         
         if len(nearby_text) >= 2:
             matches.append({
                 "home": nearby_text[0],
                 "away": nearby_text[1],
                 "home_odd": chunk[0]["text"],
-                "draw_odd": chunk[1]["text"] if len(chunk) > 1 else "+200",
-                "away_odd": chunk[2]["text"] if len(chunk) > 2 else "+100"
+                "draw_odd": chunk[1]["text"] if len(chunk) > 1 else "+230",
+                "away_odd": chunk[2]["text"] if len(chunk) > 2 else "+200"
             })
     return matches
