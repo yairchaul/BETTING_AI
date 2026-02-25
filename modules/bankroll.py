@@ -33,3 +33,19 @@ def calcular_roi(ganancia, inversion):
     if inversion == 0:
         return 0.0
     return round((ganancia / inversion) * 100, 2)
+    # Tu código con la mejora de seguridad:
+def obtener_stake_sugerido(capital_total, confianza_pick):
+    if capital_total <= 0: return 0.0
+    
+    unidad_base = capital_total * 0.10 
+    multiplier = 1.2 if confianza_pick >= 90 else 1.0 if confianza_pick >= 70 else 0.5
+    
+    prob_win = confianza_pick / 100
+    kelly_frac = max(0, prob_win - (1 - prob_win))
+    
+    stake = unidad_base * multiplier * (kelly_frac * 0.5)
+    
+    # Límite de seguridad: Máximo 15% del bankroll total por operación
+    max_permitido = capital_total * 0.15
+    return round(min(stake, max_permitido), 2)
+
