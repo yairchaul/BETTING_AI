@@ -9,75 +9,108 @@ from modules.cerebro import CerebroAuditor
 from modules.tracker import registrar_parlay_automatico, PATH_HISTORIAL
 from modules.bankroll import obtener_stake_sugerido
 
-# Estilos e Interfaz
-st.set_page_config(page_title="Betting AI Pro", layout="wide")
+# --- CONFIGURACIÓN E INTERFAZ ---
+st.set_page_config(page_title="Betting AI - Valor IA", layout="wide")
+
 st.markdown("""
     <style>
     .valor-card {
         background-color: #1a2c3d;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 15px;
-        border-left: 5px solid #1E88E5;
+        border-radius: 12px;
+        padding: 22px;
+        margin-bottom: 20px;
+        border-left: 6px solid #1E88E5;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
-    .pick-text { color: #42A5F5; font-weight: bold; font-size: 1.2rem; }
-    .estado-pendiente { background-color: #ffd700; color: black; padding: 2px 8px; border-radius: 4px; }
+    .pick-header { color: #42A5F5; font-weight: bold; font-size: 1.3rem; margin-bottom: 5px; }
+    .badge-alta { background-color: #2ecc71; color: white; padding: 2px 10px; border-radius: 20px; font-size: 0.8rem; }
+    .badge-media { background-color: #f1c40f; color: black; padding: 2px 10px; border-radius: 20px; font-size: 0.8rem; }
+    .badge-riesgo { background-color: #e74c3c; color: white; padding: 2px 10px; border-radius: 20px; font-size: 0.8rem; }
     </style>
 """, unsafe_allow_html=True)
 
-# Iniciar Módulos
+# Instanciar Módulos
 engine = EVEngine()
 learning = LearningModule()
 auditor = CerebroAuditor()
 
 st.title("📊 Análisis de Valor IA")
 
-archivo = st.file_uploader("Cargar Ticket", type=["jpg", "png", "jpeg"])
+archivo = st.file_uploader("Cargar Ticket de Apuestas", type=["jpg", "png", "jpeg"])
 
 if archivo:
+    st.image(archivo, width=280)
     matches, _ = analyze_betting_image(archivo)
     
     if matches:
-        picks_finales = []
+        picks_auditados = []
         cols = st.columns(2)
         
         for i, game in enumerate(matches):
+            # 1. Obtener Edge Matemático (Poisson Pro)
             poisson_raw = engine.get_raw_probabilities(game)
-            context_f = analyze_context(get_team_context(game['home']))
+            
+            # 2. Obtener Contexto Real (Google)
+            with st.spinner(f"🌐 Verificando noticias: {game['home']}..."):
+                raw_txt = get_team_context(game['home'])
+                context_f = analyze_context(raw_txt)
+            
+            # 3. Obtener Historial (Learning)
             learning_f = learning.analizar_valor_historico(game['home'])
+            
+            # 4. Auditoría del Cerebro
             veredicto = auditor.decidir_mejor_apuesta(poisson_raw, context_f, learning_f)
+            picks_auditados.append(veredicto)
             
-            picks_finales.append(veredicto)
-            
+            # 5. Renderizado Estilo "Valor IA"
             with cols[i % 2]:
+                badge_class = f"badge-{veredicto['estatus'].lower()}"
                 st.markdown(f"""
                 <div class="valor-card">
-                    <h3>{game['home']} vs {game['away']}</h3>
-                    <p class="pick-text">🎯 {veredicto['pick_final']}</p>
-                    <p>Confianza: {veredicto['confianza_final']}% | EV: {veredicto['ev_final']}</p>
-                    <small>{veredicto['nota']}</small>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span class="pick-header">{game['home']} vs {game['away']}</span>
+                        <span class="{badge_class}">{veredicto['estatus']}</span>
+                    </div>
+                    <p style="margin: 10px 0; font-size: 1.1rem;">🎯 Pick: <b>{veredicto['pick_final']}</b></p>
+                    <p style="font-size: 0.9rem; color: #BDC3C7;">
+                        Confianza Final: {veredicto['confianza_final']}% | EV: {veredicto['ev_final']}<br>
+                        <i>{veredicto['nota']}</i>
+                    </p>
                 </div>
                 """, unsafe_allow_html=True)
 
+        # --- SECCIÓN FINANCIERA ---
         st.markdown("---")
-        monto_input = st.number_input("Inversión (MXN)", value=100.0)
-        sim = engine.simulate_parlay_profit(picks_finales, monto_input)
-        sim['monto_invertido'] = monto_input # Aseguramos compatibilidad con tracker.py
+        c_bank, c_inv = st.columns(2)
+        bankroll = c_bank.number_input("Bankroll Total (MXN)", value=1000.0)
+        
+        # Sugerencia de inversión basada en el promedio de confianza del parlay
+        conf_promedio = sum([p['confianza_final'] for p in picks_auditados]) / len(picks_auditados)
+        stake_sugerido = obtener_stake_sugerido(bankroll, conf_promedio)
+        
+        monto_final = c_inv.number_input("Inversión Final Parlay", value=float(stake_sugerido))
+        
+        # Simulación del Parlay
+        sim = engine.simulate_parlay_profit(picks_auditados, monto_final)
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Cuota Final", f"{sim['cuota_total']}x")
+        col2.metric("Pago Potencial", f"${sim['pago_total']}")
+        col3.metric("Ganancia Neta", f"${sim['ganancia_neta']}")
 
-        if st.button("🚀 REGISTRAR PARA SEGUIMIENTO AUTOMÁTICO"):
-            resumen = " | ".join([p['pick_final'] for p in picks_finales])
+        if st.button("🚀 REGISTRAR EN EL TRACKER DE VALOR", use_container_width=True):
+            resumen = " | ".join([p['pick_final'] for p in picks_auditados])
             registrar_parlay_automatico(sim, resumen)
-            st.success("✅ Parlay guardado y tracker activo.")
+            st.success("✅ Parlay guardado exitosamente en el historial.")
             st.rerun()
 
-# --- SECCIÓN DE HISTORIAL VISUAL ---
-st.markdown("### 🏁 Estatus de tus Parlays")
+# --- HISTORIAL VISUAL (ESTATUS) ---
+st.markdown("### 🏁 Estatus y Seguimiento de Parlays")
 if os.path.exists(PATH_HISTORIAL):
     df_h = pd.read_csv(PATH_HISTORIAL)
     
-    # Aplicar colores a los estados
-    def color_estado(val):
+    def style_estado(val):
         color = '#2ecc71' if val == 'Ganado' else '#e74c3c' if val == 'Perdido' else '#f1c40f'
-        return f'background-color: {color}; color: white; font-weight: bold'
+        return f'color: {color}; font-weight: bold'
 
-    st.dataframe(df_h.style.applymap(color_estado, subset=['Estado']), use_container_width=True)
+    st.dataframe(df_h.sort_index(ascending=False).style.applymap(style_estado, subset=['Estado']), use_container_width=True)
