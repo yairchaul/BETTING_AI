@@ -7,18 +7,20 @@ class EVEngine:
         return (math.exp(-lam) * (lam**k)) / math.factorial(k)
 
     def get_raw_probabilities(self, game):
-        """Calcula probabilidades puras para el Cerebro."""
+        """Calcula probabilidades base para que el Cerebro las procese."""
         try:
-            # Limpieza de momios
-            h_odd = float(str(game['home_odd']).replace('+', '').strip())
+            # Limpieza y conversión de momios
+            h_odd_str = str(game.get('home_odd', '100')).replace('+', '').strip()
+            h_odd = float(h_odd_str) if h_odd_str else 100.0
+            
             h_dec = (h_odd/100 + 1) if h_odd > 0 else (100/abs(h_odd) + 1)
             prob_implied = 1 / h_dec
 
-            # Lambdas (Goles esperados)
+            # Proyección de goles (Lambdas)
             l_home = 2.4 * prob_implied
             l_away = 1.3 * (1 - prob_implied)
 
-            # Matriz de probabilidad
+            # Matriz de Poisson para mercados inamovibles
             matrix = np.zeros((6, 6))
             for h in range(6):
                 for a in range(6):
@@ -26,34 +28,28 @@ class EVEngine:
 
             p_home = np.sum(np.tril(matrix, -1))
             p_btts = 1 - (np.sum(matrix[0, :]) + np.sum(matrix[:, 0]) - matrix[0,0])
-            
-            # Determinar mercado base
-            if p_home > 0.60:
-                pick = f"Gana {game['home']}"
-                prob = p_home
-            elif p_btts > 0.55:
-                pick = "Ambos Anotan (BTTS)"
-                prob = p_btts
-            else:
-                pick = "Over 2.5 Goles"
-                prob = 0.5 # Valor neutro si no hay claridad
+            p_over_2_5 = 1 - sum([matrix[h, a] for h in range(6) for a in range(6) if h+a <= 2.5])
+
+            # Determinación del pick con más valor estadístico
+            if p_home > 0.60: pick = f"Gana {game['home']}"; prob = p_home
+            elif p_btts > 0.55: pick = "Ambos Anotan"; prob = p_btts
+            else: pick = "Over 2.5 Goles"; prob = p_over_2_5
 
             return {
                 "pick": pick,
                 "prob": prob,
                 "ev": round((prob * h_dec) - 1, 2),
-                "h_dec": h_dec
+                "cuota_ref": h_dec
             }
-        except Exception as e:
-            # Retorno de emergencia si los datos fallan
-            return {"pick": "Análisis Pendiente", "prob": 0.5, "ev": 0, "h_dec": 1.0}
+        except Exception:
+            return {"pick": "Análisis Manual Requerido", "prob": 0.5, "ev": 0, "cuota_ref": 1.80}
 
     def simulate_parlay_profit(self, picks, monto):
-        """Cálculo final del parlay."""
+        """Calcula el pago potencial del parlay."""
         cuota_total = 1.0
         for p in picks:
-            # Usamos un momio estimado de 1.85 si el pick es de valor
-            cuota_total *= 1.85
+            # Si el pick viene del cerebro, usamos su cuota o una base de 1.80
+            cuota_total *= p.get('cuota_ref', 1.80)
         
         pago = monto * cuota_total
         return {
