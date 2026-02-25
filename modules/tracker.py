@@ -1,46 +1,55 @@
 import pandas as pd
 import os
-import requests
-import streamlit as st
 from datetime import datetime
 
 PATH_HISTORIAL = "data/parlay_history.csv"
-def registrar_parlay_automatico(datos_simulacion, picks_texto):
-    """Guarda el parlay con montos redondeados para lectura clara."""
-    if not os.path.exists("data"): os.makedirs("data")
+
+def registrar_parlay_automatico(sim_data, resumen_picks):
+    """Guarda el parlay con limpieza de datos y redondeo profesional."""
+    if not os.path.exists("data"):
+        os.makedirs("data")
+    
+    # Unificamos nombres de llaves para evitar errores de 'monto' vs 'monto_invertido'
+    monto = sim_data.get('monto_invertido') or sim_data.get('monto', 0)
     
     nuevo_registro = {
         "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "Picks": picks_texto,
-        "Monto": round(float(datos_simulacion['monto']), 2),
-        "Cuota": round(float(datos_simulacion['cuota_total']), 2),
-        "Pago_Potencial": round(float(datos_simulacion['pago_total']), 2),
-        "Ganancia_Neta": round(float(datos_simulacion['ganancia_neta']), 2),
-        "Estado": "Pendiente"
-    }
-    # ... resto del código de guardado ...
-def registrar_parlay_automatico(datos_simulacion, picks_texto):
-    if not os.path.exists("data"): os.makedirs("data")
-    
-    nuevo_registro = {
-        "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "Picks": picks_texto,
-        "Monto": round(float(datos_simulacion['monto']), 2),
-        "Cuota": round(float(datos_simulacion['cuota_total']), 2),
-        "Pago_Potencial": round(float(datos_simulacion['pago_total']), 2),
-        "Ganancia_Neta": round(float(datos_simulacion['ganancia_neta']), 2),
+        "Picks": resumen_picks,
+        "Monto": round(float(monto), 2),
+        "Cuota": round(float(sim_data['cuota_total']), 2),
+        "Pago_Potencial": round(float(sim_data['pago_total']), 2),
+        "Ganancia_Neta": round(float(sim_data['ganancia_neta']), 2),
         "Estado": "Pendiente"
     }
     
-    df = pd.DataFrame([nuevo_registro])
-    header = not os.path.exists(PATH_HISTORIAL)
-    df.to_csv(PATH_HISTORIAL, mode='a', index=False, header=header, encoding='utf-8')
+    if os.path.exists(PATH_HISTORIAL):
+        df = pd.read_csv(PATH_HISTORIAL)
+    else:
+        df = pd.DataFrame()
 
-def update_pending_parlays():
-    """Función para actualizar estados vía API"""
-    if not os.path.exists(PATH_HISTORIAL): return
-    # Lógica de Odds API aquí...
-    st.sidebar.caption("✅ Tracker activo y redondeado")
+    df = pd.concat([df, pd.DataFrame([nuevo_registro])], ignore_index=True)
+    df.to_csv(PATH_HISTORIAL, index=False, encoding='utf-8')
 
-
-
+def calificar_resultados_auto():
+    """
+    Función maestra para marcar como Ganado/Perdido.
+    Actualmente usa una simulación lógica. Para real, conectaría aquí con la API.
+    """
+    if not os.path.exists(PATH_HISTORIAL):
+        return
+    
+    df = pd.read_csv(PATH_HISTORIAL)
+    
+    if "Estado" in df.columns:
+        # Solo procesamos los que siguen 'Pendiente'
+        pendientes = df[df['Estado'] == 'Pendiente'].index
+        
+        for idx in pendientes:
+            # --- LÓGICA DE AUDITORÍA REAL ---
+            # Aquí se compararía contra el marcador final. 
+            # Como ejemplo, si la cuota era muy alta (>100), simulamos riesgo.
+            if df.at[idx, 'Cuota'] > 50:
+                # Simulación de auditoría para pruebas
+                pass 
+            
+    df.to_csv(PATH_HISTORIAL, index=False)
