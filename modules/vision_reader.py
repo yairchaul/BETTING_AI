@@ -2,46 +2,33 @@ import re
 
 def analyze_betting_image(archivo):
     """
-    Procesa el ticket de forma global. 
-    Busca patrones de momios (+/- seguido de números) y nombres de equipos 
-    sin restringirse a una base de datos estática.
+    EXTRACCIÓN GLOBAL: No depende de nombres específicos.
+    Busca patrones de texto y momios en toda la imagen y los agrupa por proximidad.
     """
-    # 1. Simulación de OCR (aquí recibes el string completo de la imagen)
-    # El objetivo es que el OCR no segmente, sino que entregue el "chorizo" de texto.
-    raw_text = "Meisatla Lungleng FC +110 +255 +180 Kirivong Svan Rieng +2000 +580 -1200" 
+    # 1. El OCR debe entregar el texto bruto (aquí simulado)
+    # Este proceso ahora es agnóstico: cualquier palabra con Mayúscula es un equipo potencial.
+    raw_text = "Cualquier Equipo A vs Cualquier Equipo B +120 -110 +300" 
 
-    # 2. Patrones globales
-    # Buscamos cualquier cosa que parezca un momio americano
+    # Patrón para momios americanos (+150, -200, etc)
     pattern_odds = r'([+-]\d{3,4})'
-    # Buscamos bloques de texto que parezcan nombres (Palabras con Mayúsculas)
-    pattern_teams = r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)'
+    # Patrón para nombres de equipos (Palabras que empiezan con Mayúscula)
+    pattern_teams = r'([A-Z][a-zñáéíóú]+(?:\s[A-Z][a-zñáéíóú]+)*)'
 
     all_odds = re.findall(pattern_odds, raw_text)
     all_teams = re.findall(pattern_teams, raw_text)
 
     matches = []
     
-    # 3. Lógica de Vinculación Global (Cascada de Emparejamiento)
-    # Por cada 2 equipos encontrados, intentamos extraer los siguientes 3 momios (1 X 2)
+    # Emparejamiento por estructura de bloques (Global)
     for i in range(0, len(all_teams) - 1, 2):
-        try:
-            # Calculamos el índice base de los momios para este par de equipos
-            # Si es el primer par de equipos, busca los primeros 3 momios, y así...
-            idx_odd = (i // 2) * 3
-            
-            if idx_odd + 2 < len(all_odds):
-                game = {
-                    "home": all_teams[i],
-                    "away": all_teams[i+1],
-                    "home_odd": all_odds[idx_odd],    # Momio Local
-                    "draw_odd": all_odds[idx_odd+1],  # Momio Empate
-                    "away_odd": all_odds[idx_odd+2]   # Momio Visita
-                }
-                matches.append(game)
-        except Exception:
-            continue
-
-    # Si no se detectó nada, enviamos un log de debug para el usuario
-    debug_msg = f"Detectados: {len(all_teams)} equipos y {len(all_odds)} momios."
+        idx_odd = (i // 2) * 3
+        if idx_odd + 2 < len(all_odds):
+            matches.append({
+                "home": all_teams[i],
+                "away": all_teams[i+1],
+                "home_odd": all_odds[idx_odd],
+                "draw_odd": all_odds[idx_odd+1],
+                "away_odd": all_odds[idx_odd+2]
+            })
     
-    return matches, debug_msg
+    return matches, f"Global: {len(matches)} partidos detectados."
