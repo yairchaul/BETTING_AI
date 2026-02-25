@@ -1,45 +1,40 @@
-import re
+import google.generativeai as genai
 from PIL import Image
-import pytesseract # O el motor de visión que estés usando (Gemini Vision/Google OCR)
+import re
 
 def analyze_betting_image(archivo):
     """
-    Lee la imagen real subida por el usuario y extrae equipos y momios globalmente.
+    Usa Gemini Vision para leer la imagen y extraer equipos y momios de forma global.
     """
     try:
-        # 1. Convertir el archivo subido a una imagen procesable
         img = Image.open(archivo)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # 2. Extraer texto real de la imagen (OCR)
-        # Si usas la API de Gemini Vision, aquí iría la llamada a la API.
-        raw_text = pytesseract.image_to_string(img) 
+        prompt = """
+        Analiza esta imagen de apuestas y extrae TODOS los partidos.
+        Para cada partido busca: Nombre Equipo Local, Nombre Equipo Visitante, Momio Local, Momio Empate, Momio Visitante.
+        Devuelve solo el texto en este formato:
+        Local vs Visitante | L: momio | E: momio | V: momio
+        """
         
-        # 3. Limpieza de ruido del OCR
-        raw_text = raw_text.replace('\n', ' ')
-
-        # Patrones Globales (Inamovibles)
-        pattern_teams = r'([A-Z][a-zñáéíóú]+(?:\s[A-Z][a-zñáéíóúFCUnite]+)*)'
-        pattern_odds = r'([+-]\d{2,4})'
-
-        teams = re.findall(pattern_teams, raw_text)
-        odds = re.findall(pattern_odds, raw_text)
-
+        response = model.generate_content([prompt, img])
+        texto = response.text
+        
+        # Procesamiento del texto extraído para convertirlo en lista de diccionarios
         matches = []
-        for i in range(0, len(teams) - 1, 2):
-            idx_o = (i // 2) * 3
-            if idx_o + 2 < len(odds):
+        lineas = texto.strip().split('\n')
+        for linea in lineas:
+            # RegEx para capturar equipos y momios del formato de respuesta
+            res = re.search(r"(.+?) vs (.+?) \| L: (.+?) \| E: (.+?) \| V: (.+?)", linea)
+            if res:
                 matches.append({
-                    "home": teams[i].strip(),
-                    "away": teams[i+1].strip(),
-                    "home_odd": odds[idx_o],
-                    "draw_odd": odds[idx_o+1],
-                    "away_odd": odds[idx_o+2]
+                    "home": res.group(1).strip(),
+                    "away": res.group(2).strip(),
+                    "home_odd": res.group(3).strip(),
+                    "draw_odd": res.group(4).strip(),
+                    "away_odd": res.group(5).strip()
                 })
         
-        if not matches:
-            return [], "⚠️ No se detectaron equipos o momios claros. Revisa la nitidez de la imagen."
-            
-        return matches, f"✅ Éxito: {len(matches)} partidos analizados de tu imagen."
-
+        return matches, "Lectura de Vision AI completada."
     except Exception as e:
-        return [], f"❌ Error al procesar la imagen: {str(e)}"
+        return [], f"Error en Vision: {str(e)}"
