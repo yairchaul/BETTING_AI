@@ -83,3 +83,4 @@ class EVEngine:
         
         pago = monto * cuota_total
         return {"cuota_total": round(cuota_total, 2), "pago_total": round(pago, 2), "ganancia_neta": round(pago - monto, 2)}
+
