@@ -1,34 +1,37 @@
+# modules/vision_reader.py - Lector global de tickets (imagen o texto pegado)
 import re
 
-def analyze_betting_image(archivo):
+def analizar_ticket(texto_raw):
     """
-    EXTRACCIÓN GLOBAL: No depende de nombres específicos.
-    Busca patrones de texto y momios en toda la imagen y los agrupa por proximidad.
+    Detecta partidos y momios de forma 100% global.
+    Funciona con cualquier liga y formato de Caliente.mx.
     """
-    # 1. El OCR debe entregar el texto bruto (aquí simulado)
-    # Este proceso ahora es agnóstico: cualquier palabra con Mayúscula es un equipo potencial.
-    raw_text = "Cualquier Equipo A vs Cualquier Equipo B +120 -110 +300" 
-
-    # Patrón para momios americanos (+150, -200, etc)
-    pattern_odds = r'([+-]\d{3,4})'
-    # Patrón para nombres de equipos (Palabras que empiezan con Mayúscula)
-    pattern_teams = r'([A-Z][a-zñáéíóú]+(?:\s[A-Z][a-zñáéíóú]+)*)'
-
-    all_odds = re.findall(pattern_odds, raw_text)
-    all_teams = re.findall(pattern_teams, raw_text)
-
+    lines = texto_raw.split('\n')
     matches = []
-    
-    # Emparejamiento por estructura de bloques (Global)
-    for i in range(0, len(all_teams) - 1, 2):
-        idx_odd = (i // 2) * 3
-        if idx_odd + 2 < len(all_odds):
+
+    for line in lines:
+        # Patrón global: equipos (mayúsculas + palabras) + momios (+/- números)
+        team_pattern = r'([A-Z][A-Za-zñáéíóú\s]+?)\s+(?=[+-]|\d)'
+        odd_pattern = r'([+-]?\d{3,4})'
+
+        teams = re.findall(team_pattern, line)
+        odds = re.findall(odd_pattern, line)
+
+        if len(teams) >= 2 and len(odds) >= 3:
+            home = teams[0].strip()
+            away = teams[1].strip()
+            # Tomamos los 3 momios principales (1, X, 2)
+            home_odd = odds[0]
+            draw_odd = odds[1] if len(odds) > 1 else '+999'
+            away_odd = odds[2] if len(odds) > 2 else '+999'
+
             matches.append({
-                "home": all_teams[i],
-                "away": all_teams[i+1],
-                "home_odd": all_odds[idx_odd],
-                "draw_odd": all_odds[idx_odd+1],
-                "away_odd": all_odds[idx_odd+2]
+                "home": home,
+                "away": away,
+                "home_odd": home_odd,
+                "draw_odd": draw_odd,
+                "away_odd": away_odd,
+                "raw": line.strip()
             })
-    
-    return matches, f"Global: {len(matches)} partidos detectados."
+
+    return matches
