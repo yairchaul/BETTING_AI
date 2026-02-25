@@ -21,7 +21,7 @@ with st.sidebar:
                 st.metric("ROI Total", f"{(ganancia/apostado*100 if apostado > 0 else 0):.1f}%")
                 st.markdown("---")
                 for _, r in hist.tail(5).iterrows():
-                    # Usamos .get() con valores por defecto para seguridad
+                    # Usamos .get() para evitar errores si la columna no existe
                     f = r.get('fecha', 'S/F')
                     g = r.get('ganancia_neta', 0.0)
                     st.write(f"📅 {f} | **${g:.1f}**")
@@ -33,15 +33,14 @@ st.title("🤖 PARLAY MAESTRO — Filtro 85%")
 archivo = st.file_uploader("Sube captura", type=["png", "jpg", "jpeg"])
 
 if archivo:
-    with st.spinner("Analizando..."):
+    with st.spinner("Analizando con Visión..."):
         games = analyze_betting_image(archivo)
     
     if games:
-        # Mostramos la tabla que sale en tu captura image_f7083c.png
         with st.expander("🏟️ Verificación de Partidos"):
             st.dataframe(games, use_container_width=True)
 
-        # Ahora el constructor sí aceptará el threshold
+        # Ahora el constructor sí acepta el threshold
         engine = EVEngine(threshold=0.85)
         resultados, parlay = engine.build_parlay(games)
 
@@ -49,7 +48,7 @@ if archivo:
         c1, c2 = st.columns(2)
         for idx, r in enumerate(resultados):
             with (c1 if idx % 2 == 0 else c2):
-                # Verificamos si existe la llave para evitar errores
+                # Verificamos si pasa el filtro del 85%
                 if r.get('pasa_filtro', False):
                     st.success(f"✅ **{r['partido']}**\n\n{r['pick']} | **{r['probabilidad']}%**")
                 else:
