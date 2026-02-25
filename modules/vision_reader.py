@@ -1,30 +1,30 @@
 import google.generativeai as genai
 from PIL import Image
 import re
+import streamlit as st
 
 def analyze_betting_image(archivo):
     """
-    Usa Gemini Vision para leer la imagen y extraer equipos y momios de forma global.
+    Motor de Visión Original: Lee la imagen real y extrae datos globales.
     """
     try:
         img = Image.open(archivo)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Usamos la versión estable del modelo para evitar el error 404
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
         prompt = """
-        Analiza esta imagen de apuestas y extrae TODOS los partidos.
-        Para cada partido busca: Nombre Equipo Local, Nombre Equipo Visitante, Momio Local, Momio Empate, Momio Visitante.
-        Devuelve solo el texto en este formato:
+        Extrae los datos de esta imagen de apuestas. Para cada partido detectado, 
+        devuelve EXACTAMENTE una línea con este formato:
         Local vs Visitante | L: momio | E: momio | V: momio
+        No añadidas texto extra, solo los partidos encontrados.
         """
         
         response = model.generate_content([prompt, img])
-        texto = response.text
+        texto_sucio = response.text
         
-        # Procesamiento del texto extraído para convertirlo en lista de diccionarios
         matches = []
-        lineas = texto.strip().split('\n')
-        for linea in lineas:
-            # RegEx para capturar equipos y momios del formato de respuesta
+        # Procesamos línea por línea el resultado de la IA
+        for linea in texto_sucio.strip().split('\n'):
             res = re.search(r"(.+?) vs (.+?) \| L: (.+?) \| E: (.+?) \| V: (.+?)", linea)
             if res:
                 matches.append({
@@ -35,6 +35,10 @@ def analyze_betting_image(archivo):
                     "away_odd": res.group(5).strip()
                 })
         
-        return matches, "Lectura de Vision AI completada."
+        if not matches:
+            return [], "No se pudieron estructurar los datos de la imagen."
+            
+        return matches, f"✅ Se detectaron {len(matches)} partidos en tu imagen."
+
     except Exception as e:
-        return [], f"Error en Vision: {str(e)}"
+        return [], f"⚠️ Error Crítico en Motor de Visión: {str(e)}"
