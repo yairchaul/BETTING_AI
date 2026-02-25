@@ -2,67 +2,40 @@ import re
 import io
 import streamlit as st
 from google.cloud import vision
-from PIL import Image, ImageDraw
+from PIL import Image
 
 def is_odd(text: str) -> bool:
-    cleaned = re.sub(r'\s+', '', text.strip())
-    return bool(re.match(r'^[+-]?\d{2,4}$', cleaned))
+    cleaned = re.sub(r'\s+', '', text.strip()).replace('+', '')
+    try:
+        val = int(cleaned)
+        return abs(val) >= 100 or val == 0 # Momios americanos típicos
+    except:
+        return False
 
 def detect_market_type(texts: list) -> dict:
     text_str = " ".join(texts).lower()
-    if "empate" in text_str:
+    if "empate" in text_str or len([t for t in texts if is_odd(t)]) >= 2:
         return {"type": "1X2"}
-    if any(x in text_str for x in ["over", "under", "más de", "menos de", "1.5", "2.5", "3.5"]):
-        line_match = re.search(r'(\d+\.?\d*)', text_str)
-        line = line_match.group(1) if line_match else "2.5"
-        o_type = "Over" if any(x in text_str for x in ["over", "más de"]) else "Under"
-        return {"type": "Over/Under", "line": line, "o_type": o_type}
-    if any(x in text_str for x in ["1t", "1er tiempo", "primer tiempo", "1 tiempo"]):
-        return {"type": "1T"}
     return {"type": "Unknown"}
 
 def parse_row(texts: list) -> dict | None:
+    """Lógica para formato horizontal (PC)"""
     market = detect_market_type(texts)
-    
     if market["type"] == "1X2":
-        if "Empate" not in texts: return None
-        i = 0
-        home_parts = []
-        while i < len(texts) and not is_odd(texts[i]) and texts[i] != "Empate":
-            home_parts.append(texts[i])
-            i += 1
-        home = " ".join(home_parts).strip()
-        if i >= len(texts) or not is_odd(texts[i]): return None
-        home_odd = texts[i]; i += 1
-        if i >= len(texts) or texts[i] != "Empate": return None
-        i += 1
-        if i >= len(texts) or not is_odd(texts[i]): return None
-        draw_odd = texts[i]; i += 1
-        away_parts = []
-        while i < len(texts) and not is_odd(texts[i]):
-            away_parts.append(texts[i])
-            i += 1
-        away = " ".join(away_parts).strip()
-        return {
-            "market": "1X2",
-            "home": home,
-            "home_odd": home_odd,
-            "draw_odd": draw_odd,
-            "away": away,
-            "away_odd": texts[i] if i < len(texts) and is_odd(texts[i]) else None
-        }
-    
-    elif market["type"] == "Over/Under":
-        line = market["line"]
-        odd = next((t for t in texts if is_odd(t)), None)
-        if not odd: return None
-        return {
-            "market": "Over/Under",
-            "line": line,
-            "odd": odd,
-            "type": market["o_type"]
-        }
-    
+        # Caso con palabra "Empate"
+        if "Empate" in texts:
+            idx_empate = texts.index("Empate")
+            home = " ".join(texts[:idx_empate-1]).strip()
+            home_odd = texts[idx_empate-1]
+            draw_odd = texts[idx_empate+1]
+            away = " ".join(texts[idx_empate+2:-1]).strip()
+            away_odd = texts[-1]
+            return {"market": "1X2", "home": home, "home_odd": home_odd, "draw_odd": draw_odd, "away": away, "away_odd": away_odd}
+        
+        # Caso sin "Empate" (bloque de 3 momios seguidos)
+        odds = [t for t in texts if is_odd(t)]
+        if len(odds) >= 3:
+            return {"market": "1X2", "home": texts[0], "home_odd": odds[0], "draw_odd": odds[1], "away": texts[-2], "away_odd": odds[2]}
     return None
 
 def analyze_betting_image(uploaded_file):
@@ -77,48 +50,61 @@ def analyze_betting_image(uploaded_file):
             for paragraph in block.paragraphs:
                 for word in paragraph.words:
                     word_text = ''.join(s.text for s in word.symbols).strip()
-                    if len(word_text) < 2: continue
                     v = word.bounding_box.vertices
-                    min_x = min(vv.x for vv in v)
-                    max_x = max(vv.x for vv in v)
-                    min_y = min(vv.y for vv in v)
-                    max_y = max(vv.y for vv in v)
                     word_list.append({
                         "text": word_text,
-                        "x": (min_x + max_x)/2,
-                        "y": (min_y + max_y)/2,
-                        "height": max_y - min_y
+                        "x": (v[0].x + v[2].x) / 2,
+                        "y": (v[0].y + v[2].y) / 2,
+                        "height": v[2].y - v[0].y
                     })
 
-    word_list.sort(key=lambda w: w["y"])
-    heights = [w["height"] for w in word_list]
-    median_height = sorted(heights)[len(heights)//2] if heights else 30
-    row_threshold = median_height * 1.55   # más flexible para tablas densas
+    if not word_list: return []
 
+    # Ordenar por Y para detectar filas
+    word_list.sort(key=lambda w: w["y"])
     rows = []
-    current_row = [word_list[0]]
-    for w in word_list[1:]:
-        if abs(w["y"] - current_row[-1]["y"]) < row_threshold:
-            current_row.append(w)
-        else:
-            rows.append(current_row)
-            current_row = [w]
-    rows.append(current_row)
+    if word_list:
+        current_row = [word_list[0]]
+        for w in word_list[1:]:
+            if abs(w["y"] - current_row[-1]["y"]) < (current_row[-1]["height"] * 1.5):
+                current_row.append(w)
+            else:
+                rows.append(current_row)
+                current_row = [w]
+        rows.append(current_row)
 
     matches = []
     debug_rows = []
+    
+    # Intento 1: Formato Horizontal (PC)
     for row_words in rows:
-        if len(row_words) < 3: continue
         row_words.sort(key=lambda w: w["x"])
-        texts = [w["text"] for w in row_words]
+        texts = [w["text"] for w in row_words if len(w["text"]) >= 2]
+        if len(texts) < 3: continue
         debug_rows.append(texts)
         match = parse_row(texts)
-        if match:
-            matches.append(match)
+        if match: matches.append(match)
 
-    with st.expander("🔍 DEBUG OCR - Filas detectadas", expanded=True):
-        for i, texts in enumerate(debug_rows):
-            st.write(f"Fila {i+1}: {texts}")
-        st.success(f"✅ {len(matches)} mercados detectados (1X2 + Over/Under + 1T)")
+    # Intento 2: Formato Vertical (Móvil) - Si no hubo éxito horizontal
+    if len(matches) == 0:
+        for i in range(len(rows) - 2):
+            # Combinamos 3 filas consecutivas para simular un bloque de móvil
+            combined_texts = [w["text"] for w in (rows[i] + rows[i+1] + rows[i+2])]
+            odds = [t for t in combined_texts if is_odd(t)]
+            if len(odds) >= 2:
+                # Limpiar nombres de equipos (lo que no es momio ni liga)
+                potential_teams = [t for t in combined_texts if not is_odd(t) and len(t) > 3]
+                if len(potential_teams) >= 2:
+                    matches.append({
+                        "market": "1X2",
+                        "home": potential_teams[0],
+                        "home_odd": odds[0],
+                        "draw_odd": odds[1] if len(odds) > 1 else "+250",
+                        "away": potential_teams[1],
+                        "away_odd": odds[2] if len(odds) > 2 else "+150"
+                    })
+
+    with st.expander("🔍 DEBUG OCR", expanded=False):
+        for r in debug_rows: st.write(r)
 
     return matches
