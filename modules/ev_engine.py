@@ -1,64 +1,88 @@
 import math
-import numpy as np
+from modules.ev_scanner import calculate_ev
+
+# 1. Definir funciones matemáticas FUERA de la clase para que sean globales
+def poisson_pmf(k, lam):
+    if lam <= 0: return 1.0 if k == 0 else 0.0
+    return math.exp(-lam) * (lam ** k) / math.factorial(k)
+
+def get_poisson_probs(lambda_home, lambda_away):
+    max_goals = 8
+    p_home = p_draw = p_away = 0.0
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            prob = poisson_pmf(h, lambda_home) * poisson_pmf(a, lambda_away)
+            if h > a: p_home += prob
+            elif h == a: p_draw += prob
+            else: p_away += prob
+    total = p_home + p_draw + p_away
+    return p_home/total, p_draw/total, p_away/total
 
 class EVEngine:
-    def __init__(self, threshold=0.85):
-        self.threshold = threshold
-
-    def _poisson_pmf(self, k, lam):
-        return (math.exp(-lam) * (lam**k)) / math.factorial(k) if lam > 0 else (1.0 if k==0 else 0.0)
+    def __init__(self):
+        self.min_ev_threshold = 0.13
 
     def build_parlay(self, games):
-        resultados_totales = []
-        parlay_final = []
-        
+        resultados = []
         for g in games:
+            partido = f"{g.get('home','')} vs {g.get('away','')}"
+            
+            # Ajuste dinámico de fuerza (Lambda) basado en momios reales detectados
+            # Esto evita que todos los partidos den el mismo resultado
+            l_home, l_away = 1.65, 1.20 # Valores base
             try:
-                # Traducción de momios a fuerza de gol (Agnóstico)
-                def to_p(o):
-                    v = float(str(o).replace('+', ''))
-                    return 100/(v+100) if v > 0 else abs(v)/(abs(v)+100)
-                
-                # Lambdas basadas en probabilidad implícita
-                l_h = to_p(g.get('home_odd', 100)) * 2.8
-                l_v = to_p(g.get('away_odd', 100)) * 2.8
-            except: l_h, l_v = 1.3, 1.1
+                h_odd = float(str(g.get("home_odd", "0")).replace('+', ''))
+                if h_odd < 0: l_home += 0.8  # Favorito pesado (ej. PSG -371)
+                elif h_odd < 150: l_home += 0.4
+            except: pass
 
-            # Matriz de 7x7 marcadores posibles
-            m = np.fromfunction(np.vectorize(lambda h, v: self._poisson_pmf(h, l_h) * self._poisson_pmf(v, l_v)), (7, 7))
+            ph, pd, pa = get_poisson_probs(l_home, l_away)
+            
+            # --- CÁLCULO DE PROBABILIDADES DE MERCADOS ---
+            p_over_1_5 = 1 - (poisson_pmf(0, l_home)*poisson_pmf(0, l_away) + 
+                             poisson_pmf(1, l_home)*poisson_pmf(0, l_away) + 
+                             poisson_pmf(0, l_home)*poisson_pmf(1, l_away))
+            
+            p_btts = (1 - poisson_pmf(0, l_home)) * (1 - poisson_pmf(0, l_away))
+            p_over_1t = p_over_1_5 * 0.42 # Estimación para 1er Tiempo
+            p_over_2_5 = p_over_1_5 * 0.75
 
-            # --- EVALUACIÓN DE TODAS LAS CAPAS ---
-            opciones = []
-            
-            # Doble Oportunidad (1X)
-            p_1x = m.sum() - np.tril(m, -1).sum()
-            opciones.append({"pick": f"{g['home']} o Empate", "p": p_1x, "c": 1.25})
-            
-            # Over 1.5 Goles
-            p_o15 = 1 - (m[0,0] + m[0,1] + m[1,0])
-            opciones.append({"pick": "Over 1.5 Goles", "p": p_o15, "c": 1.35})
-            
-            # Ambos Anotan (BTTS)
-            p_btts = (1 - m[0,:].sum()) * (1 - m[:,0].sum())
-            opciones.append({"pick": "Ambos Anotan", "p": p_btts, "c": 1.70})
+            # --- CASCADA DE DECISIÓN REAL ---
+            chosen = None
+            if p_over_1t >= 0.68:
+                chosen = {"pick": "Over 1.5 1T", "prob": p_over_1t, "cuota": 1.85}
+            elif p_btts >= 0.62:
+                chosen = {"pick": "Ambos Equipos Anotan", "prob": p_btts, "cuota": 1.75}
+            elif p_over_2_5 >= 0.58:
+                chosen = {"pick": "Over 2.5", "prob": p_over_2_5, "cuota": 1.80}
+            else:
+                # Si nada cumple la cascada, el ganador más probable
+                opts = [(f"{g['home']} gana", ph), ("Empate", pd), (f"{g['away']} gana", pa)]
+                best_o, best_p = max(opts, key=lambda x: x[1])
+                chosen = {"pick": best_o, "prob": best_p, "cuota": g.get("home_odd") if "gana" in best_o else 1.90}
 
-            # --- LÓGICA DE FILTRADO ---
-            # Guardamos el mejor de cada partido para mostrarlo aunque no llegue al 85%
-            mejor_opcion = max(opciones, key=lambda x: x['p'])
-            
-            resultado = {
-                "partido": f"{g['home']} vs {g['away']}",
-                "pick": mejor_opcion['pick'],
-                "probabilidad": round(mejor_opcion['p'] * 100, 1),
-                "cuota": mejor_opcion['c'],
-                "pasa_filtro": mejor_opcion['p'] >= self.threshold
-            }
-            resultados_totales.append(resultado)
-            
-            # Solo agregamos al Parlay si cumple tu regla del 85%
-            if resultado["pasa_filtro"]:
-                parlay_final.append(resultado)
+            resultados.append({
+                "partido": partido,
+                "pick": chosen["pick"],
+                "probabilidad": round(chosen["prob"] * 100, 1),
+                "cuota": str(chosen["cuota"]),
+                "ev": round(calculate_ev(chosen["prob"], 1.80), 3) # EV simplificado para visualización
+            })
 
-        return resultados_totales, parlay_final[:3]
+        parlay = sorted(resultados, key=lambda x: x["probabilidad"], reverse=True)[:5]
+        return resultados, parlay
+
+    def simulate_parlay_profit(self, parlay, monto):
+        cuota_total = 1.0
+        for p in parlay:
+            try:
+                val = float(str(p["cuota"]).replace('+', ''))
+                dec = (val/100 + 1) if val > 0 else (100/abs(val) + 1)
+                cuota_total *= dec
+            except: cuota_total *= 1.85
+        
+        pago = monto * cuota_total
+        return {"cuota_total": round(cuota_total, 2), "pago_total": round(pago, 2), "ganancia_neta": round(pago - monto, 2)}
+
 
 
