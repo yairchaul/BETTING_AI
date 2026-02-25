@@ -26,40 +26,43 @@ class EVEngine:
     def build_parlay(self, games):
         resultados_totales = []
         for g in games:
-            # Ajuste dinámico de fuerza
-            l_home, l_away = 1.65, 1.20
+            # Ajuste dinámico de fuerza (Lambda)
+            l_home, l_away = 1.65, 1.20 
             try:
                 h_odd = float(str(g.get("home_odd", "0")).replace('+', ''))
-                if h_odd < 0: l_home += 0.8
+                if h_odd < 0: l_home += 0.8  
                 elif h_odd < 150: l_home += 0.4
             except: pass
 
             ph, pd, pa = get_poisson_probs(l_home, l_away)
             
-            # Mercados
+            # Probabilidades de mercados
             p_over_1_5 = 1 - (poisson_pmf(0, l_home)*poisson_pmf(0, l_away) + 
                              poisson_pmf(1, l_home)*poisson_pmf(0, l_away) + 
                              poisson_pmf(0, l_home)*poisson_pmf(1, l_away))
             
             opciones = [
-                {"pick": "Over 1.5 Goles", "p": p_over_1_5, "c": 1.35},
-                {"pick": f"{g.get('home')} o Empate", "p": ph + pd, "c": 1.25}
+                {"pick": f"{g.get('home')} o Empate", "p": ph + pd, "c": 1.25},
+                {"pick": "Over 1.5 Goles", "p": p_over_1_5, "c": 1.35}
             ]
-            
-            mejor = max(opciones, key=lambda x: x['p'])
-            
-            # Formato compatible con el main.py
-            res = {
-                "partido": f"{g.get('home')} vs {g.get('away')}",
-                "pick": mejor['pick'],
-                "probabilidad": round(mejor['p'] * 100, 1),
-                "cuota": str(mejor['c']),
-                "pasa_filtro": mejor['p'] >= self.threshold,
-                "ev": round(calculate_ev(mejor['p'], 1.80), 3)
-            }
-            resultados_totales.append(res)
 
-        parlay = [r for r in resultados_totales if r["pasa_filtro"]][:5]
+            mejor_opcion = max(opciones, key=lambda x: x['p'])
+
+            # FORMATO FINAL EXIGIDO POR EL MAIN
+            resultado = {
+                "partido": f"{g.get('home', 'L')} vs {g.get('away', 'V')}",
+                "pick": mejor_opcion['pick'],
+                "probabilidad": round(mejor_opcion['p'] * 100, 1),
+                "cuota": str(mejor_opcion['c']),
+                "pasa_filtro": mejor_opcion['p'] >= self.threshold, # <--- CRÍTICO
+                "ev": round(calculate_ev(mejor_opcion['p'], float(mejor_opcion['c'])), 3)
+            }
+            resultados_totales.append(resultado)
+
+        # Seleccionar para el Parlay solo los que pasaron el filtro
+        parlay = [r for r in resultados_totales if r["pasa_filtro"]]
+        parlay = sorted(parlay, key=lambda x: x["probabilidad"], reverse=True)[:5]
+        
         return resultados_totales, parlay
 
     def simulate_parlay_profit(self, parlay, monto):
@@ -67,38 +70,10 @@ class EVEngine:
         for p in parlay:
             try:
                 val = float(str(p["cuota"]).replace('+', ''))
-                dec = (val/100 + 1) if val > 0 else (100/abs(val) + 1) if val != 0 else 1.0
+                dec = (val/100 + 1) if val > 0 else (100/abs(val) + 1)
                 cuota_total *= dec
-            except: cuota_total *= 1.35
+            except: cuota_total *= 1.30 
         
         pago = monto * cuota_total
-        return {"cuota_total": round(cuota_total, 2), "pago_total": round(pago
-class EVEngine:
-    # Agregamos el parámetro threshold para corregir el TypeError
-    def __init__(self, threshold=0.85):
-        self.threshold = threshold
-        self.min_ev_threshold = 0.13
-
-    def build_parlay(self, games):
-        resultados_totales = []
-        # ... (aquí va tu lógica de Poisson) ...
-        
-        # Asegúrate de que cada resultado incluya 'pasa_filtro'
-        # Esto es lo que el main.py necesita para dibujar las tarjetas
-        for g in games:
-            # Ejemplo de salida para un partido:
-            res = {
-                "partido": f"{g.get('home')} vs {g.get('away')}",
-                "pick": "Over 1.5 Goles", # o tu pick dinámico
-                "probabilidad": 87.5, 
-                "cuota": "1.35",
-                "pasa_filtro": 0.875 >= self.threshold # <--- CRÍTICO
-            }
-            resultados_totales.append(res)
-        
-        # Filtramos los que sí van al parlay sugerido
-        parlay = [r for r in resultados_totales if r["pasa_filtro"]]
-        return resultados_totales, parlay
-
-
+        return {"cuota_total": round(cuota_total, 2), "pago_total": round(pago, 2), "ganancia_neta": round(pago - monto, 2)}
 
