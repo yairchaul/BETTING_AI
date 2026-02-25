@@ -1,44 +1,50 @@
 import google.generativeai as genai
 from PIL import Image
 import re
-import streamlit as st
 
 def analyze_betting_image(archivo):
     """
-    Motor de Visión Original: Lee la imagen real y extrae datos globales.
+    EXTRACCIÓN GLOBAL REAL: Lee tu imagen y usa RegEx para estructurar los datos.
     """
     try:
+        # 1. Cargar la imagen real subida
         img = Image.open(archivo)
-        # Usamos la versión estable del modelo para evitar el error 404
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
-        prompt = """
-        Extrae los datos de esta imagen de apuestas. Para cada partido detectado, 
-        devuelve EXACTAMENTE una línea con este formato:
-        Local vs Visitante | L: momio | E: momio | V: momio
-        No añadidas texto extra, solo los partidos encontrados.
-        """
+        # Usamos el modelo flash más reciente y estable
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
+        # 2. Pedimos a la IA que extraiga el texto bruto de forma limpia
+        prompt = "Extrae todos los nombres de equipos y momios de esta imagen. No expliques nada, solo dame el texto."
         response = model.generate_content([prompt, img])
-        texto_sucio = response.text
-        
+        raw_text = response.text
+
+        # 3. Tu lógica de Patrones (La que te funcionaba)
+        # Captura equipos (Mayúsculas compuestas)
+        pattern_teams = r'([A-Z][a-zñáéíóú]+(?:\s[A-Z][a-zñáéíóú]+)*)'
+        # Captura momios americanos (+/-)
+        pattern_odds = r'([+-]\d{2,4})'
+
+        teams = re.findall(pattern_teams, raw_text)
+        odds = re.findall(pattern_odds, raw_text)
+
         matches = []
-        # Procesamos línea por línea el resultado de la IA
-        for linea in texto_sucio.strip().split('\n'):
-            res = re.search(r"(.+?) vs (.+?) \| L: (.+?) \| E: (.+?) \| V: (.+?)", linea)
-            if res:
+        # Vinculación lógica: Cada 2 equipos, 3 momios
+        for i in range(0, len(teams) - 1, 2):
+            idx_o = (i // 2) * 3
+            if idx_o + 2 < len(odds):
                 matches.append({
-                    "home": res.group(1).strip(),
-                    "away": res.group(2).strip(),
-                    "home_odd": res.group(3).strip(),
-                    "draw_odd": res.group(4).strip(),
-                    "away_odd": res.group(5).strip()
+                    "home": teams[i].strip(),
+                    "away": teams[i+1].strip(),
+                    "home_odd": odds[idx_o],
+                    "draw_odd": odds[idx_o+1],
+                    "away_odd": odds[idx_o+2]
                 })
         
         if not matches:
-            return [], "No se pudieron estructurar los datos de la imagen."
+            return [], "⚠️ El OCR no encontró datos claros en esta captura."
             
-        return matches, f"✅ Se detectaron {len(matches)} partidos en tu imagen."
+        return matches, f"✅ Global: {len(matches)} partidos identificados en tu imagen."
 
     except Exception as e:
-        return [], f"⚠️ Error Crítico en Motor de Visión: {str(e)}"
+        # Si hay error de API (como el 404 que te salió), lo atrapamos aquí
+        return [], f"❌ Error de conexión con el Motor: {str(e)}"
