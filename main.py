@@ -3,93 +3,66 @@ import pandas as pd
 import os
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
-from modules.results_tracker import registrar_parlay_automatico, actualizar_resultados_api
+from modules.results_tracker import registrar_parlay_automatico, update_pending_parlays
 
-# Configuración inicial
 st.set_page_config(page_title="BETTING AI — PARLAY MAESTRO", layout="wide")
 
-# Sincronización automática de resultados al iniciar/refrescar
-actualizar_resultados_api()
+# 1. Actualización automática de resultados al iniciar
+history_path = "data/parlay_history.csv"
+update_pending_parlays(history_path)
 
 st.title("🤖 BETTING AI — PARLAY MAESTRO")
-st.markdown("---")
-
-# --- BARRA LATERAL: MÉTRICAS GENERALES ---
-with st.sidebar:
-    st.header("📊 Panel de Control")
-    if os.path.exists("data/parlay_history.csv"):
-        df_stats = pd.read_csv("data/parlay_history.csv")
-        finalizadas = df_stats[df_stats['Estado'] != 'Pendiente']
-        total_profit = finalizadas['Ganancia_Neta'].sum() if not finalizadas.empty else 0.0
-        st.metric("Profit Total Real", f"${total_profit:.2f}")
-    else:
-        st.info("Sin historial de testeo")
 
 # --- CARGA DE CAPTURA ---
-archivo = st.file_uploader("Sube tu captura de Caliente / Odds", type=["png", "jpg", "jpeg"])
+archivo = st.file_uploader("Sube tu captura de pantalla", type=["png", "jpg", "jpeg"])
 
 if archivo:
-    with st.spinner("Analizando mercados y cuotas..."):
-        # Procesar imagen
+    with st.spinner("Procesando imagen y mercados..."):
         games = analyze_betting_image(archivo)
     
     if games:
-        # 🏟️ VERIFICACIÓN DE PARTIDOS (OCULTABLE)
-        with st.expander("🏟️ Verificación de Partidos Detectados", expanded=False):
+        # SECCIÓN OCULTABLE: Verificación de Partidos
+        with st.expander("🏟️ Verificación de Partidos (Click para ver/ocultar)", expanded=False):
             st.dataframe(games, use_container_width=True)
 
-        # Iniciar motor de análisis
         engine = EVEngine()
         resultados, parlay = engine.build_parlay(games)
 
-        # --- SIMULADOR DE TICKET ---
-        st.header("🔥 Simulación de Parlay Sugerido")
+        st.header("🔥 Simulación de Parlay Real")
+        monto = st.number_input("💰 Inversión (MXN)", value=100.0, step=50.0)
         
-        # Entrada de monto con lógica de negocio
-        monto_inversion = st.number_input("💰 Inversión para este Parlay (MXN)", value=100.0, step=50.0)
-        
-        # Obtener cálculos reales (Multiplicación de decimales)
-        sim = engine.simulate_parlay_profit(parlay, monto_inversion)
-        sim['monto'] = monto_inversion
+        # Cálculos de cuota total multiplicada
+        sim = engine.simulate_parlay_profit(parlay, monto)
+        sim['monto'] = monto
 
-        # Mostrar Picks del Ticket
+        # Mostrar picks en formato limpio
         for p in parlay:
             st.markdown(f"""
             <div style="background:#1e1e1e; padding:12px; border-radius:10px; border-left: 5px solid #00ff9d; margin-bottom:8px;">
-                <b style="color:#00ff9d; font-size:1.1em;">{p['pick']}</b><br>
-                <span style="color:#888; font-size:0.9em;">{p['partido']} | Momio Detectado: {p['cuota']}</span>
+                <b style="color:#00ff9d;">{p['pick']}</b><br>
+                <small>{p['partido']} | Cuota: {p['cuota']}</small>
             </div>
             """, unsafe_allow_html=True)
 
-        # Métricas del Ticket
+        # Métricas de ganancias reales
         c1, c2, c3 = st.columns(3)
-        c1.metric("Cuota Total (Real)", f"{sim['cuota_total']}x")
+        c1.metric("Cuota Final", f"{sim['cuota_total']}x")
         c2.metric("Pago Potencial", f"${sim['pago_total']}")
         c3.metric("Ganancia Neta", f"${sim['ganancia_neta']}")
 
-        # Botón de Registro
         if st.button("🚀 Registrar para Seguimiento Automático", use_container_width=True):
-            picks_summary = " | ".join([p['pick'] for p in parlay])
-            registrar_parlay_automatico(sim, picks_summary)
-            st.balloons()
-            st.success("✅ Registrado con éxito. El sistema cerrará la apuesta cuando termine el partido.")
+            picks_txt = " | ".join([p['pick'] for p in parlay])
+            registrar_parlay_automatico(sim, picks_txt)
+            st.success("Registrado. El sistema verificará los resultados automáticamente.")
 
-# --- SECCIÓN DE SEGUIMIENTO (AUTOMÁTICO) ---
+# --- HISTORIAL AUTOMATIZADO ---
 st.markdown("---")
-st.subheader("⏳ Estatus de Apuestas en Curso")
-
-if os.path.exists("data/parlay_history.csv"):
-    df_h = pd.read_csv("data/parlay_history.csv")
+st.subheader("🏁 Historial y Resultados")
+if os.path.exists(history_path):
+    df_h = pd.read_csv(history_path)
     
-    # Función para dar color a la tabla
-    def color_status(val):
-        if val == 'Ganada': return 'background-color: #004d2c; color: #00ff9d'
-        if val == 'Perdida': return 'background-color: #4d0000; color: #ff4b4b'
-        return 'background-color: #333; color: #ffcc00'
+    def style_status(val):
+        color = '#2ecc71' if val == 'Ganada' else '#e74c3c' if val == 'Perdida' else '#f1c40f'
+        return f'background-color: {color}; color: black; font-weight: bold'
 
-    st.dataframe(
-        df_h.style.applymap(color_status, subset=['Estado']),
-        use_container_width=True
-    )
-else:
-    st.info("No hay parlays registrados para seguimiento automático.")
+    st.dataframe(df_h.style.applymap(style_status, subset=['Estado']), use_container_width=True)
