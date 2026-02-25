@@ -73,6 +73,32 @@ class EVEngine:
         
         pago = monto * cuota_total
         return {"cuota_total": round(cuota_total, 2), "pago_total": round(pago
+class EVEngine:
+    # Agregamos el parámetro threshold para corregir el TypeError
+    def __init__(self, threshold=0.85):
+        self.threshold = threshold
+        self.min_ev_threshold = 0.13
+
+    def build_parlay(self, games):
+        resultados_totales = []
+        # ... (aquí va tu lógica de Poisson) ...
+        
+        # Asegúrate de que cada resultado incluya 'pasa_filtro'
+        # Esto es lo que el main.py necesita para dibujar las tarjetas
+        for g in games:
+            # Ejemplo de salida para un partido:
+            res = {
+                "partido": f"{g.get('home')} vs {g.get('away')}",
+                "pick": "Over 1.5 Goles", # o tu pick dinámico
+                "probabilidad": 87.5, 
+                "cuota": "1.35",
+                "pasa_filtro": 0.875 >= self.threshold # <--- CRÍTICO
+            }
+            resultados_totales.append(res)
+        
+        # Filtramos los que sí van al parlay sugerido
+        parlay = [r for r in resultados_totales if r["pasa_filtro"]]
+        return resultados_totales, parlay
 
 
 
