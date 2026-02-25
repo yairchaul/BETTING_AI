@@ -1,69 +1,88 @@
 import math
+import numpy as np
 
 class EVEngine:
-    def __init__(self):
-        self.threshold = 0.85
+    def __init__(self, threshold=0.85):
+        self.threshold = threshold
 
     def _poisson_pmf(self, k, lam):
-        if lam <= 0: return 1.0 if k == 0 else 0.0
-        return math.exp(-lam) * (lam ** k) / math.factorial(k)
-
-    def _get_probs(self, l_h, l_a):
-        p_h = p_d = p_a = 0.0
-        for h in range(9):
-            for a in range(9):
-                prob = self._poisson_pmf(h, l_h) * self._poisson_pmf(a, l_a)
-                if h > a: p_h += prob
-                elif h == a: p_d += prob
-                else: p_a += prob
-        return p_h, p_d, p_a
+        return (math.exp(-lam) * (lam**k)) / math.factorial(k) if lam > 0 else (1.0 if k==0 else 0.0)
 
     def build_parlay(self, games):
-        resultados = []
+        resultados_finales = []
+        
         for g in games:
-            # Ajuste dinámico de fuerza según momio para evitar predicciones idénticas
-            l_h, l_a = 1.4, 1.2
+            # 1. Inferir Lambdas (Fuerza) de los momios reales detectados
             try:
-                odd = float(str(g.get("home_odd", "100")).replace('+', ''))
-                if odd < 0: l_h += 0.7
-                elif odd < 150: l_h += 0.3
-            except: pass
+                # Convertimos momio americano a probabilidad implícita para obtener la fuerza real
+                def get_prob(o):
+                    o = float(str(o).replace('+', ''))
+                    return 100/(o+100) if o>0 else abs(o)/(abs(o)+100)
+                
+                p_h = get_prob(g.get('home_odd', 100))
+                p_v = get_prob(g.get('away_odd', 100))
+                
+                # Lambdas conservadoras basadas en el mercado real
+                l_h, l_v = p_h * 2.8, p_v * 2.8 
+            except:
+                l_h, l_v = 1.3, 1.1
 
-            ph, pd, pa = self._get_probs(l_h, l_a)
+            # 2. Generar matriz de probabilidades (Marcadores exactos 0-6 goles)
+            max_g = 7
+            matrix = np.zeros((max_g, max_g))
+            for h in range(max_g):
+                for v in range(max_g):
+                    matrix[h, v] = self._poisson_pmf(h, l_h) * self._poisson_pmf(v, l_v)
+
+            # 3. Calcular todas las opciones posibles
+            posibilidades = []
             
-            # Cálculo de mercados (Cascada)
-            p_0_0 = self._poisson_pmf(0, l_h) * self._poisson_pmf(0, l_a)
-            p_1_0 = self._poisson_pmf(1, l_h) * self._poisson_pmf(0, l_a)
-            p_0_1 = self._poisson_pmf(0, l_h) * self._poisson_pmf(1, l_a)
-            p_over_1_5 = 1 - (p_0_0 + p_1_0 + p_0_1)
+            # Mercados de Over Puro
+            p_o15 = 1 - (matrix[0,0] + matrix[0,1] + matrix[1,0])
+            posibilidades.append({"pick": "Over 1.5 Goles", "p": p_o15, "c": 1.35})
+            
+            p_o25 = p_o15 - (matrix[1,1] + matrix[2,0] + matrix[0,2])
+            posibilidades.append({"pick": "Over 2.5 Goles", "p": p_o25, "c": 1.85})
 
-            # Lógica de elección
-            if p_over_1_5 >= 0.80:
-                pick, prob, cuota = "Over 1.5 Goles", p_over_1_5, 1.30
-            elif ph >= 0.60:
-                pick, prob, cuota = f"Gana {g.get('home','Local')}", ph, g.get('home_odd', 1.85)
-            else:
-                pick, prob, cuota = "Over 0.5 Goles 2T", 0.75, 1.45
+            # BTTS
+            p_btts = (1 - sum(matrix[0, :])) * (1 - sum(matrix[:, 0]))
+            posibilidades.append({"pick": "BTTS Si", "p": p_btts, "c": 1.75})
 
-            resultados.append({
-                "partido": f"{g.get('home','')} vs {g.get('away','')}",
-                "pick": pick,
-                "probabilidad": round(prob * 100, 1),
-                "cuota": cuota
-            })
+            # Ganador Simple
+            p_win_h = np.sum(np.tril(matrix, -1))
+            posibilidades.append({"pick": f"Gana {g['home']}", "p": p_win_h, "c": g.get('home_odd', 2.0)})
 
-        parlay = sorted(resultados, key=lambda x: x['probabilidad'], reverse=True)[:3]
-        return resultados, parlay
+            # Combos (Gana + Over)
+            p_h_o15 = np.sum([matrix[h, v] for h in range(max_g) for v in range(max_g) if h > v and (h+v) > 1.5])
+            posibilidades.append({"pick": f"{g['home']} & Over 1.5", "p": p_h_o15, "c": 2.20})
+
+            # 4. FILTRADO DURO (85%) Y SELECCIÓN DE MEJOR CUOTA
+            # Solo pasan las que tienen prob >= threshold
+            validas = [opt for opt in posibilidades if opt['p'] >= self.threshold]
+
+            if validas:
+                # Elegimos la que tenga la cuota ('c') más alta entre las seguras
+                mejor = max(validas, key=lambda x: x['c'])
+                resultados_finales.append({
+                    "partido": f"{g['home']} vs {g['away']}",
+                    "pick": mejor['pick'],
+                    "probabilidad": round(mejor['p'] * 100, 1),
+                    "cuota": mejor['c']
+                })
+        
+        # El parlay se arma con los mejores 3 picks globales encontrados
+        parlay = sorted(resultados_finales, key=lambda x: x['probabilidad'], reverse=True)[:3]
+        return resultados_finales, parlay
 
     def simulate_parlay_profit(self, parlay, monto):
-        c_total = 1.0
+        c_tot = 1.0
         for p in parlay:
             try:
                 val = float(str(p['cuota']).replace('+', ''))
                 dec = (val/100 + 1) if val > 0 else (100/abs(val) + 1)
-                c_total *= dec
-            except: c_total *= 1.35
+                c_tot *= dec
+            except: c_tot *= 1.30
         
-        pago = monto * c_total
-        return {"cuota_total": round(c_total, 2), "pago_total": round(pago, 2), "ganancia_neta": round(pago - monto, 2)}
+        pago = monto * c_tot
+        return {"cuota_total": round(c_tot, 2), "pago_total": round(pago, 2), "ganancia_neta": round(pago - monto, 2)}
 
