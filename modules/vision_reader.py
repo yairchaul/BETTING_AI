@@ -1,42 +1,15 @@
 import re
-import io
 import streamlit as st
 from google.cloud import vision
-from PIL import Image
 
 def is_odd(text: str) -> bool:
-    cleaned = re.sub(r'\s+', '', text.strip()).replace('+', '')
+    cleaned = re.sub(r'[^0-9+-]', '', text.strip())
+    if not cleaned: return False
     try:
         val = int(cleaned)
-        return abs(val) >= 100 or val == 0 # Momios americanos típicos
+        return abs(val) >= 100
     except:
         return False
-
-def detect_market_type(texts: list) -> dict:
-    text_str = " ".join(texts).lower()
-    if "empate" in text_str or len([t for t in texts if is_odd(t)]) >= 2:
-        return {"type": "1X2"}
-    return {"type": "Unknown"}
-
-def parse_row(texts: list) -> dict | None:
-    """Lógica para formato horizontal (PC)"""
-    market = detect_market_type(texts)
-    if market["type"] == "1X2":
-        # Caso con palabra "Empate"
-        if "Empate" in texts:
-            idx_empate = texts.index("Empate")
-            home = " ".join(texts[:idx_empate-1]).strip()
-            home_odd = texts[idx_empate-1]
-            draw_odd = texts[idx_empate+1]
-            away = " ".join(texts[idx_empate+2:-1]).strip()
-            away_odd = texts[-1]
-            return {"market": "1X2", "home": home, "home_odd": home_odd, "draw_odd": draw_odd, "away": away, "away_odd": away_odd}
-        
-        # Caso sin "Empate" (bloque de 3 momios seguidos)
-        odds = [t for t in texts if is_odd(t)]
-        if len(odds) >= 3:
-            return {"market": "1X2", "home": texts[0], "home_odd": odds[0], "draw_odd": odds[1], "away": texts[-2], "away_odd": odds[2]}
-    return None
 
 def analyze_betting_image(uploaded_file):
     content = uploaded_file.getvalue()
@@ -55,56 +28,34 @@ def analyze_betting_image(uploaded_file):
                         "text": word_text,
                         "x": (v[0].x + v[2].x) / 2,
                         "y": (v[0].y + v[2].y) / 2,
-                        "height": v[2].y - v[0].y
+                        "h": v[2].y - v[0].y
                     })
 
     if not word_list: return []
 
-    # Ordenar por Y para detectar filas
-    word_list.sort(key=lambda w: w["y"])
-    rows = []
-    if word_list:
-        current_row = [word_list[0]]
-        for w in word_list[1:]:
-            if abs(w["y"] - current_row[-1]["y"]) < (current_row[-1]["height"] * 1.5):
-                current_row.append(w)
-            else:
-                rows.append(current_row)
-                current_row = [w]
-        rows.append(current_row)
-
+    # Agrupación por proximidad (Formato Celular y PC)
     matches = []
-    debug_rows = []
+    word_list.sort(key=lambda w: w["y"])
     
-    # Intento 1: Formato Horizontal (PC)
-    for row_words in rows:
-        row_words.sort(key=lambda w: w["x"])
-        texts = [w["text"] for w in row_words if len(w["text"]) >= 2]
-        if len(texts) < 3: continue
-        debug_rows.append(texts)
-        match = parse_row(texts)
-        if match: matches.append(match)
-
-    # Intento 2: Formato Vertical (Móvil) - Si no hubo éxito horizontal
-    if len(matches) == 0:
-        for i in range(len(rows) - 2):
-            # Combinamos 3 filas consecutivas para simular un bloque de móvil
-            combined_texts = [w["text"] for w in (rows[i] + rows[i+1] + rows[i+2])]
-            odds = [t for t in combined_texts if is_odd(t)]
-            if len(odds) >= 2:
-                # Limpiar nombres de equipos (lo que no es momio ni liga)
-                potential_teams = [t for t in combined_texts if not is_odd(t) and len(t) > 3]
-                if len(potential_teams) >= 2:
-                    matches.append({
-                        "market": "1X2",
-                        "home": potential_teams[0],
-                        "home_odd": odds[0],
-                        "draw_odd": odds[1] if len(odds) > 1 else "+250",
-                        "away": potential_teams[1],
-                        "away_odd": odds[2] if len(odds) > 2 else "+150"
-                    })
-
-    with st.expander("🔍 DEBUG OCR", expanded=False):
-        for r in debug_rows: st.write(r)
+    # Buscamos momios primero y luego sus equipos cercanos
+    odds_found = [w for w in word_list if is_odd(w["text"])]
+    
+    for i in range(0, len(odds_found), 3):
+        chunk = odds_found[i:i+3]
+        if len(chunk) < 2: continue
+        
+        # Encontrar textos cercanos a estos momios (Equipos)
+        avg_y = sum(o["y"] for o in chunk) / len(chunk)
+        nearby_text = [w["text"] for w in word_list if abs(w["y"] - avg_y) < 100 and not is_odd(w["text"]) and len(w["text"]) > 3]
+        
+        if len(nearby_text) >= 2:
+            matches.append({
+                "market": "1X2",
+                "home": nearby_text[0],
+                "home_odd": chunk[0]["text"],
+                "draw_odd": chunk[1]["text"] if len(chunk) > 1 else "+200",
+                "away": nearby_text[1],
+                "away_odd": chunk[2]["text"] if len(chunk) > 2 else "+100"
+            })
 
     return matches
