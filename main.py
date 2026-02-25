@@ -1,65 +1,71 @@
 import streamlit as st
 import pandas as pd
 import os
-import glob
 from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
+from modules.context_search import get_team_context, analyze_context
+from modules.learning import LearningModule
+from modules.cerebro import CerebroAuditor
+from modules.bankroll import obtener_stake_sugerido
 
-st.set_page_config(page_title="Auditoría Élite 85%", layout="wide")
-engine = EVEngine(threshold=0.85)
+# Configuración
+st.set_page_config(page_title="Betting AI Pro", layout="wide")
+engine = EVEngine()
+learning = LearningModule()
+auditor = CerebroAuditor()
 
-# --- BÚSQUEDA PROFUNDA DE HISTORIAL ---
-def localizar_historial():
-    # Buscamos en todas las subcarpetas archivos que se llamen historial o tracker
-    archivos = glob.glob("**/*.csv", recursive=True)
-    for f in archivos:
-        if "historial" in f.lower() or "tracker" in f.lower():
-            return f
-    return None
+st.title("🧠 Betting AI: Sistema de Auditoría Total")
 
-path_historial = localizar_historial()
-
-st.title("🛡️ Auditoría Betting AI: Filtro 85%")
-
-archivo = st.file_uploader("Subir imagen de momios", type=["png", "jpg", "jpeg"])
+archivo = st.file_uploader("Cargar Ticket", type=["jpg", "png", "jpeg"])
 
 if archivo:
-    with st.spinner("Escaneando con Vision AI..."):
-        matches, msg = analyze_betting_image(archivo)
-    st.sidebar.info(msg)
+    # Reducimos visualmente la imagen como pediste
+    st.image(archivo, width=200)
+    
+    matches, debug_rows = analyze_betting_image(archivo)
+    
+    # Debug opcional
+    with st.expander("🔍 Debug OCR"):
+        for r in debug_rows: st.write(r)
 
     if matches:
-        for m in matches:
-            res = engine.get_raw_probabilities(m)
-            # APLICACIÓN DE TU MODELO CASCADA
-            if res['status'] == "APROBADO":
-                st.markdown(f"""
-                <div style="background:#1a2c3d; padding:20px; border-radius:10px; border-left:6px solid #2ecc71; margin-bottom:15px;">
-                    <h3>{res['home']} vs {res['away']}</h3>
-                    <p style="color:#2ecc71; font-size:1.3rem;"><b>Pick Sugerido: {res['pick']}</b></p>
-                    <p>Probabilidad: {res['prob']}% | Cuota: {res['cuota']} | EV: {res['ev']}</p>
-                    <small style="color:#888;">λL: {res['lh']} | λV: {res['lv']} | Exp: {res['exp']}</small>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.write(f"🚫 {res['home']} vs {res['away']} → Descartado (<85%)")
+        picks_finales = []
+        st.subheader("📋 Auditoría de Partidos")
+        
+        for game in matches:
+            # 1. Datos Matemáticos
+            poisson_raw = engine.get_raw_probabilities(game)
+            
+            # 2. Datos de Contexto (Google) con tus fuentes
+            with st.spinner(f"Investigando a {game['home']}..."):
+                raw_txt = get_team_context(game['home'])
+                context_f = analyze_context(raw_txt)
+            
+            # 3. Datos de Learning
+            learning_f = learning.analizar_valor_historico(game['home'])
+            
+            # 4. EL CEREBRO DECIDE
+            veredicto = auditor.decidir_mejor_apuesta(poisson_raw, context_f, learning_f)
+            picks_finales.append(veredicto)
+            
+            # Visualización por partido
+            with st.container():
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    st.markdown(f"**{game['home']} vs {game['away']}**")
+                    st.info(f"🎯 Sugerencia: {veredicto['pick_final']} | {veredicto['nota']}")
+                with c2:
+                    stake = obtener_stake_sugerido(1000, veredicto['confianza_final'])
+                    st.metric("Confianza", f"{veredicto['confianza_final']}%")
+                    st.metric("Stake", f"${stake}")
 
-# --- SECCIÓN DE HISTORIAL RECUPERADO ---
-st.divider()
-st.subheader("🏁 Historial de Apuestas Localizadas")
+        # --- SECCIÓN DE PARLAY ---
+        st.markdown("---")
+        monto_parlay = st.number_input("Inversión Parlay (MXN)", value=100.0)
+        sim = engine.simulate_parlay_profit(picks_finales, monto_parlay)
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Cuota Final", f"{sim['cuota_total']}x")
+        col2.metric("Pago Potencial", f"${sim['pago_total']}")
+        col3.metric("Ganancia Neta", f"${sim['ganancia_neta']}")
 
-if path_historial:
-    st.success(f"Archivo de datos encontrado: `{path_historial}`")
-    df = pd.read_csv(path_historial)
-    if not df.empty:
-        # Formateo estricto: Cuotas y montos a 2 decimales, resto limpio
-        cols_num = df.select_dtypes(include=['float64']).columns
-        st.dataframe(
-            df.style.format({col: "{:.2f}" for col in cols_num}),
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("El archivo está vacío. Registra nuevos picks para verlo crecer.")
-else:
-    st.warning("No se encontró historial previo. El sistema creará uno nuevo al guardar tu primer pick.")
