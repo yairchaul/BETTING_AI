@@ -1,55 +1,40 @@
 import pandas as pd
 import os
-from datetime import datetime
+import datetime
 
-PATH_HISTORIAL = "data/parlay_history.csv"
+FILE_PATH = "parlay_history.csv"
 
-def registrar_parlay_automatico(sim_data, resumen_picks):
-    """Guarda el parlay con limpieza de datos y redondeo profesional."""
-    if not os.path.exists("data"):
-        os.makedirs("data")
-    
-    # Unificamos nombres de llaves para evitar errores de 'monto' vs 'monto_invertido'
-    monto = sim_data.get('monto_invertido') or sim_data.get('monto', 0)
-    
+def registrar_parlay_automatico(sim, picks_txt):
+    """Guarda el parlay en el archivo CSV."""
     nuevo_registro = {
-        "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "Picks": resumen_picks,
-        "Monto": round(float(monto), 2),
-        "Cuota": round(float(sim_data['cuota_total']), 2),
-        "Pago_Potencial": round(float(sim_data['pago_total']), 2),
-        "Ganancia_Neta": round(float(sim_data['ganancia_neta']), 2),
+        "Fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "monto": sim['monto'],
+        "cuota_total": sim['cuota_total'],
+        "pago_total": sim['pago_total'],
+        "ganancia_neta": sim['ganancia_neta'],
+        "picks": picks_txt,
         "Estado": "Pendiente"
     }
     
-    if os.path.exists(PATH_HISTORIAL):
-        df = pd.read_csv(PATH_HISTORIAL)
-    else:
-        df = pd.DataFrame()
-
-    df = pd.concat([df, pd.DataFrame([nuevo_registro])], ignore_index=True)
-    df.to_csv(PATH_HISTORIAL, index=False, encoding='utf-8')
-
-def calificar_resultados_auto():
-    """
-    Función maestra para marcar como Ganado/Perdido.
-    Actualmente usa una simulación lógica. Para real, conectaría aquí con la API.
-    """
-    if not os.path.exists(PATH_HISTORIAL):
-        return
+    df = pd.DataFrame([nuevo_registro])
     
-    df = pd.read_csv(PATH_HISTORIAL)
-    
-    if "Estado" in df.columns:
-        # Solo procesamos los que siguen 'Pendiente'
-        pendientes = df[df['Estado'] == 'Pendiente'].index
+    # Si el archivo no existe, lo crea con cabeceras
+    header = not os.path.exists(FILE_PATH)
+    df.to_csv(FILE_PATH, mode='a', index=False, header=header)
+
+def obtener_resumen_historial():
+    """Lee el historial y devuelve métricas limpias."""
+    if not os.path.exists(FILE_PATH):
+        return None
         
-        for idx in pendientes:
-            # --- LÓGICA DE AUDITORÍA REAL ---
-            # Aquí se compararía contra el marcador final. 
-            # Como ejemplo, si la cuota era muy alta (>100), simulamos riesgo.
-            if df.at[idx, 'Cuota'] > 50:
-                # Simulación de auditoría para pruebas
-                pass 
-            
-    df.to_csv(PATH_HISTORIAL, index=False)
+    df = pd.read_csv(FILE_PATH)
+    if df.empty:
+        return None
+        
+    resumen = {
+        "apostado": df['monto'].sum(),
+        "ganancia": df['ganancia_neta'].sum(),
+        "total_picks": len(df),
+        "ultimos": df.tail(5).to_dict('records')
+    }
+    return resumen
