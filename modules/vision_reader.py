@@ -5,6 +5,7 @@ import streamlit as st
 def analyze_betting_image(uploaded_file):
     try:
         content = uploaded_file.getvalue()
+        # Conexión directa a Google Vision API (Asegúrate de tener st.secrets['google_credentials'])
         client = vision.ImageAnnotatorClient.from_service_account_info(st.secrets["google_credentials"])
         image = vision.Image(content=content)
         response = client.text_detection(image=image)
@@ -15,14 +16,15 @@ def analyze_betting_image(uploaded_file):
         full_text = texts[0].description
         lines = full_text.split('\n')
         games = []
+        # Patrón para momios americanos (+150, -200)
         odd_pattern = r'[+-]\d{2,}' 
 
         for line in lines:
             odds = re.findall(odd_pattern, line)
             if len(odds) >= 2:
-                # Extraer equipos eliminando momios y ruidos
-                clean = re.sub(odd_pattern, '', line).replace('Empate', '').strip()
-                teams = [t.strip() for t in clean.split('  ') if len(t.strip()) > 2]
+                # Extraer nombres de equipos limpiando los momios y ruidos
+                clean_text = re.sub(odd_pattern, '', line).replace('Empate', '').strip()
+                teams = [t.strip() for t in clean_text.split('  ') if len(t.strip()) > 2]
                 
                 if len(teams) >= 2:
                     games.append({
