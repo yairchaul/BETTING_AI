@@ -1,80 +1,120 @@
 import streamlit as st
 import pandas as pd
 import os
+from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
 from modules.cerebro import CerebroAuditor
 from modules.tracker import registrar_parlay_automatico, PATH_HISTORIAL
 from modules.bankroll import obtener_stake_sugerido
 
-# Configuración UI Inamovible
-st.set_page_config(page_title="Betting AI Pro", layout="wide")
+# 1. Configuración de Interfaz Inamovible
+st.set_page_config(page_title="Betting AI - Auditoría Total", layout="wide")
+
 st.markdown("""
     <style>
     .valor-card {
         background-color: #1a2c3d;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 15px;
-        border-left: 5px solid #1E88E5;
+        border-radius: 12px;
+        padding: 22px;
+        margin-bottom: 20px;
+        border-left: 6px solid #1E88E5;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
-    .badge-alta { background-color: #2ecc71; padding: 4px 12px; border-radius: 15px; }
-    .badge-media { background-color: #f1c40f; color: black; padding: 4px 12px; border-radius: 15px; }
-    .badge-riesgo { background-color: #e74c3c; padding: 4px 12px; border-radius: 15px; }
+    .badge-alta { background-color: #2ecc71; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+    .badge-media { background-color: #f1c40f; color: black; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+    .badge-riesgo { background-color: #e74c3c; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+    .metric-box { text-align: center; background: #0e1117; padding: 15px; border-radius: 10px; border: 1px solid #1a2c3d; }
     </style>
 """, unsafe_allow_html=True)
 
+# Instanciar motores
 engine = EVEngine()
 auditor = CerebroAuditor()
 
-st.title("🛡️ Sistema de Auditoría Total")
+st.title("🧠 Betting AI: Sistema de Auditoría Total")
 
-# Supongamos que ya procesaste el ticket (reutilizando tu lógica de carga)
-# Aquí simulo el flujo para asegurar que la visual se mantenga
-if 'matches' in st.session_state:
-    picks_finales = []
-    cols = st.columns(2)
+# 2. SECCIÓN DE CARGA (RESTAURADA)
+archivo = st.file_uploader("Cargar Ticket de Apuestas", type=["jpg", "png", "jpeg"])
+
+if archivo:
+    # Mostrar vista previa pequeña
+    st.image(archivo, width=250, caption="Ticket cargado")
     
-    for i, game in enumerate(st.session_state.matches):
-        raw = engine.get_raw_probabilities(game)
-        veredicto = auditor.decidir_mejor_apuesta(raw, {}, {}) # Contexto vacío por ahora
-        picks_finales.append(veredicto)
+    # Procesar imagen con el lector de visión
+    with st.spinner("Leyendo datos del ticket..."):
+        matches, _ = analyze_betting_image(archivo)
+    
+    if matches:
+        st.subheader("📋 Auditoría de Partidos Detectados")
+        picks_auditados = []
+        cols = st.columns(2)
         
-        with cols[i % 2]:
-            estatus = veredicto['estatus'].lower()
-            st.markdown(f"""
-            <div class="valor-card">
-                <div style="display: flex; justify-content: space-between;">
-                    <h3 style="margin:0;">{game['home']}</h3>
-                    <span class="badge-{estatus}">{veredicto['estatus']}</span>
+        for i, game in enumerate(matches):
+            # Obtener Edge Matemático (Cascada de Valor)
+            poisson_raw = engine.get_raw_probabilities(game)
+            
+            # Auditoría del Cerebro (Fusión de datos)
+            veredicto = auditor.decidir_mejor_apuesta(poisson_raw, {}, {})
+            picks_auditados.append(veredicto)
+            
+            # Renderizado de Tarjeta Visual (Imagen 3)
+            with cols[i % 2]:
+                badge = veredicto['estatus'].lower()
+                st.markdown(f"""
+                <div class="valor-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 1.2rem; font-weight: bold;">{game.get('home')} vs {game.get('away')}</span>
+                        <span class="badge-{badge}">{veredicto['estatus']}</span>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <p style="color: #42A5F5; font-size: 1.1rem; margin-bottom: 5px;">🎯 Pick: <b>{veredicto['pick_final']}</b></p>
+                        <p style="font-size: 0.9rem; color: #BDC3C7; margin: 0;">
+                            Confianza: <b>{veredicto['confianza_final']}%</b> | EV: {veredicto['ev_final']} | Cuota: {veredicto['cuota_ref']}
+                        </p>
+                    </div>
                 </div>
-                <p style="color: #42A5F5; font-size: 1.2rem; margin-top: 10px;">🎯 {veredicto['pick_final']}</p>
-                <p>Confianza: {veredicto['confianza_final']}% | Cuota: {veredicto['cuota_ref']}</p>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-    st.markdown("---")
-    # METRICAS FINANCIERAS (GRANDES Y LIMPIAS)
-    monto_inv = st.number_input("Inversión Parlay (MXN)", value=100.0, step=10.0)
-    res = engine.simulate_parlay_profit(picks_finales, monto_inv)
-    
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Cuota Final", f"{res['cuota_total']}x")
-    m2.metric("Pago Potencial", f"${res['pago_total']}")
-    m3.metric("Ganancia Neta", f"${res['ganancia_neta']}")
+        # 3. SECCIÓN FINANCIERA (LIMPIEZA DE CEROS)
+        st.markdown("---")
+        c1, c2 = st.columns(2)
+        bankroll = c1.number_input("Bankroll Total (MXN)", value=1000.0, step=100.0)
+        
+        # Sugerencia automática de inversión
+        conf_promedio = sum([p['confianza_final'] for p in picks_auditados]) / len(picks_auditados)
+        stake_sugerido = obtener_stake_sugerido(bankroll, conf_promedio)
+        
+        monto_final = c2.number_input("Inversión para este Parlay", value=float(stake_sugerido))
+        
+        # Simulación final
+        sim = engine.simulate_parlay_profit(picks_auditados, monto_final)
+        
+        # Métricas de pago con formato limpio
+        f1, f2, f3 = st.columns(3)
+        f1.metric("Cuota Final", f"{sim['cuota_total']:.2f}x")
+        f2.metric("Pago Potencial", f"${sim['pago_total']:.2f}")
+        f3.metric("Ganancia Neta", f"${sim['ganancia_neta']:.2f}")
 
-    if st.button("🚀 REGISTRAR EN TRACKER DE VALOR"):
-        txt_picks = " | ".join([p['pick_final'] for p in picks_finales])
-        registrar_parlay_automatico(res, txt_picks)
-        st.success("Guardado.")
-        st.rerun()
+        if st.button("🚀 REGISTRAR EN EL TRACKER DE VALOR", use_container_width=True):
+            resumen = " | ".join([p['pick_final'] for p in picks_auditados])
+            registrar_parlay_automatico(sim, resumen)
+            st.success("✅ Parlay guardado en el historial.")
+            st.rerun()
+    else:
+        st.error("No se detectaron mercados válidos en la imagen. Intenta con una captura más clara.")
 
-# TABLA HISTORIAL LIMPIA
+# 4. HISTORIAL VISUAL (FORMATO TABLA LIMPIA)
+st.markdown("---")
+st.subheader("🏁 Estatus y Seguimiento de Parlays")
 if os.path.exists(PATH_HISTORIAL):
-    st.markdown("### 🏁 Estatus y Seguimiento")
-    df = pd.read_csv(PATH_HISTORIAL)
-    # FORZAR REDONDEO EN LA VISTA PARA QUITAR LOS .0000000
-    df['Monto'] = df['Monto'].map('{:,.2f}'.format)
-    df['Cuota'] = df['Cuota'].map('{:,.2f}'.format)
-    df['Pago_Potencial'] = df['Pago_Potencial'].map('{:,.2f}'.format)
-    st.dataframe(df, use_container_width=True)
+    df_h = pd.read_csv(PATH_HISTORIAL)
+    if not df_h.empty:
+        # Formatear columnas para eliminar ceros innecesarios en la vista
+        df_display = df_h.copy()
+        df_display['Monto'] = df_display['Monto'].map('${:,.2f}'.format)
+        df_display['Cuota'] = df_display['Cuota'].map('{:,.2f}x'.format)
+        df_display['Pago_Potencial'] = df_display['Pago_Potencial'].map('${:,.2f}'.format)
+        df_display['Ganancia_Neta'] = df_display['Ganancia_Neta'].map('${:,.2f}'.format)
+        
+        st.dataframe(df_display.sort_index(ascending=False), use_container_width=True)
 
