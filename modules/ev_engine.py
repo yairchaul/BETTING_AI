@@ -1,7 +1,7 @@
 import math
 from modules.ev_scanner import calculate_ev
 
-# 1. Definir funciones matemáticas FUERA de la clase para que sean globales
+# 1. Funciones matemáticas globales para cálculo de Poisson
 def poisson_pmf(k, lam):
     if lam <= 0: return 1.0 if k == 0 else 0.0
     return math.exp(-lam) * (lam ** k) / math.factorial(k)
@@ -19,70 +19,56 @@ def get_poisson_probs(lambda_home, lambda_away):
     return p_home/total, p_draw/total, p_away/total
 
 class EVEngine:
-    def __init__(self):
+    def __init__(self, threshold=0.85):
+        self.threshold = threshold
         self.min_ev_threshold = 0.13
 
     def build_parlay(self, games):
-        resultados = []
+        resultados_totales = []
+        
         for g in games:
-            partido = f"{g.get('home','')} vs {g.get('away','')}"
+            home_name = g.get('home', 'Local')
+            away_name = g.get('away', 'Visita')
             
-            # Ajuste dinámico de fuerza (Lambda) basado en momios reales detectados
-            # Esto evita que todos los partidos den el mismo resultado
-            l_home, l_away = 1.65, 1.20 # Valores base
+            # --- AJUSTE DINÁMICO DE FUERZA (LAMBDA) ---
+            l_home, l_away = 1.65, 1.20 # Base
             try:
-                h_odd = float(str(g.get("home_odd", "0")).replace('+', ''))
-                if h_odd < 0: l_home += 0.8  # Favorito pesado (ej. PSG -371)
+                # Convertir momio americano a probabilidad implícita para ajustar Lambdas
+                h_odd_str = str(g.get("home_odd", "0")).replace('+', '')
+                h_odd = float(h_odd_str)
+                if h_odd < 0: l_home += 0.8  # Favorito claro
                 elif h_odd < 150: l_home += 0.4
             except: pass
 
+            # --- CÁLCULO DE PROBABILIDADES POR MERCADO (CAPAS) ---
             ph, pd, pa = get_poisson_probs(l_home, l_away)
             
-            # --- CÁLCULO DE PROBABILIDADES DE MERCADOS ---
+            # Capa 1: Over 1.5 Goles
             p_over_1_5 = 1 - (poisson_pmf(0, l_home)*poisson_pmf(0, l_away) + 
                              poisson_pmf(1, l_home)*poisson_pmf(0, l_away) + 
                              poisson_pmf(0, l_home)*poisson_pmf(1, l_away))
             
+            # Capa 2: Doble Oportunidad (Local o Empate)
+            p_1x = ph + pd
+            
+            # Capa 3: Ambos Anotan
             p_btts = (1 - poisson_pmf(0, l_home)) * (1 - poisson_pmf(0, l_away))
-            p_over_1t = p_over_1_5 * 0.42 # Estimación para 1er Tiempo
-            p_over_2_5 = p_over_1_5 * 0.75
 
-            # --- CASCADA DE DECISIÓN REAL ---
-            chosen = None
-            if p_over_1t >= 0.68:
-                chosen = {"pick": "Over 1.5 1T", "prob": p_over_1t, "cuota": 1.85}
-            elif p_btts >= 0.62:
-                chosen = {"pick": "Ambos Equipos Anotan", "prob": p_btts, "cuota": 1.75}
-            elif p_over_2_5 >= 0.58:
-                chosen = {"pick": "Over 2.5", "prob": p_over_2_5, "cuota": 1.80}
+            # --- EVALUACIÓN DE OPCIONES ---
+            opciones = [
+                {"pick": f"{home_name} o Empate", "p": p_1x, "c": 1.25},
+                {"pick": "Over 1.5 Goles", "p": p_over_1_5, "c": 1.35},
+                {"pick": "Ambos Anotan", "p": p_btts, "c": 1.70}
+            ]
+
+            # FILTRO: De las opciones que pasan el 85%, elegimos la de mejor cuota (c)
+            validas = [o for o in opciones if o['p'] >= self.threshold]
+            
+            if validas:
+                # Elegir la que mejor paga de las seguras
+                mejor_opcion = max(validas, key=lambda x: x['c'])
             else:
-                # Si nada cumple la cascada, el ganador más probable
-                opts = [(f"{g['home']} gana", ph), ("Empate", pd), (f"{g['away']} gana", pa)]
-                best_o, best_p = max(opts, key=lambda x: x[1])
-                chosen = {"pick": best_o, "prob": best_p, "cuota": g.get("home_odd") if "gana" in best_o else 1.90}
-
-            resultados.append({
-                "partido": partido,
-                "pick": chosen["pick"],
-                "probabilidad": round(chosen["prob"] * 100, 1),
-                "cuota": str(chosen["cuota"]),
-                "ev": round(calculate_ev(chosen["prob"], 1.80), 3) # EV simplificado para visualización
-            })
-
-        parlay = sorted(resultados, key=lambda x: x["probabilidad"], reverse=True)[:5]
-        return resultados, parlay
-
-    def simulate_parlay_profit(self, parlay, monto):
-        cuota_total = 1.0
-        for p in parlay:
-            try:
-                val = float(str(p["cuota"]).replace('+', ''))
-                dec = (val/100 + 1) if val > 0 else (100/abs(val) + 1)
-                cuota_total *= dec
-            except: cuota_total *= 1.85
-        
-        pago = monto * cuota_total
-        return {"cuota_total": round(cuota_total, 2), "pago_total": round(pago, 2), "ganancia_neta": round(pago - monto, 2)}
+                # Si
 
 
 
