@@ -5,72 +5,63 @@ from modules.vision_reader import analyze_betting_image
 from modules.ev_engine import EVEngine
 from modules.tracker import registrar_parlay_automatico, update_pending_parlays
 
-# Configuración Responsive
-st.set_page_config(page_title="Betting AI Móvil", layout="wide")
+st.set_page_config(page_title="Betting AI", layout="wide")
 
-# Estilo CSS para tarjetas tipo móvil
+# Estilo para tarjetas pequeñas y compactas
 st.markdown("""
     <style>
-    .stMetric { background: #262730; padding: 15px; border-radius: 10px; border: 1px solid #444; }
-    .bet-card { 
-        background: #1e1e1e; 
-        padding: 15px; 
-        border-radius: 12px; 
-        border-left: 6px solid #00ff9d; 
-        margin-bottom: 10px;
-    }
+    .reportview-container .main .block-container { padding-top: 1rem; }
+    .bet-card { background: #1e1e1e; padding: 10px; border-radius: 8px; border-left: 4px solid #00ff9d; margin-bottom: 5px; font-size: 14px; }
     </style>
 """, unsafe_allow_html=True)
 
 update_pending_parlays()
 
-st.title("📱 Parlay Maestro")
+st.title("🤖 Parlay Maestro")
 
-archivo = st.file_uploader("Subir Ticket o Captura", type=["jpg", "png", "jpeg"])
+archivo = st.file_uploader("Sube captura", type=["jpg", "png", "jpeg"])
 
 if archivo:
-    # Mostrar la imagen que subiste para confirmación visual
-    st.image(archivo, caption="Imagen cargada", use_column_width=True)
+    # Imagen en miniatura (no ocupa toda la pantalla)
+    st.image(archivo, width=250, caption="Captura cargada")
     
-    with st.spinner("Analizando mercados..."):
+    with st.spinner("Analizando valor de mercado..."):
         games = analyze_betting_image(archivo)
     
     if games:
-        st.subheader("✅ Partidos Detectados")
-        # Visualización adaptada a móvil (tarjetas en lugar de tabla)
-        for g in games:
+        engine = EVEngine()
+        # Forzamos la construcción del parlay con la mejor opción de valor
+        resultados, parlay = engine.build_parlay(games)
+
+        st.subheader("🔥 Análisis de la Mejor Opción")
+        
+        # Contenedor de picks de valor
+        for p in parlay:
             st.markdown(f"""
             <div class="bet-card">
-                <small style="color:#888;">Mercado: {g.get('market','1X2')}</small><br>
-                <b>{g.get('home','Equipo 1')}</b> ({g.get('home_odd','N/A')}) vs <br>
-                <b>{g.get('away','Equipo 2')}</b> ({g.get('away_odd','N/A')})
+                <b>{p['partido']}</b><br>
+                <span style="color:#00ff9d;">🎯 Sugerido: {p['pick']}</span> | Cuota: {p['cuota']}
             </div>
             """, unsafe_allow_html=True)
 
-        engine = EVEngine()
-        resultados, parlay = engine.build_parlay(games)
-        
         st.markdown("---")
-        monto = st.number_input("💰 Inversión (MXN)", value=100.0, step=50.0)
+        monto = st.number_input("Inversión (MXN)", value=100.0, step=50.0)
         sim = engine.simulate_parlay_profit(parlay, monto)
-        sim['monto'] = monto
 
-        # Métricas principales redondeadas
+        # Métricas principales (Redondeadas)
         c1, c2, c3 = st.columns(3)
-        c1.metric("Cuota", f"{round(sim['cuota_total'], 2)}x")
-        c2.metric("Pago", f"${round(sim['pago_total'], 2)}")
-        c3.metric("Neto", f"${round(sim['ganancia_neta'], 2)}")
+        c1.metric("Cuota Final", f"{round(sim['cuota_total'], 2)}x")
+        c2.metric("Pago Potencial", f"${round(sim['pago_total'], 2)}")
+        c3.metric("Ganancia Neta", f"${round(sim['ganancia_neta'], 2)}")
 
-        if st.button("🚀 REGISTRAR APUESTA", use_container_width=True):
-            picks_txt = " | ".join([p['pick'] for p in parlay])
-            registrar_parlay_automatico(sim, picks_txt)
-            st.balloons()
-            st.success("¡Parlay registrado!")
+        if st.button("🚀 REGISTRAR PARA SEGUIMIENTO", use_container_width=True):
+            registrar_parlay_automatico(sim, " | ".join([p['pick'] for p in parlay]))
+            st.success("¡Registrado! Revisar historial abajo.")
 
-# Historial resumido para móvil
+# Historial
 st.markdown("---")
-st.subheader("🏁 Historial Reciente")
 if os.path.exists("data/parlay_history.csv"):
+    st.subheader("🏁 Historial de Parlays")
     df = pd.read_csv("data/parlay_history.csv").tail(5)
-    st.dataframe(df[['Fecha', 'Picks', 'Estado']], use_container_width=True)
+    st.table(df[['Fecha', 'Picks', 'Monto', 'Estado']])
 
