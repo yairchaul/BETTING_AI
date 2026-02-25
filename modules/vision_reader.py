@@ -8,8 +8,7 @@ def is_odd(text: str) -> bool:
     try:
         val = int(cleaned)
         return abs(val) >= 100
-    except:
-        return False
+    except: return False
 
 def analyze_betting_image(uploaded_file):
     content = uploaded_file.getvalue()
@@ -27,35 +26,40 @@ def analyze_betting_image(uploaded_file):
                     word_list.append({
                         "text": word_text,
                         "x": (v[0].x + v[2].x) / 2,
-                        "y": (v[0].y + v[2].y) / 2,
-                        "h": v[2].y - v[0].y
+                        "y": (v[0].y + v[2].y) / 2
                     })
 
-    if not word_list: return []
-
-    # Agrupación por proximidad (Formato Celular y PC)
-    matches = []
+    # Detección de filas para el Debug
     word_list.sort(key=lambda w: w["y"])
-    
-    # Buscamos momios primero y luego sus equipos cercanos
-    odds_found = [w for w in word_list if is_odd(w["text"])]
-    
-    for i in range(0, len(odds_found), 3):
-        chunk = odds_found[i:i+3]
-        if len(chunk) < 2: continue
-        
-        # Encontrar textos cercanos a estos momios (Equipos)
-        avg_y = sum(o["y"] for o in chunk) / len(chunk)
-        nearby_text = [w["text"] for w in word_list if abs(w["y"] - avg_y) < 100 and not is_odd(w["text"]) and len(w["text"]) > 3]
-        
-        if len(nearby_text) >= 2:
-            matches.append({
-                "market": "1X2",
-                "home": nearby_text[0],
-                "home_odd": chunk[0]["text"],
-                "draw_odd": chunk[1]["text"] if len(chunk) > 1 else "+200",
-                "away": nearby_text[1],
-                "away_odd": chunk[2]["text"] if len(chunk) > 2 else "+100"
-            })
+    rows = []
+    if word_list:
+        curr = [word_list[0]]
+        for w in word_list[1:]:
+            if abs(w["y"] - curr[-1]["y"]) < 20: curr.append(w)
+            else:
+                rows.append(sorted(curr, key=lambda x: x["x"]))
+                curr = [w]
+        rows.append(curr)
 
-    return matches
+    matches = []
+    debug_data = []
+    
+    # Lógica de extracción (funciona para PC y móvil)
+    for r in rows:
+        texts = [w["text"] for w in r if len(w["text"]) >= 2]
+        if len(texts) >= 3:
+            debug_data.append(texts)
+            odds = [t for t in texts if is_odd(t)]
+            teams = [t for t in texts if not is_odd(t) and t.lower() not in ["empate", "x", "1", "2"]]
+            
+            if len(odds) >= 2 and len(teams) >= 2:
+                matches.append({
+                    "market": "1X2",
+                    "home": teams[0],
+                    "home_odd": odds[0],
+                    "draw_odd": odds[1] if len(odds) > 2 else "+250",
+                    "away": teams[1],
+                    "away_odd": odds[-1]
+                })
+
+    return matches, debug_data
