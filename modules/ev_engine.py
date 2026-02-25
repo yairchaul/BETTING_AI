@@ -10,58 +10,46 @@ class EVEngine:
 
     def build_parlay(self, games):
         resultados_finales = []
-        
         for g in games:
-            # 1. Inferir Lambdas (Fuerza) de los momios reales detectados
+            # Inferencia de Lambdas (Agnóstico Global)
             try:
-                # Convertimos momio americano a probabilidad implícita para obtener la fuerza real
-                def get_prob(o):
-                    o = float(str(o).replace('+', ''))
-                    return 100/(o+100) if o>0 else abs(o)/(abs(o)+100)
+                def to_p(o):
+                    val = float(str(o).replace('+', ''))
+                    return 100/(val+100) if val>0 else abs(val)/(abs(o)+100)
                 
-                p_h = get_prob(g.get('home_odd', 100))
-                p_v = get_prob(g.get('away_odd', 100))
-                
-                # Lambdas conservadoras basadas en el mercado real
-                l_h, l_v = p_h * 2.8, p_v * 2.8 
-            except:
-                l_h, l_v = 1.3, 1.1
+                # Base de goles esperados (Ajustable por liga, 2.8 es promedio global)
+                l_h = to_p(g['home_odd']) * 3.0
+                l_v = to_p(g['away_odd']) * 3.0
+            except: l_h, l_v = 1.5, 1.2
 
-            # 2. Generar matriz de probabilidades (Marcadores exactos 0-6 goles)
-            max_g = 7
-            matrix = np.zeros((max_g, max_g))
-            for h in range(max_g):
-                for v in range(max_g):
-                    matrix[h, v] = self._poisson_pmf(h, l_h) * self._poisson_pmf(v, l_v)
+            # Generar Matriz de Probabilidades
+            m = np.fromfunction(np.vectorize(lambda h, v: self._poisson_pmf(h, l_h) * self._poisson_pmf(v, l_v)), (7, 7))
 
-            # 3. Calcular todas las opciones posibles
-            posibilidades = []
+            # --- CAPAS DE EVALUACIÓN ---
+            opciones = []
             
-            # Mercados de Over Puro
-            p_o15 = 1 - (matrix[0,0] + matrix[0,1] + matrix[1,0])
-            posibilidades.append({"pick": "Over 1.5 Goles", "p": p_o15, "c": 1.35})
+            # 1. Over Puro (1.5, 0.5 2T)
+            p_o15 = 1 - (m[0,0] + m[0,1] + m[1,0])
+            opciones.append({"pick": "Over 1.5 Goles", "p": p_o15, "c": 1.35})
             
-            p_o25 = p_o15 - (matrix[1,1] + matrix[2,0] + matrix[0,2])
-            posibilidades.append({"pick": "Over 2.5 Goles", "p": p_o25, "c": 1.85})
+            # 2. BTTS
+            p_btts = (1 - m[0,:].sum()) * (1 - m[:,0].sum())
+            opciones.append({"pick": "Ambos Anotan", "p": p_btts, "c": 1.80})
 
-            # BTTS
-            p_btts = (1 - sum(matrix[0, :])) * (1 - sum(matrix[:, 0]))
-            posibilidades.append({"pick": "BTTS Si", "p": p_btts, "c": 1.75})
+            # 3. Doble Oportunidad (1X / X2) - Muy alta prob
+            p_1x = m.sum() - np.tril(m, -1).sum() # Gana local o empata
+            opciones.append({"pick": f"{g['home']} o Empate", "p": p_1x, "c": 1.40})
 
-            # Ganador Simple
-            p_win_h = np.sum(np.tril(matrix, -1))
-            posibilidades.append({"pick": f"Gana {g['home']}", "p": p_win_h, "c": g.get('home_odd', 2.0)})
+            # 4. Gana Local / Gana Visita
+            p_h = np.tril(m, -1).sum()
+            opciones.append({"pick": f"Gana {g['home']}", "p": p_h, "c": g['home_odd']})
 
-            # Combos (Gana + Over)
-            p_h_o15 = np.sum([matrix[h, v] for h in range(max_g) for v in range(max_g) if h > v and (h+v) > 1.5])
-            posibilidades.append({"pick": f"{g['home']} & Over 1.5", "p": p_h_o15, "c": 2.20})
-
-            # 4. FILTRADO DURO (85%) Y SELECCIÓN DE MEJOR CUOTA
-            # Solo pasan las que tienen prob >= threshold
-            validas = [opt for opt in posibilidades if opt['p'] >= self.threshold]
+            # --- FILTRO Y SELECCIÓN ---
+            # Solo mantenemos lo que supere el 85% de éxito
+            validas = [o for o in opciones if o['p'] >= self.threshold]
 
             if validas:
-                # Elegimos la que tenga la cuota ('c') más alta entre las seguras
+                # Elegimos la cuota más alta entre las seguras
                 mejor = max(validas, key=lambda x: x['c'])
                 resultados_finales.append({
                     "partido": f"{g['home']} vs {g['away']}",
@@ -69,8 +57,8 @@ class EVEngine:
                     "probabilidad": round(mejor['p'] * 100, 1),
                     "cuota": mejor['c']
                 })
-        
-        # El parlay se arma con los mejores 3 picks globales encontrados
+
+        # Armamos parlay con los 3 mejores picks globales
         parlay = sorted(resultados_finales, key=lambda x: x['probabilidad'], reverse=True)[:3]
         return resultados_finales, parlay
 
@@ -79,10 +67,7 @@ class EVEngine:
         for p in parlay:
             try:
                 val = float(str(p['cuota']).replace('+', ''))
-                dec = (val/100 + 1) if val > 0 else (100/abs(val) + 1)
-                c_tot *= dec
-            except: c_tot *= 1.30
-        
+                c_tot *= ((val/100 + 1) if val > 0 else (100/abs(val) + 1))
+            except: c_tot *= 1.35
         pago = monto * c_tot
         return {"cuota_total": round(c_tot, 2), "pago_total": round(pago, 2), "ganancia_neta": round(pago - monto, 2)}
-
