@@ -1,66 +1,51 @@
+# modules/ev_engine.py - Motor de cascada + combos
 import numpy as np
 from scipy.stats import poisson
 
 class EVEngine:
-    def __init__(self):
-        self.min_edge = 0.02 # 2% de ventaja mínima para considerar "Valor"
+    def analizar_partido(self, partido):
+        # Parseo de cuotas
+        try:
+            ch = float(partido['home_odd'].replace('+', '')) if '+' in partido['home_odd'] else -float(partido['home_odd'])
+            cd = float(partido['draw_odd'].replace('+', '')) if '+' in partido['draw_odd'] else -float(partido['draw_odd'])
+            ca = float(partido['away_odd'].replace('+', '')) if '+' in partido['away_odd'] else -float(partido['away_odd'])
+        except:
+            return None
 
-    def calcular_poisson_avanzado(self, l_h, l_a):
-        max_g = 10
-        p_h = [poisson.pmf(i, l_h) for i in range(max_g)]
-        p_a = [poisson.pmf(i, l_a) for i in range(max_g)]
-        m = np.outer(p_h, p_a)
-        
-        # Probabilidades Base
-        prob_h = np.sum(np.tril(m, -1))
-        prob_over_15 = np.sum(m[np.sum(np.indices(m.shape), axis=0) > 1.5])
-        prob_over_25 = np.sum(m[np.sum(np.indices(m.shape), axis=0) > 2.5])
-        
-        # Probabilidades de COMBOS (Gana y Over)
-        # Solo sumamos las celdas donde el local gana Y hay más de 1.5/2.5 goles
-        mask_h = np.tril(np.ones((max_g, max_g)), -1)
-        mask_over15 = np.sum(np.indices(m.shape), axis=0) > 1.5
-        mask_over25 = np.sum(np.indices(m.shape), axis=0) > 2.5
-        
-        prob_h_over15 = np.sum(m * mask_h * mask_over15)
-        prob_h_over25 = np.sum(m * mask_h * mask_over25)
-        
-        return {
-            "h": prob_h, "o15": prob_over_15, "o25": prob_over_25,
-            "h_o15": prob_h_over15, "h_o25": prob_h_over25
-        }
+        # Inferencia de lambdas (potencia ataque/defensa)
+        lh = 1.65 / (ch / 1.9) if ch != 0 else 1.4   # Lambda home
+        la = 1.35 / (ca / 1.9) if ca != 0 else 1.3
 
-    def get_raw_probabilities(self, game):
-        # Limpieza de cuotas
-        def to_dec(o):
-            n = float(str(o).replace('+', ''))
-            return (n/100 + 1) if n > 0 else (100/abs(n) + 1)
+        # Matriz Poisson
+        grid = 9
+        ph = [poisson.pmf(i, lh) for i in range(grid)]
+        pa = [poisson.pmf(i, la) for i in range(grid)]
+        m = np.outer(ph, pa)
 
-        odd_h = to_dec(game['home_odd'])
-        # Inferencia de potencia de ataque (λ) basada en cuota
-        l_h, l_a = 1.6 / (odd_h/2), 1.2
-        
-        res = self.calcular_poisson_avanzado(l_h, l_a)
-        
-        # CASCADA DE VALOR CON COMBOS
-        # Cuotas estimadas para combos (multiplicador de seguridad 0.9)
+        prob_home = np.sum(np.tril(m, -1))           # Gana local
+        prob_over15 = np.sum(m[np.indices(m.shape).sum(0) > 1.5])
+        prob_home_over15 = np.sum(m * np.tril(np.ones((grid,grid)), -1) * (np.indices(m.shape).sum(0) > 1.5))
+
+        # Cascada + combos
         opciones = [
-            {"name": f"Gana {game['home']}", "p": res['h'], "c": odd_h},
-            {"name": "Over 2.5 Goles", "p": res['o25'], "c": 1.95},
-            {"name": f"{game['home']} y Over 1.5", "p": res['h_o15'], "c": odd_h * 1.4},
-            {"name": f"{game['home']} y Over 2.5", "p": res['h_o25'], "c": odd_h * 1.8}
+            {"name": f"Gana {partido['home']}", "prob": prob_home, "cuota": 1 + (100 / abs(ch)) if ch < 0 else 1 + ch/100},
+            {"name": "Over 1.5", "prob": prob_over15, "cuota": 1.85},
+            {"name": f"{partido['home']} + Over 1.5", "prob": prob_home_over15, "cuota": 2.8},
+            {"name": f"{partido['home']} + Over 2.5", "prob": prob_home_over15 * 0.65, "cuota": 4.2}
         ]
 
-        for o in opciones: o['ev'] = (o['p'] * o['c']) - 1
-        
-        # Elegir la mejor opción analítica
+        for o in opciones:
+            o['ev'] = round((o['prob'] * o['cuota']) - 1, 3)
+
         mejor = max(opciones, key=lambda x: x['ev'])
         
         return {
-            "home": game['home'], "away": game['away'],
-            "pick_final": mejor['name'],
-            "prob_final": round(mejor['p'] * 100, 1),
-            "ev_final": round(mejor['ev'], 3),
-            "cuota_ref": round(mejor['c'], 2),
-            "tecnico": f"λH: {round(l_h,2)} | Exp: {round(l_h+l_a,2)} gls"
+            "home": partido['home'],
+            "away": partido['away'],
+            "mejor_pick": mejor['name'],
+            "prob": round(mejor['prob'] * 100, 1),
+            "ev": mejor['ev'],
+            "λ_home": round(lh, 2),
+            "λ_away": round(la, 2),
+            "edge": round(mejor['ev'] * 100, 2)
         }
