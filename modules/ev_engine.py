@@ -9,55 +9,56 @@ class EVEngine:
         return (math.exp(-lam) * (lam**k)) / math.factorial(k) if lam > 0 else (1.0 if k==0 else 0.0)
 
     def build_parlay(self, games):
-        resultados_finales = []
+        resultados_totales = []
+        parlay_final = []
+        
         for g in games:
             try:
-                def to_prob(o):
+                # Traducción de momios a fuerza de gol (Agnóstico)
+                def to_p(o):
                     v = float(str(o).replace('+', ''))
                     return 100/(v+100) if v > 0 else abs(v)/(abs(v)+100)
-                # Inferimos lambdas basados en los momios reales
-                l_h, l_v = to_prob(g['home_odd']) * 3.0, to_prob(g['away_odd']) * 3.0
-            except: l_h, l_v = 1.4, 1.2
+                
+                # Lambdas basadas en probabilidad implícita
+                l_h = to_p(g.get('home_odd', 100)) * 2.8
+                l_v = to_p(g.get('away_odd', 100)) * 2.8
+            except: l_h, l_v = 1.3, 1.1
 
-            # Matriz de marcadores (Poisson)
+            # Matriz de 7x7 marcadores posibles
             m = np.fromfunction(np.vectorize(lambda h, v: self._poisson_pmf(h, l_h) * self._poisson_pmf(v, l_v)), (7, 7))
 
+            # --- EVALUACIÓN DE TODAS LAS CAPAS ---
             opciones = []
-            # Mercados a evaluar
-            # 1. Doble Oportunidad (Local o Empate)
-            p_1x = m.sum() - np.tril(m, -1).sum() 
+            
+            # Doble Oportunidad (1X)
+            p_1x = m.sum() - np.tril(m, -1).sum()
             opciones.append({"pick": f"{g['home']} o Empate", "p": p_1x, "c": 1.25})
             
-            # 2. Over 1.5 Goles
+            # Over 1.5 Goles
             p_o15 = 1 - (m[0,0] + m[0,1] + m[1,0])
-            opciones.append({"pick": "Over 1.5 Goles", "p": p_o15, "c": 1.38})
+            opciones.append({"pick": "Over 1.5 Goles", "p": p_o15, "c": 1.35})
+            
+            # Ambos Anotan (BTTS)
+            p_btts = (1 - m[0,:].sum()) * (1 - m[:,0].sum())
+            opciones.append({"pick": "Ambos Anotan", "p": p_btts, "c": 1.70})
 
-            # 3. Gana Local (Simple)
-            p_h = np.tril(m, -1).sum()
-            opciones.append({"pick": f"Gana {g['home']}", "p": p_h, "c": g['home_odd']})
+            # --- LÓGICA DE FILTRADO ---
+            # Guardamos el mejor de cada partido para mostrarlo aunque no llegue al 85%
+            mejor_opcion = max(opciones, key=lambda x: x['p'])
+            
+            resultado = {
+                "partido": f"{g['home']} vs {g['away']}",
+                "pick": mejor_opcion['pick'],
+                "probabilidad": round(mejor_opcion['p'] * 100, 1),
+                "cuota": mejor_opcion['c'],
+                "pasa_filtro": mejor_opcion['p'] >= self.threshold
+            }
+            resultados_totales.append(resultado)
+            
+            # Solo agregamos al Parlay si cumple tu regla del 85%
+            if resultado["pasa_filtro"]:
+                parlay_final.append(resultado)
 
-            # --- FILTRO 85% Y SELECCIÓN DEL MEJOR MOMIO ---
-            validas = [o for o in opciones if o['p'] >= self.threshold]
-            if validas:
-                # De las que pasan el 85%, elegimos la cuota ('c') más alta
-                mejor = max(validas, key=lambda x: x['c'])
-                resultados_finales.append({
-                    "partido": f"{g['home']} vs {g['away']}",
-                    "pick": mejor['pick'],
-                    "probabilidad": round(mejor['p'] * 100, 1),
-                    "cuota": mejor['c']
-                })
-        
-        # El parlay se arma con los 3 mejores de la lista final
-        parlay = sorted(resultados_finales, key=lambda x: x['probabilidad'], reverse=True)[:3]
-        return resultados_finales, parlay
+        return resultados_totales, parlay_final[:3]
 
-    def simulate_parlay_profit(self, parlay, monto):
-        c_tot = 1.0
-        for p in parlay:
-            try:
-                v = float(str(p['cuota']).replace('+', ''))
-                c_tot *= ((v/100 + 1) if v > 0 else (100/abs(v) + 1))
-            except: c_tot *= 1.30
-        return {"cuota_total": round(c_tot, 2), "pago_total": round(monto * c_tot, 2), "ganancia_neta": round((monto * c_tot) - monto, 2)}
 
