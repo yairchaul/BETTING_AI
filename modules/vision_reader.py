@@ -5,22 +5,23 @@ import streamlit as st
 
 def analyze_betting_image(archivo):
     try:
-        # Autenticación automática con tus Secrets
+        # Usamos tu secret configurado
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
         img = Image.open(archivo)
         
-        # Versión estable para evitar Error 404
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # MODELO ESTABLE: Eliminamos el sufijo -latest o versiones v1beta
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         prompt = """
-        Analiza esta imagen de momios deportivos.
-        Extrae cada partido y sus cuotas (Local, Empate, Visita).
-        Formato: Equipo Local vs Equipo Visitante | L: [cuota] | E: [cuota] | V: [cuota]
+        Extrae los datos de esta imagen de momios de forma estricta.
+        Devuelve cada partido en una línea nueva con este formato:
+        Equipo Local vs Equipo Visitante | L: [momio] | E: [momio] | V: [momio]
         """
+        
         response = model.generate_content([prompt, img])
         raw_text = response.text
 
-        # Patrón Global (Agnóstico a ligas/países)
+        # Tu lógica de extracción global
         pattern_teams = r'([A-Z][a-zñáéíóú]+(?:\s[A-Z][a-zñáéíóú]+)*)'
         pattern_odds = r'([+-]\d{2,4})'
 
@@ -38,6 +39,6 @@ def analyze_betting_image(archivo):
                     "draw_odd": odds[idx_o+1], 
                     "away_odd": odds[idx_o+2]
                 })
-        return matches, f"✅ Lectura exitosa: {len(matches)} partidos identificados."
+        return matches, f"✅ {len(matches)} partidos extraídos de la imagen."
     except Exception as e:
-        return [], f"❌ Error en Motor de Visión: {str(e)}"
+        return [], f"❌ Error de Motor: {str(e)}"
