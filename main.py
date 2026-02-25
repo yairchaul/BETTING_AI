@@ -9,6 +9,18 @@ st.title("🛡️ Auditoría Betting AI: Filtro 85%")
 
 archivo = st.file_uploader("Subir captura de ticket (Carga Global)", type=["png", "jpg", "jpeg"])
 
+# En main.py
+if archivo:
+    # AQUÍ PASAMOS EL ARCHIVO REAL
+    matches, debug_msg = analyze_betting_image(archivo) 
+    st.sidebar.info(debug_msg)
+    
+    if not matches:
+        st.warning("El lector no pudo encontrar datos en esta imagen. Intenta con otra captura.")
+    else:
+        # Proceder con el filtro 85%...
+
+
 if archivo:
     matches, debug_msg = analyze_betting_image(archivo)
     st.sidebar.info(debug_msg)
@@ -39,4 +51,5 @@ if archivo:
                 Partido: {res['home']} vs {res['away']} → <span style="color:#e74c3c;"><b>Descartado</b></span> – Ninguna opción supera el 85% de probabilidad real.
             </div>
             """, unsafe_allow_html=True)
+
 
