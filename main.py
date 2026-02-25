@@ -1,41 +1,56 @@
 import streamlit as st
-import pandas as pd
-from modules.vision_reader import analyze_betting_image
+from modules.vision_reader import analizar_ticket
 from modules.ev_engine import EVEngine
 
-st.set_page_config(page_title="Betting AI Auditor", layout="wide")
+st.set_page_config(page_title="Auditor de Valor", layout="wide")
+
+st.markdown("""
+<style>
+.card { background:#1a2c3d; padding:20px; border-left:5px solid #1E88E5; border-radius:10px; margin-bottom:15px; }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🔥 Auditor de Valor IA - Fútbol")
+
 engine = EVEngine()
 
-st.title("🧠 Auditoría Analítica de Partidos")
+# Opción 1: Imagen o texto pegado
+st.subheader("Analizar ticket (imagen o texto)")
+col1, col2 = st.columns(2)
+with col1:
+    archivo = st.file_uploader("Sube captura del ticket", type=["png", "jpg", "jpeg"])
+with col2:
+    texto_manual = st.text_area("O pega el texto del ticket aquí", height=200)
 
-archivo = st.file_uploader("Subir captura de momios", type=["png", "jpg", "jpeg"])
+texto_a_analizar = ""
+if archivo is not None:
+    # En Cloud real usaríamos OCR, por ahora simulamos con nombre del archivo o texto manual
+    texto_a_analizar = texto_manual or "Texto de imagen subida"
+elif texto_manual:
+    texto_a_analizar = texto_manual
 
-if archivo:
-    matches, debug = analyze_betting_image(archivo)
-    
-    if matches:
-        st.info(debug)
-        cols = st.columns(2)
-        for i, m in enumerate(matches):
-            res = engine.get_raw_probabilities(m)
-            
-            with cols[i % 2]:
-                # Tarjeta visual inspirada en la Imagen 11
+if texto_a_analizar:
+    partidos = analizar_ticket(texto_a_analizar)
+    if partidos:
+        st.success(f"Detectados {len(partidos)} partidos")
+        for p in partidos:
+            resultado = engine.analizar_partido(p)
+            if resultado:
                 st.markdown(f"""
-                <div style="background:#1a2c3d; padding:20px; border-radius:10px; border-left:5px solid #1E88E5; margin-bottom:15px;">
-                    <h3 style="margin:0;">{res['home']} vs {res['away']}</h3>
-                    <p style="color:#42A5F5; font-size:1.1rem; margin:10px 0;">🎯 <b>Pick: {res['pick_final']}</b></p>
-                    <p style="font-size:0.9rem; color:#BDC3C7;">
-                        Confianza: <b>{res['prob_final']}%</b> | Cuota: <b>{res['cuota_ref']}</b> | EV: <b>{res['ev_final']}</b><br>
-                        <small>{res['tecnico']}</small>
-                    </p>
+                <div class="card">
+                    <h3>{resultado['home']} vs {resultado['away']}</h3>
+                    <p><strong>Mejor opción:</strong> {resultado['mejor_pick']}</p>
+                    <p>Probabilidad: {resultado['prob']}% | EV: {resultado['ev']}</p>
+                    <small>λ Home: {resultado['λ_home']} | λ Away: {resultado['λ_away']} | Edge: {resultado['edge']}%</small>
                 </div>
                 """, unsafe_allow_html=True)
-                
-        # Sección de inversión con limpieza de decimales
-        st.divider()
-        inv = st.number_input("Inversión Total", value=100.0, step=50.0)
-        # Aquí iría el registro al historial formateado a 2 decimales
     else:
-        st.error("No se detectaron datos. Asegúrate de que los momios (+/-) sean visibles.")
+        st.warning("No se detectaron partidos en el texto. Intenta copiar más texto del ticket.")
 
+# Botón para live scraping (mantener tu conector actual)
+if st.button("Analizar Caliente.mx en vivo"):
+    from modules.connector import get_live_data
+    from modules.autopicks import generar_picks_auto
+    st.write(generar_picks_auto())
+
+st.caption("Sistema global • Cascada con combos • Poisson real • Sin equipos hardcodeados")
