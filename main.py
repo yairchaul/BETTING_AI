@@ -69,3 +69,27 @@ if archivo:
                 registrar_parlay_automatico(sim, " | ".join([p['pick'] for p in parlay]))
                 st.balloons()
                 st.rerun()
+# ... (mismos imports y sidebar que antes) ...
+
+if archivo:
+    with st.spinner("Analizando datos..."):
+        games = analyze_betting_image(archivo)
+    
+    if games:
+        engine = EVEngine(threshold=0.85)
+        resultados, parlay = engine.build_parlay(games)
+
+        st.header("📊 Análisis de Capas")
+        
+        for r in resultados:
+            if r['pasa_filtro']:
+                st.success(f"✅ **{r['partido']}**: {r['pick']} | **{r['probabilidad']}%** (MÉTRICA DE ÉLITE)")
+            else:
+                st.warning(f"❌ **{r['partido']}**: {r['pick']} | {r['probabilidad']}% (No alcanza el 85% deseado)")
+
+        if parlay:
+            st.markdown("---")
+            st.header("🔥 Sugerencia de Parlay")
+            # ... (aquí va el código del ticket y el botón de registro que ya tienes) ...
+        else:
+            st.error("🚫 No se pudo armar un parlay: Ninguna opción es lo suficientemente segura (85%+).")
