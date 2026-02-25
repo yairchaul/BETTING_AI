@@ -12,26 +12,26 @@ class EVEngine:
         resultados_finales = []
         for g in games:
             try:
-                # Inferencia de fuerza de gol por momio
-                def to_p(o):
-                    val = float(str(o).replace('+', ''))
-                    return 100/(val+100) if val > 0 else abs(val)/(abs(val)+100)
-                l_h, l_v = to_p(g['home_odd']) * 3.0, to_p(g['away_odd']) * 3.0
+                def to_prob(o):
+                    v = float(str(o).replace('+', ''))
+                    return 100/(v+100) if v > 0 else abs(v)/(abs(v)+100)
+                l_h, l_v = to_prob(g['home_odd']) * 2.9, to_prob(g['away_odd']) * 2.9
             except: l_h, l_v = 1.4, 1.2
 
-            # Matriz Poisson (Probabilidades de marcadores 0-6)
             m = np.fromfunction(np.vectorize(lambda h, v: self._poisson_pmf(h, l_h) * self._poisson_pmf(v, l_v)), (7, 7))
 
             opciones = []
-            # 1. Doble Oportunidad (Alta probabilidad)
-            p_1x = m.sum() - np.tril(m, -1).sum() 
-            opciones.append({"pick": f"{g['home']} o Empate", "p": p_1x, "c": 1.28})
+            # Capas de evaluación
+            p_1x = m.sum() - np.tril(m, -1).sum() # Local o Empate
+            opciones.append({"pick": f"{g['home']} o Empate", "p": p_1x, "c": 1.30})
             
-            # 2. Over 1.5 Goles
             p_o15 = 1 - (m[0,0] + m[0,1] + m[1,0])
             opciones.append({"pick": "Over 1.5 Goles", "p": p_o15, "c": 1.40})
 
-            # --- FILTRO 85% Y SELECCIÓN DE MEJOR CUOTA ---
+            p_h = np.tril(m, -1).sum() # Gana Local
+            opciones.append({"pick": f"Gana {g['home']}", "p": p_h, "c": g['home_odd']})
+
+            # Filtro 85% y Selección de Mejor Cuota
             validas = [o for o in opciones if o['p'] >= self.threshold]
             if validas:
                 mejor = max(validas, key=lambda x: x['c'])
