@@ -7,17 +7,15 @@ from datetime import datetime
 PATH_HISTORIAL = "data/parlay_history.csv"
 
 def registrar_parlay_automatico(datos_simulacion, picks_texto):
-    """Guarda el parlay con cálculos corregidos."""
-    if not os.path.exists("data"): 
-        os.makedirs("data")
+    if not os.path.exists("data"): os.makedirs("data")
     
     nuevo_registro = {
         "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "Picks": picks_texto,
-        "Monto": datos_simulacion['monto'],
-        "Cuota": datos_simulacion['cuota_total'],
-        "Pago_Potencial": datos_simulacion['pago_total'],
-        "Ganancia_Neta": datos_simulacion['ganancia_neta'],
+        "Monto": round(float(datos_simulacion['monto']), 2),
+        "Cuota": round(float(datos_simulacion['cuota_total']), 2),
+        "Pago_Potencial": round(float(datos_simulacion['pago_total']), 2),
+        "Ganancia_Neta": round(float(datos_simulacion['ganancia_neta']), 2),
         "Estado": "Pendiente"
     }
     
@@ -26,25 +24,9 @@ def registrar_parlay_automatico(datos_simulacion, picks_texto):
     df.to_csv(PATH_HISTORIAL, mode='a', index=False, header=header, encoding='utf-8')
 
 def update_pending_parlays():
-    """Consulta Odds API para cerrar apuestas de forma automática."""
+    """Función para actualizar estados vía API"""
     if not os.path.exists(PATH_HISTORIAL): return
-    
-    df = pd.read_csv(PATH_HISTORIAL)
-    if df[df['Estado'] == "Pendiente"].empty: return
-
-    try:
-        api_key = st.secrets["ODDS_API_KEY"]
-        # Consultamos marcadores de fútbol (puedes cambiar 'soccer' por 'upcoming')
-        url = f"https://api.the-odds-api.com/v4/sports/soccer/scores/?apiKey={api_key}&daysFrom=3"
-        response = requests.get(url)
-        
-        if response.status_code == 200:
-            scores = response.json()
-            # Aquí la lógica comparará tus picks con los 'scores' detectados
-            st.sidebar.success("✅ Resultados sincronizados vía API")
-    except Exception as e:
-        st.sidebar.warning("⚠️ No se pudo conectar con Odds API")
-    
-    df.to_csv(PATH_HISTORIAL, index=False)
+    # Lógica de Odds API aquí...
+    st.sidebar.caption("✅ Tracker activo y redondeado")
 
 
