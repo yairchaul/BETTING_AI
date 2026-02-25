@@ -14,12 +14,13 @@ with st.sidebar:
         try:
             hist = pd.read_csv("parlay_history.csv")
             if not hist.empty:
-                # Usamos .get() para evitar KeyError si la columna no existe
+                # Usamos .get() para evitar KeyError si la columna no existe aún
                 apostado = hist.get('monto', pd.Series([0])).sum()
                 ganancia = hist.get('ganancia_neta', pd.Series([0])).sum()
                 st.metric("ROI Total", f"{(ganancia/apostado*100 if apostado > 0 else 0):.1f}%")
                 st.markdown("---")
                 for _, r in hist.tail(5).iterrows():
+                    # Validación de fecha y ganancia neta para evitar errores de despliegue
                     fecha = r.get('Fecha', 'S/F')
                     neta = r.get('ganancia_neta', 0.0)
                     st.write(f"📅 {fecha} | **${neta:.2f}**")
@@ -41,6 +42,7 @@ if archivo:
         with st.expander("🏟️ Verificación de Partidos Detectados (OCR)"):
             st.dataframe(games, use_container_width=True)
 
+        # Usamos tu EVEngine con el umbral de élite
         engine = EVEngine(threshold=0.85)
         resultados, parlay = engine.build_parlay(games)
 
@@ -54,6 +56,7 @@ if archivo:
                 else:
                     st.warning(f"❌ **{r['partido']}**\n\nPick: **{r['pick']}** | {r['probabilidad']}% (Bajo el 85%)")
 
+        # --- SECCIÓN DEL TICKET FINAL ---
         if parlay:
             st.markdown("---")
             st.header("🔥 Sugerencia de Parlay Élite")
@@ -61,7 +64,7 @@ if archivo:
             monto = st.number_input("💰 Inversión (MXN)", value=100.0, step=50.0)
             sim = engine.simulate_parlay_profit(parlay, monto)
             
-            # Tarjetas visuales corregidas (Sin errores de string literal)
+            # Tarjetas visuales (Corregido el error de f-string de la línea 69)
             for p in parlay:
                 st.markdown(f"""
                 <div style="background:#1e1e1e; padding:15px; border-radius:10px; border-left: 5px solid #00ff9d; margin-bottom:10px;">
