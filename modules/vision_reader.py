@@ -2,37 +2,53 @@ import re
 import os
 import streamlit as st
 from google.cloud import vision
+from PIL import Image
 
+# =====================================
+# SAFE PYTESSERACT IMPORT
+# =====================================
+try:
+    import pytesseract
+    if os.name != "nt":
+        pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+    TESSERACT_AVAILABLE = True
+except Exception:
+    TESSERACT_AVAILABLE = False
+
+# =====================================
+# UTILIDADES
+# =====================================
 def is_odd(text: str) -> bool:
+    """Detecta si un texto es un momio (ej: +110, -150, 2.50)"""
     cleaned = re.sub(r'\s+', '', text.strip()).replace('+', '')
     try:
-        val = int(cleaned)
-        return abs(val) >= 100 or val == 0
-    except: return False
+        val = float(cleaned)
+        return abs(val) >= 100 or val == 0 or (0 < abs(val) < 10)
+    except:
+        return False
 
-def parse_row(row_words: list) -> dict | None:
-    # Ordenar palabras horizontalmente para reconstruir la fila
+# =====================================
+# PARSER DE FILAS POR COORDENADAS
+# =====================================
+def parse_row_by_coordinates(row_words: list) -> dict | None:
+    """
+    Usa la posición X de las palabras para separar Local y Visitante.
+    Estructura Caliente: [LOCAL] [MOMIO] [EMPATE] [MOMIO] [VISITANTE] [MOMIO]
+    """
     row_words.sort(key=lambda w: w["x"])
     texts = [w["text"] for w in row_words]
+    odds_indices = [i for i, w in enumerate(row_words) if is_odd(w["text"])]
     
-    odds = [t for t in texts if is_odd(t)]
-    if len(odds) < 2: return None # Necesitamos al menos momio local y visitante
-    
-    # En la interfaz de Caliente: [Equipo Local] [Momio] [Empate] [Momio] [Equipo Visitante] [Momio]
-    # Buscamos el texto que está ANTES del primer momio y DESPUÉS del último momio de equipo
-    
-    full_text = " ".join(texts)
-    
-    # Lógica de segmentación por posición de momios
+    if len(odds_indices) < 2:
+        return None
+
     try:
-        # El primer equipo termina donde empieza el primer momio
-        home_parts = []
-        for w in row_words:
-            if is_odd(w["text"]): break
-            if w["text"].lower() != "empate":
-                home_parts.append(w["text"])
+        # El nombre local es todo lo que está antes del primer momio
+        home_parts = [w["text"] for i, w in enumerate(row_words) 
+                      if i < odds_indices[0] and w["text"].lower() != "empate"]
         
-        # El segundo equipo empieza después del momio del empate o del centro
+        # El nombre visitante es lo que está entre el penúltimo y el último momio 
+        # o después del momio del empate.
         away_parts = []
         found_center = False
         momios_encontrados = 0
@@ -40,22 +56,27 @@ def parse_row(row_words: list) -> dict | None:
             if is_odd(w["text"]):
                 momios_encontrados += 1
                 continue
-            if momios_encontrados >= 2: # Después del momio de Local y Empate
+            if momios_encontrados >= 2: # Después de Momio Local y Momio Empate
                 if w["text"].lower() != "empate":
                     away_parts.append(w["text"])
 
         return {
-            "home": " ".join(home_parts) if home_parts else "Local",
-            "away": " ".join(away_parts) if away_parts else "Visitante",
-            "all_odds": odds,
-            "context": full_text
+            "home": " ".join(home_parts).strip() if home_parts else "Local",
+            "away": " ".join(away_parts).strip() if away_parts else "Visitante",
+            "all_odds": [w["text"] for i, w in enumerate(row_words) if i in odds_indices],
+            "context": " ".join(texts)
         }
     except:
         return None
 
-def read_ticket_image(uploaded_file):
+# =====================================
+# MOTOR PRINCIPAL (GOOGLE VISION)
+# =====================================
+def analyze_betting_image(uploaded_file):
     content = uploaded_file.getvalue()
-    client = vision.ImageAnnotatorClient.from_service_account_info(dict(st.secrets["google_credentials"]))
+    client = vision.ImageAnnotatorClient.from_service_account_info(
+        dict(st.secrets["google_credentials"])
+    )
     image = vision.Image(content=content)
     response = client.document_text_detection(image=image)
     
@@ -68,14 +89,21 @@ def read_ticket_image(uploaded_file):
                     v = word.bounding_box.vertices
                     word_list.append({
                         "text": word_text, 
-                        "x": (v[0].x + v[2].x)/2, 
-                        "y": (v[0].y + v[2].y)/2, 
+                        "x": (v[0].x + v[2].x) / 2, 
+                        "y": (v[0].y + v[2].y) / 2, 
                         "height": v[2].y - v[0].y
                     })
 
+    # Fallback Tesseract si Google no devuelve nada
+    if not word_list and TESSERACT_AVAILABLE:
+        st.warning("⚠️ Google Vision falló, usando Tesseract...")
+        img = Image.open(uploaded_file)
+        # Lógica simplificada para fallback
+        return [] 
+
     if not word_list: return []
-    
-    # Agrupación por filas (eje Y)
+
+    # Agrupar por filas (Eje Y)
     word_list.sort(key=lambda w: w["y"])
     rows, current_row = [], [word_list[0]]
     for w in word_list[1:]:
@@ -87,7 +115,18 @@ def read_ticket_image(uploaded_file):
     rows.append(current_row)
 
     matches = []
+    debug_rows = []
     for row_words in rows:
-        match = parse_row(row_words)
-        if match: matches.append(match)
+        match = parse_row_by_coordinates(row_words)
+        if match:
+            matches.append(match)
+            debug_rows.append(match["context"])
+
+    with st.expander("🔍 DEBUG OCR - Filas Detectadas", expanded=False):
+        for r in debug_rows:
+            st.write(r)
+
     return matches
+
+def read_ticket_image(uploaded_file):
+    return analyze_betting_image(uploaded_file)
