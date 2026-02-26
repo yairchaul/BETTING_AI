@@ -1,41 +1,17 @@
-import requests
-import streamlit as st
-
+import random
 
 def get_market_odds(home, away):
+    """
+    Simulación odds.
+    Luego conectamos OddsAPI real.
+    """
 
-    key = st.secrets["ODDS_API_KEY"]
-
-    try:
-
-        url = "https://api.the-odds-api.com/v4/sports/soccer/odds"
-
-        params = {
-            "apiKey": key,
-            "regions": "eu",
-            "markets": "h2h",
-            "oddsFormat": "decimal"
-        }
-
-        r = requests.get(url, params=params, timeout=6)
-        data = r.json()
-
-        for game in data:
-
-            teams = game.get("teams", [])
-
-            if home in teams and away in teams:
-
-                bookmakers = game["bookmakers"][0]
-                outcomes = bookmakers["markets"][0]["outcomes"]
-
-                odds = {}
-                for o in outcomes:
-                    odds[o["name"]] = o["price"]
-
-                return odds
-
-    except:
-        return None
-
-    return None
+    return {
+        "Home Win": random.uniform(1.6, 3.2),
+        "Draw": random.uniform(2.8, 4.5),
+        "Away Win": random.uniform(2.0, 4.0),
+        "Over 1.5": random.uniform(1.2, 1.6),
+        "Over 2.5": random.uniform(1.7, 2.5),
+        "BTTS Yes": random.uniform(1.6, 2.2),
+        "Under 3.5": random.uniform(1.4, 1.9)
+    }
