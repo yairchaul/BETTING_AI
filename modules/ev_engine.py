@@ -98,7 +98,7 @@ def cascade_model(match):
     valid = []
 
     for name, prob, odd in options:
-        if prob >= 0.85:
+        if prob >= 0.65:
             valid.append((name, prob, odd))
 
     if not valid:
@@ -138,3 +138,4 @@ def build_parlay(games):
         results.append(pick)
 
     return results
+
