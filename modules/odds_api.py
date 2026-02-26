@@ -1,48 +1,29 @@
-import requests
 import streamlit as st
+import requests
 
 ODDS_API_KEY = st.secrets["ODDS_API_KEY"]
 
-BASE_URL = "https://api.the-odds-api.com/v4/sports/soccer/odds"
-
-
 def get_market_odds(home, away):
+
+    url = "https://api.the-odds-api.com/v4/sports/soccer/odds"
 
     params = {
         "apiKey": ODDS_API_KEY,
         "regions": "eu",
         "markets": "h2h,totals",
-        "oddsFormat": "decimal"
+        "oddsFormat": "decimal",
     }
 
-    try:
-        response = requests.get(BASE_URL, params=params)
-        games = response.json()
+    r = requests.get(url, params=params)
 
-        for game in games:
+    if r.status_code != 200:
+        return None
 
-            if home.lower() in game["home_team"].lower() \
-            or away.lower() in game["away_team"].lower():
+    data = r.json()
 
-                bookmakers = game["bookmakers"][0]
-                markets = bookmakers["markets"]
+    for game in data:
+        teams = game.get("teams", [])
+        if home in teams or away in teams:
+            return {"market_found": True}
 
-                odds = {}
-
-                for m in markets:
-
-                    if m["key"] == "h2h":
-                        for o in m["outcomes"]:
-                            odds[o["name"]] = o["price"]
-
-                    if m["key"] == "totals":
-                        for o in m["outcomes"]:
-                            if o["name"] == "Over":
-                                odds[f"OVER_{o['point']}"] = o["price"]
-
-                return odds
-
-    except Exception as e:
-        print("ODDS API ERROR:", e)
-
-    return {}
+    return None
