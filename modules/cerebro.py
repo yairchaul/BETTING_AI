@@ -1,12 +1,24 @@
 import streamlit as st
+import os
+import sys
 
-# Importación segura
+# Añade el directorio actual al path para que Python encuentre los módulos
+sys.path.append(os.path.dirname(__file__))
+
 try:
+    # Intento de importación absoluta (Raíz del proyecto)
     from modules.montecarlo import run_simulations
     from modules.stats_fetch import get_team_stats
     from modules.schemas import PickResult
 except ImportError:
-    from montecarlo import run_simulations
+    # Intento de importación local (Si estás dentro de la carpeta modules)
+    try:
+        from montecarlo import run_simulations
+        from stats_fetch import get_team_stats
+        from schemas import PickResult
+    except ImportError:
+        st.error("Error crítico: No se pudieron cargar los módulos de lógica.")
+   from montecarlo import run_simulations
     from stats_fetch import get_team_stats
     from schemas import PickResult
 
