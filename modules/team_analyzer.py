@@ -1,15 +1,24 @@
-import numpy as np
+from modules.form_analyzer import analyze_last5
 
-def analyze_last5(team_stats):
 
-    last5 = team_stats[-5:]
+def build_team_profile(team_name: str):
 
-    goles_favor = np.mean([m["gf"] for m in last5])
-    goles_contra = np.mean([m["ga"] for m in last5])
-    corners = np.mean([m.get("corners",0) for m in last5])
+    # 🔥 SIMULACIÓN (luego se conecta API real)
+    fake_matches = [
+        {"gf":2,"ga":1,"corners":5},
+        {"gf":1,"ga":1,"corners":4},
+        {"gf":3,"ga":2,"corners":6},
+        {"gf":0,"ga":1,"corners":3},
+        {"gf":2,"ga":0,"corners":5},
+    ]
+
+    form = analyze_last5(fake_matches)
 
     return {
-        "attack": goles_favor,
-        "defense": goles_contra,
-        "corners": corners
+        "team": team_name,
+        "matches": fake_matches,
+        "attack": form["attack"],
+        "defense": form["defense"],
+        "form_score": form["form_score"],
+        "corners": form["corners"]
     }
