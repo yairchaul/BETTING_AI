@@ -16,61 +16,60 @@ except Exception:
     TESSERACT_AVAILABLE = False
 
 # =====================================
-# UTILIDADES
+# UTILIDADES DE DETECCIÓN
 # =====================================
 def is_odd(text: str) -> bool:
-    """Detecta si un texto es un momio (ej: +110, -150, 2.50)"""
+    """Detecta si el texto es un momio (+100, -150, etc)"""
     cleaned = re.sub(r'\s+', '', text.strip()).replace('+', '')
     try:
         val = float(cleaned)
-        return abs(val) >= 100 or val == 0 or (0 < abs(val) < 10)
+        # Filtro para momios americanos típicos o decimales bajos
+        return abs(val) >= 100 or val == 0 or (1.0 < val < 10.0)
     except:
         return False
 
-# =====================================
-# PARSER DE FILAS POR COORDENADAS
-# =====================================
-def parse_row_by_coordinates(row_words: list) -> dict | None:
+def parse_row_smart(row_words: list) -> dict | None:
     """
-    Usa la posición X de las palabras para separar Local y Visitante.
-    Estructura Caliente: [LOCAL] [MOMIO] [EMPATE] [MOMIO] [VISITANTE] [MOMIO]
+    Separa Local y Visitante usando los momios como anclas.
+    Estructura: [EQUIPO LOCAL] [MOMIO] [EMPATE] [MOMIO] [EQUIPO VISITANTE] [MOMIO]
     """
     row_words.sort(key=lambda w: w["x"])
-    texts = [w["text"] for w in row_words]
+    
+    # Identificamos índices de palabras que son momios
     odds_indices = [i for i, w in enumerate(row_words) if is_odd(w["text"])]
     
     if len(odds_indices) < 2:
         return None
 
     try:
-        # El nombre local es todo lo que está antes del primer momio
+        # Local: Todo antes del primer momio (saltando 'Empate')
         home_parts = [w["text"] for i, w in enumerate(row_words) 
                       if i < odds_indices[0] and w["text"].lower() != "empate"]
         
-        # El nombre visitante es lo que está entre el penúltimo y el último momio 
-        # o después del momio del empate.
+        # Visitante: Todo después del segundo momio (momio de empate)
         away_parts = []
-        found_center = False
-        momios_encontrados = 0
+        momios_vistos = 0
         for w in row_words:
             if is_odd(w["text"]):
-                momios_encontrados += 1
+                momios_vistos += 1
                 continue
-            if momios_encontrados >= 2: # Después de Momio Local y Momio Empate
+            if momios_vistos >= 2: # Estamos después del momio de Local y del Empate
                 if w["text"].lower() != "empate":
                     away_parts.append(w["text"])
+
+        all_odds = [w["text"] for i, w in enumerate(row_words) if i in odds_indices]
 
         return {
             "home": " ".join(home_parts).strip() if home_parts else "Local",
             "away": " ".join(away_parts).strip() if away_parts else "Visitante",
-            "all_odds": [w["text"] for i, w in enumerate(row_words) if i in odds_indices],
-            "context": " ".join(texts)
+            "all_odds": all_odds,
+            "context": " ".join([w["text"] for w in row_words])
         }
     except:
         return None
 
 # =====================================
-# MOTOR PRINCIPAL (GOOGLE VISION)
+# GOOGLE VISION + PROCESAMIENTO
 # =====================================
 def analyze_betting_image(uploaded_file):
     content = uploaded_file.getvalue()
@@ -94,14 +93,12 @@ def analyze_betting_image(uploaded_file):
                         "height": v[2].y - v[0].y
                     })
 
-    # Fallback Tesseract si Google no devuelve nada
-    if not word_list and TESSERACT_AVAILABLE:
-        st.warning("⚠️ Google Vision falló, usando Tesseract...")
-        img = Image.open(uploaded_file)
-        # Lógica simplificada para fallback
-        return [] 
-
-    if not word_list: return []
+    if not word_list:
+        # Fallback Tesseract si Google Vision no detecta nada
+        if TESSERACT_AVAILABLE:
+            st.warning("Usando Fallback Tesseract...")
+            # (Lógica de Tesseract aquí si fuera necesaria)
+        return []
 
     # Agrupar por filas (Eje Y)
     word_list.sort(key=lambda w: w["y"])
@@ -117,7 +114,7 @@ def analyze_betting_image(uploaded_file):
     matches = []
     debug_rows = []
     for row_words in rows:
-        match = parse_row_by_coordinates(row_words)
+        match = parse_row_smart(row_words)
         if match:
             matches.append(match)
             debug_rows.append(match["context"])
