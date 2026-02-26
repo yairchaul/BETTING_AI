@@ -1,60 +1,60 @@
 import math
 
+# =====================================
+# UTILIDADES
+# =====================================
+
+def poisson_prob(lmbda, k):
+
+    return (math.exp(-lmbda) * (lmbda ** k)) / math.factorial(k)
+
+
 def clamp(x):
-    return max(0.05, min(0.95, x))
+    return max(0.05, min(0.90, x))
 
 
-def poisson_prob(l, k):
-    if l <= 0:
-        return 1 if k == 0 else 0
-    return (math.exp(-l)*(l**k))/math.factorial(k)
+# =====================================
+# MATCH PROBABILITY ENGINE
+# =====================================
 
+def calculate_match_probabilities(home_p, away_p):
 
-def calculate_match_probabilities(home, away, context=None):
+    """
+    Devuelve probabilidades BASE estables.
+    ESTE FORMATO ES INAMOVIBLE.
+    """
 
-    h_form = home["form_score"]
-    a_form = away["form_score"]
+    attack_home = home_p.get("attack", 1.3)
+    defense_home = home_p.get("defense", 1.2)
 
-    lh = (home["attack"]/away["defense"]) * 1.25 * (0.8+h_form*0.4)
-    la = (away["attack"]/home["defense"]) * 0.85 * (0.8+a_form*0.4)
+    attack_away = away_p.get("attack", 1.2)
+    defense_away = away_p.get("defense", 1.3)
 
-    p_home=p_draw=p_away=0
-    p_btts=p_o25=p_o35=0
-    p_h_o15=p_h_o25=p_a_o15=p_a_o25=0
+    # Expected goals
+    lambda_home = attack_home / defense_away * 1.25
+    lambda_away = attack_away / defense_home * 1.05
 
-    for i in range(7):
-        for j in range(7):
+    p_home = 0
+    p_draw = 0
+    p_away = 0
 
-            prob = poisson_prob(lh,i)*poisson_prob(la,j)
-            tg=i+j
+    # Matriz Poisson 6x6
+    for i in range(6):
+        for j in range(6):
 
-            if i>j: p_home+=prob
-            elif i==j: p_draw+=prob
-            else: p_away+=prob
+            prob = poisson_prob(lambda_home, i) * poisson_prob(lambda_away, j)
 
-            if i>0 and j>0:
-                p_btts+=prob
+            if i > j:
+                p_home += prob
+            elif i == j:
+                p_draw += prob
+            else:
+                p_away += prob
 
-            if tg>2.5: p_o25+=prob
-            if tg>3.5: p_o35+=prob
-
-            if i>j and tg>1.5: p_h_o15+=prob
-            if i>j and tg>2.5: p_h_o25+=prob
-            if j>i and tg>1.5: p_a_o15+=prob
-            if j>i and tg>2.5: p_a_o25+=prob
+    total = p_home + p_draw + p_away
 
     return {
-        "Resultado Final (Local)":clamp(p_home),
-        "Resultado Final (Empate)":clamp(p_draw),
-        "Resultado Final (Visita)":clamp(p_away),
-        "Doble Oportunidad (L/E)":clamp(p_home+p_draw),
-        "Doble Oportunidad (V/E)":clamp(p_away+p_draw),
-        "Ambos Anotan":clamp(p_btts),
-        "Over 2.5 Goles":clamp(p_o25),
-        "Under 2.5 Goles":clamp(1-p_o25),
-        "Over 3.5 Goles":clamp(p_o35),
-        "Local y Over 1.5":clamp(p_h_o15),
-        "Local y Over 2.5":clamp(p_h_o25),
-        "Visita y Over 1.5":clamp(p_a_o15),
-        "Visita y Over 2.5":clamp(p_a_o25),
+        "home": clamp(p_home / total),
+        "draw": clamp(p_draw / total),
+        "away": clamp(p_away / total),
     }
