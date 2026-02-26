@@ -1,9 +1,24 @@
 import re
 import io
+import os
 import streamlit as st
 from google.cloud import vision
 from PIL import Image
-import pytesseract
+
+# =====================================
+# SAFE PYTESSERACT IMPORT (NO CRASH)
+# =====================================
+
+try:
+    import pytesseract
+
+    if os.name != "nt":
+        pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+
+    TESSERACT_AVAILABLE = True
+
+except Exception:
+    TESSERACT_AVAILABLE = False
 
 
 # =====================================
@@ -20,6 +35,7 @@ def is_odd(text: str) -> bool:
 
 
 def detect_market_type(texts: list) -> dict:
+
     text_str = " ".join(texts).lower()
 
     if "empate" in text_str or len([t for t in texts if is_odd(t)]) >= 2:
@@ -72,7 +88,7 @@ def parse_row(texts: list) -> dict | None:
 
 
 # =====================================
-# OCR PRINCIPAL (GOOGLE VISION)
+# GOOGLE VISION OCR (PRINCIPAL)
 # =====================================
 
 def analyze_betting_image(uploaded_file):
@@ -104,10 +120,39 @@ def analyze_betting_image(uploaded_file):
                         "height": v[2].y - v[0].y
                     })
 
+    # ===== FALLBACK SI GOOGLE FALLA =====
+    if not word_list and TESSERACT_AVAILABLE:
+
+        st.warning("⚠️ Google Vision vacío — usando fallback Tesseract")
+
+        image = Image.open(uploaded_file)
+        text = pytesseract.image_to_string(image)
+
+        games = []
+
+        for line in text.split("\n"):
+
+            match = re.search(r"(.+?)\s+vs\s+(.+)", line, re.IGNORECASE)
+
+            if match:
+                games.append({
+                    "market": "1X2",
+                    "home": match.group(1),
+                    "away": match.group(2),
+                    "home_odd": "+100",
+                    "draw_odd": "+250",
+                    "away_odd": "+100"
+                })
+
+        return games
+
     if not word_list:
         return []
 
-    # ===== Detectar filas =====
+    # =====================================
+    # DETECTAR FILAS
+    # =====================================
+
     word_list.sort(key=lambda w: w["y"])
 
     rows = []
@@ -126,7 +171,6 @@ def analyze_betting_image(uploaded_file):
     matches = []
     debug_rows = []
 
-    # ===== Horizontal =====
     for row_words in rows:
 
         row_words.sort(key=lambda w: w["x"])
@@ -143,33 +187,9 @@ def analyze_betting_image(uploaded_file):
         if match:
             matches.append(match)
 
-    # ===== Vertical fallback =====
-    if len(matches) == 0:
-
-        for i in range(len(rows) - 2):
-
-            combined = rows[i] + rows[i+1] + rows[i+2]
-
-            combined_texts = [w["text"] for w in combined]
-
-            odds = [t for t in combined_texts if is_odd(t)]
-
-            if len(odds) >= 2:
-
-                teams = [
-                    t for t in combined_texts
-                    if not is_odd(t) and len(t) > 3
-                ]
-
-                if len(teams) >= 2:
-                    matches.append({
-                        "market": "1X2",
-                        "home": teams[0],
-                        "home_odd": odds[0],
-                        "draw_odd": odds[1] if len(odds) > 1 else "+250",
-                        "away": teams[1],
-                        "away_odd": odds[2] if len(odds) > 2 else "+150"
-                    })
+    # =====================================
+    # DEBUG OCR
+    # =====================================
 
     with st.expander("🔍 DEBUG OCR", expanded=False):
         for r in debug_rows:
@@ -183,7 +203,4 @@ def analyze_betting_image(uploaded_file):
 # =====================================
 
 def read_ticket_image(uploaded_file):
-    """
-    Alias para compatibilidad con main.py
-    """
     return analyze_betting_image(uploaded_file)
