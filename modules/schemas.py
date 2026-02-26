@@ -1,22 +1,17 @@
 from dataclasses import dataclass
-from typing import List
-
-@dataclass
-class Match:
-    home: str
-    away: str
 
 @dataclass
 class PickResult:
     match: str
     selection: str
     probability: float
-    odd: float  # <--- Corregido para evitar AttributeError
+    odd: float
     ev: float
+
 
 @dataclass
 class ParlayResult:
-    matches: List[str]
-    total_odd: float
-    combined_prob: float
+    picks: list
+    total_odds: float
+    combined_probability: float
     total_ev: float
