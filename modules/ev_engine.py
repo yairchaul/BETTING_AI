@@ -1,8 +1,10 @@
 # modules/ev_engine.py
 
 import random
+
 from modules.schemas import PickResult, ParlayResult
 from modules.team_analyzer import build_team_profile
+from modules.google_context import get_match_context
 
 
 # ======================================
@@ -15,6 +17,27 @@ def clamp(x):
 
 def expected_value(prob, odd):
     return (prob * odd) - 1
+
+
+# ======================================
+# PROBABILITY ENGINE (NUEVO)
+# ======================================
+
+def calculate_base_probabilities(home, away):
+
+    attack_diff = home["attack"] - away["defense"]
+    tempo = (home["tempo"] + away["tempo"]) / 2
+
+    home_prob = clamp(0.40 + attack_diff * 0.25)
+    draw_prob = clamp(0.22 + (1 - abs(attack_diff)) * 0.1)
+    away_prob = clamp(1 - home_prob - draw_prob)
+
+    return {
+        "home": home_prob,
+        "draw": draw_prob,
+        "away": away_prob,
+        "tempo": tempo
+    }
 
 
 # ======================================
@@ -39,29 +62,56 @@ def detect_archetype(home, away):
 
 
 # ======================================
-# MARKET GENERATOR
+# MARKET GENERATOR (MEJORADO)
 # ======================================
 
-def generate_markets(archetype, home, away):
+def generate_markets(archetype, home, away, probs, context):
 
     markets = []
 
     goal_rate = (home["attack"] + away["attack"]) / 2
+    tempo_boost = probs["tempo"] * 0.1
+    hype_boost = context["importance"] * 0.05
 
+    # =====================
+    # OPEN GAME
+    # =====================
     if archetype == "OPEN":
-        markets.append(("Over 2.5 Goles", clamp(0.45 + goal_rate * 0.4), 2.05))
-        markets.append(("BTTS Sí", clamp(0.50 + goal_rate * 0.3), 1.85))
 
+        over_prob = clamp(0.45 + goal_rate * 0.35 + tempo_boost)
+        btts_prob = clamp(0.48 + goal_rate * 0.30)
+
+        markets.append(("Over 2.5 Goles", over_prob, 2.05))
+        markets.append(("BTTS Sí", btts_prob, 1.85))
+
+    # =====================
+    # BALANCED GAME
+    # =====================
     elif archetype == "BALANCED":
-        markets.append(("Empate", clamp(0.30 + random.uniform(0,0.1)), 3.3))
+
+        draw_prob = clamp(probs["draw"] + hype_boost)
+
+        markets.append(("Empate", draw_prob, 3.3))
         markets.append(("Under 3.5", clamp(0.60), 1.6))
 
+    # =====================
+    # HOME DOMINANT
+    # =====================
     elif archetype == "HOME_DOMINANT":
-        markets.append(("Gana Local", clamp(0.55), 2.0))
-        markets.append(("Local + Over 1.5", clamp(0.45), 2.8))
 
+        home_win = clamp(probs["home"] + hype_boost)
+
+        markets.append(("Gana Local", home_win, 2.0))
+        markets.append(("Local + Over 1.5", clamp(home_win * 0.8), 2.8))
+
+    # =====================
+    # DEFENSIVE
+    # =====================
     else:
-        markets.append(("Under 2.5", clamp(0.58), 1.9))
+
+        under_prob = clamp(0.55 + (1 - goal_rate) * 0.3)
+
+        markets.append(("Under 2.5", under_prob, 1.9))
 
     return markets
 
@@ -75,17 +125,32 @@ def analyze_match(match):
     home_profile = build_team_profile(match["home"])
     away_profile = build_team_profile(match["away"])
 
+    context = get_match_context(match["home"], match["away"])
+
+    probs = calculate_base_probabilities(
+        home_profile,
+        away_profile
+    )
+
     archetype = detect_archetype(home_profile, away_profile)
 
     markets = generate_markets(
         archetype,
         home_profile,
-        away_profile
+        away_profile,
+        probs,
+        context
     )
 
     candidates = []
 
     for name, prob, odd in markets:
+
+        # SHARP MONEY ADJUSTMENT
+        prob += context["importance"] * 0.03
+        prob -= context["injuries"] * 0.02
+
+        prob = clamp(prob)
 
         ev = expected_value(prob, odd)
 
@@ -105,7 +170,7 @@ def analyze_match(match):
     if not candidates:
         return None
 
-    # Sindicato elige mayor EV
+    # Sindicato elige mejor EV
     return max(candidates, key=lambda x: x.ev)
 
 
@@ -134,7 +199,7 @@ def build_smart_parlay(picks):
     if not picks:
         return None
 
-    # sindicato evita exceso de picks
+    # evita correlación excesiva
     picks = sorted(picks, key=lambda x: x.ev, reverse=True)[:4]
 
     total_odd = 1
