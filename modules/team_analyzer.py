@@ -1,23 +1,15 @@
-import random
+import numpy as np
 
+def analyze_last5(team_stats):
 
-# =====================================
-# TEAM PROFILE BUILDER
-# =====================================
+    last5 = team_stats[-5:]
 
-def build_team_profile(team_name: str):
+    goles_favor = np.mean([m["gf"] for m in last5])
+    goles_contra = np.mean([m["ga"] for m in last5])
+    corners = np.mean([m.get("corners",0) for m in last5])
 
-    """
-    Simula perfil estadístico del equipo.
-    Luego podremos conectar APIs reales.
-    """
-
-    profile = {
-        "team": team_name,
-        "attack_rating": random.uniform(0.4, 0.9),
-        "defense_rating": random.uniform(0.4, 0.9),
-        "form": random.uniform(0.3, 1.0),
-        "tempo": random.uniform(0.3, 1.0),
+    return {
+        "attack": goles_favor,
+        "defense": goles_contra,
+        "corners": corners
     }
-
-    return profile
