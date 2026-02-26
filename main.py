@@ -1,46 +1,71 @@
 import streamlit as st
-from modules.vision_reader import analyze_betting_image
-from modules.ev_engine import build_parlay
 
+from modules.vision_reader import analyze_betting_image
+from modules.ev_engine import analyze_matches
+
+
+# ======================
+# CONFIG UI
+# ======================
 
 st.set_page_config(layout="wide")
 
-st.title("🔥 Análisis de la Mejor Opción")
+st.title("🧠 EV ELITE v4 — Sharp Money Detector")
 
-uploaded = st.file_uploader("Sube ticket", type=["png","jpg","jpeg"])
+
+# ======================
+# SUBIR TICKET
+# ======================
+
+uploaded = st.file_uploader(
+    "Sube tu ticket de apuestas",
+    type=["png", "jpg", "jpeg"]
+)
+
+# ======================
+# ANALISIS
+# ======================
 
 if uploaded:
 
     games = analyze_betting_image(uploaded)
 
-    st.subheader("📋 Verificación de Partidos")
+    if not games:
+        st.error("❌ No se detectaron partidos")
+        st.stop()
+
+    st.subheader("📋 Partidos Detectados")
     st.dataframe(games)
 
-    results = build_parlay(games)
+    # ======================
+    # ANALISIS IA
+    # ======================
 
-    if results:
+    results = analyze_matches(games)
 
-        total_odd = 1
+    if not results:
+        st.warning("⚠️ Ningún pick con EV positivo")
+        st.stop()
 
-        for r in results:
+    st.divider()
+    st.subheader("🔥 Picks Sharp Detectados")
 
-            total_odd *= r.odd
+    total_ev = 0
 
-            st.success(
-                f"🎯 {r.match}\n"
-                f"Sugerido: {r.selection} | "
-                f"Cuota: x{r.odd} | "
-                f"Prob: {r.probability}"
-            )
+    for r in results:
 
-        st.divider()
+        st.success(
+            f"🎯 {r.match}\n"
+            f"Sugerido: {r.selection}\n"
+            f"Probabilidad: {r.probability}\n"
+            f"EV: {r.ev}"
+        )
 
-        stake = st.number_input("Inversión (MXN)", value=10.0)
+        total_ev += r.ev
 
-        payout = stake * total_odd
+    st.divider()
 
-        col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
-        col1.metric("Cuota Final", f"{total_odd:.2f}x")
-        col2.metric("Pago Potencial", f"${payout:.2f}")
-        col3.metric("Ganancia Neta", f"${payout-stake:.2f}")
+    col1.metric("Picks Totales", len(results))
+    col2.metric("EV Total", round(total_ev, 3))
