@@ -1,34 +1,17 @@
-import re
+def build_team_rating(last5):
 
-def clean_name(name):
-    """Limpia ruidos del OCR y sufijos de equipos."""
-    # Quitar caracteres especiales
-    name = re.sub(r'[^a-zA-Z0-9 ]', '', name)
-    
-    # Sufijos comunes que ensucian la búsqueda estadística
-    suffixes = [
-        ' SE', ' FC', ' ES', ' UNPFM', ' United', ' U20', 
-        ' CD', ' AS', ' AC', ' SA', ' Junior', ' Caldas'
-    ]
-    for s in suffixes:
-        name = re.sub(rf'{s}$', '', name, flags=re.IGNORECASE)
-    
-    return name.strip()
+    goals_for = sum(m["gf"] for m in last5) / len(last5)
+    goals_against = sum(m["ga"] for m in last5) / len(last5)
+    shots_on_target = sum(m["shots"] for m in last5) / len(last5)
 
-def get_team_stats(home, away):
-    """
-    Consulta estadísticas basadas en nombres limpios.
-    """
-    home_clean = clean_name(home)
-    away_clean = clean_name(away)
-    
-    # Simulación de respuesta funcional
-    # Aquí puedes integrar tu API-Football o similar
+    attack = (goals_for * 35) + (shots_on_target * 5)
+    defense = 100 - (goals_against * 30)
+
+    # limitar rango
+    attack = max(30, min(80, attack))
+    defense = max(30, min(80, defense))
+
     return {
-        'home_goals_avg': 1.6, 
-        'away_goals_avg': 1.1,
-        'home_form': 0.8, # 80% efectividad
-        'away_form': 0.4,
-        'home_name': home_clean,
-        'away_name': away_clean
+        "attack": attack,
+        "defense": defense
     }
