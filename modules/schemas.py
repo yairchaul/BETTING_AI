@@ -10,5 +10,5 @@ class PickResult:
     match: str
     selection: str
     probability: float
-    odd: float  # <--- Este nombre debe ser exacto para corregir el AttributeError
+    odd: float  # <--- Crucial: Debe llamarse 'odd' para corregir el AttributeError
     ev: float
