@@ -8,4 +8,11 @@ class PickResult:
     probability: float
     odd: float
     ev: float
-    log: str = ""  # Agregamos el campo log con un valor por defecto
+    log: str = "" # Campo necesario para la bitácora de análisis
+
+@dataclass
+class ParlayResult:
+    matches: List[str]
+    total_odd: float
+    combined_prob: float
+    total_ev: float
