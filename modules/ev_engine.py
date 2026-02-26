@@ -1,90 +1,90 @@
-from typing import Dict, List, Optional
 from modules.schemas import PickResult, ParlayResult
 from modules.team_analyzer import build_team_profile
-from modules.google_context import get_match_context
 from modules.match_probability import calculate_match_probabilities
 
-# ======================================
-# CONFIG SHARP
-# ======================================
+# =============================
+# UTILIDADES
+# =============================
 
-MIN_EV = 0.08
-MIN_PROB = 0.35
+def american_to_decimal(odd):
 
+    odd = int(str(odd).replace("+",""))
 
-# ======================================
-# EV CALCULATION
-# ======================================
-
-def calculate_ev(prob, odds):
-    return (prob * odds) - 1
+    if odd > 0:
+        return 1 + odd/100
+    else:
+        return 1 + 100/abs(odd)
 
 
-# ======================================
-# ANALYZE SINGLE MATCH
-# ======================================
+def expected_value(prob, odd):
 
-def analyze_match(match: Dict) -> Optional[PickResult]:
+    decimal = american_to_decimal(odd)
 
-    home = match.get("home")
-    away = match.get("away")
+    return prob * decimal - 1
+
+
+# =============================
+# ANALISIS PARTIDO
+# =============================
+
+def analyze_match(match):
+
+    home = match["home"]
+    away = match["away"]
 
     home_profile = build_team_profile(home)
     away_profile = build_team_profile(away)
 
-    context = get_match_context(home, away)
-
-    probabilities = calculate_match_probabilities(
+    probs = calculate_match_probabilities(
         home_profile,
-        away_profile,
-        context
+        away_profile
     )
 
-    odds = match.get("odds", {})
+    markets = [
+        ("Local", probs["home"], match.get("home_odd")),
+        ("Empate", probs["draw"], match.get("draw_odd")),
+        ("Visita", probs["away"], match.get("away_odd")),
+    ]
 
     candidates = []
 
-    for market, prob in probabilities.items():
+    for name, prob, odd in markets:
 
-        if market not in odds:
+        if not odd:
             continue
 
-        ev = calculate_ev(prob, odds[market])
+        ev = expected_value(prob, odd)
 
-        if ev < MIN_EV:
-            continue
-
-        if prob < MIN_PROB:
+        if ev <= 0:
             continue
 
         candidates.append(
             PickResult(
                 match=f"{home} vs {away}",
-                selection=market,
-                probability=round(prob, 3),
-                odd=odds[market],
-                ev=round(ev, 3)
+                selection=name,
+                probability=round(prob,3),
+                odd=american_to_decimal(odd),
+                ev=round(ev,3)
             )
         )
 
     if not candidates:
         return None
 
-    # 🔥 Sharp choice
     return max(candidates, key=lambda x: x.ev)
 
 
-# ======================================
-# ANALYZE ALL MATCHES  ✅ (LO QUE FALTABA)
-# ======================================
+# =============================
+# ANALISIS GLOBAL
+# =============================
 
-def analyze_matches(matches: List[Dict]) -> List[PickResult]:
+def analyze_matches(matches):
 
     results = []
 
-    for match in matches:
+    for m in matches:
 
-        r = analyze_match(match)
+        r = analyze_match(m)
 
         if r:
             results.append(r)
@@ -92,32 +92,30 @@ def analyze_matches(matches: List[Dict]) -> List[PickResult]:
     return results
 
 
-# ======================================
-# SMART PARLAY BUILDER ✅ (LO QUE FALTABA)
-# ======================================
+# =============================
+# SMART PARLAY
+# =============================
 
-def build_smart_parlay(picks: List[PickResult], max_picks=4):
+def build_smart_parlay(picks):
 
     if not picks:
         return None
 
-    # ordenar por EV
-    picks = sorted(picks, key=lambda x: x.ev, reverse=True)
+    picks = sorted(picks, key=lambda x: x.ev, reverse=True)[:4]
 
-    selected = picks[:max_picks]
+    total_odd = 1
+    total_prob = 1
 
-    total_odds = 1
-    combined_probability = 1
+    for p in picks:
+        total_odd *= p.odd
+        total_prob *= p.probability
 
-    for p in selected:
-        total_odds *= p.odd
-        combined_probability *= p.probability
-
-    total_ev = calculate_ev(combined_probability, total_odds)
+    total_ev = total_prob * total_odd - 1
 
     return ParlayResult(
-        picks=selected,
-        total_odds=round(total_odds, 2),
-        combined_probability=round(combined_probability, 3),
-        total_ev=round(total_ev, 3)
+        matches=[p.match for p in picks],
+        total_odd=round(total_odd,2),
+        combined_prob=round(total_prob,3),
+        total_ev=round(total_ev,3)
     )
+
