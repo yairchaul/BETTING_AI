@@ -40,7 +40,7 @@ def normalize_probs(p_home, p_draw, p_away):
 
 
 # ======================
-# LAMBDAS
+# LAMBDAS DESDE MERCADO
 # ======================
 
 def infer_lambdas(p_home, p_draw, p_away):
@@ -54,23 +54,22 @@ def infer_lambdas(p_home, p_draw, p_away):
 
 
 # ======================
-# EDGE CHECK
+# EDGE REAL VS MERCADO
 # ======================
 
-def market_edge(ticket_prob, market_decimal):
+def market_edge(model_prob, market_decimal):
 
     implied_market = 1 / market_decimal
-
-    return ticket_prob - implied_market
+    return model_prob - implied_market
 
 
 # ======================
-# MODELO CASCADA IA
+# MODELO CASCADA QUANT
 # ======================
 
 def cascade_model(match):
 
-    # --- PROBS DESDE TICKET ---
+    # ---------- PROBABILIDADES DEL TICKET ----------
     p_home = american_to_prob(match["home_odd"])
     p_draw = american_to_prob(match["draw_odd"])
     p_away = american_to_prob(match["away_odd"])
@@ -85,71 +84,80 @@ def cascade_model(match):
 
     probs = market_probabilities(l_home, l_away)
 
-    # --- MERCADO REAL ---
+    # ---------- DATOS EXTERNOS ----------
     market_odds = get_market_odds(
         match["home"], match["away"]
     )
 
-    # --- CONTEXTO IA ---
     context = get_match_context(
         match["home"], match["away"]
     )
 
-    injury_penalty = 0.05 if "injury" in context else 0
+    injury_penalty = 0.05 if "injury" in context.lower() else 0
 
-    # ======================
-    # OPCIONES CASCADA
-    # ======================
-
+    # ---------- TODAS LAS OPCIONES ----------
     options = [
 
-        (f"{match['home']} gana + Over 1.5",
-         probs["HOME"] * probs["OVER15"] - injury_penalty,
-         2.1),
+        (
+            f"{match['home']} gana + Over 1.5",
+            probs["HOME"] * probs["OVER15"] - injury_penalty,
+            2.10,
+        ),
 
-        (f"{match['away']} gana + Over 1.5",
-         probs["AWAY"] * probs["OVER15"] - injury_penalty,
-         2.2),
+        (
+            f"{match['away']} gana + Over 1.5",
+            probs["AWAY"] * probs["OVER15"] - injury_penalty,
+            2.20,
+        ),
 
-        ("BTTS Sí",
-         probs["BTTS"],
-         1.8),
+        (
+            "BTTS Sí",
+            probs["BTTS"],
+            1.85,
+        ),
 
-        ("Over 2.5 Goles (Tiempo Completo)",
-         probs["OVER25"],
-         2.0),
+        (
+            "Over 2.5 Goles (Tiempo Completo)",
+            probs["OVER25"],
+            2.00,
+        ),
 
-        ("Over 1.5 Goles (Tiempo Completo)",
-         probs["OVER15"],
-         1.4),
+        (
+            "Over 1.5 Goles (Tiempo Completo)",
+            probs["OVER15"],
+            1.40,
+        ),
     ]
 
-    # ======================
-    # FILTRO IA
-    # ======================
-
+    # ---------- FILTRO VALUE BETTING ----------
     valid = []
 
     for name, prob, odd in options:
 
-        if prob < 0.70:
+        if prob < 0.55:
             continue
 
-        edge = 0
+        EV = (prob * odd) - 1
 
+        # comparar contra mercado real si existe
         if market_odds:
-            for key, val in market_odds.items():
-                edge = market_edge(prob, val)
+            for market_name, market_decimal in market_odds.items():
 
-        if edge < -0.02:
+                edge = market_edge(prob, market_decimal)
+
+                if edge < -0.02:
+                    continue
+
+        if EV <= 0:
             continue
 
-        valid.append((name, prob, odd))
+        valid.append((name, prob, odd, EV))
 
     if not valid:
         return None
 
-    best = max(valid, key=lambda x: x[2])
+    # elegir MAYOR VALOR ESPERADO
+    best = max(valid, key=lambda x: x[3])
 
     return Pick(
         match=f"{match['home']} vs {match['away']}",
@@ -160,13 +168,13 @@ def cascade_model(match):
 
 
 # ======================
-# BUILDER FINAL
+# CONSTRUCTOR PARLAY
 # ======================
 
 def build_parlay(games):
 
     results = []
-    used = set()
+    used_matches = set()
 
     for g in games:
 
@@ -175,11 +183,10 @@ def build_parlay(games):
         if not pick:
             continue
 
-        if pick.match in used:
+        if pick.match in used_matches:
             continue
 
-        used.add(pick.match)
+        used_matches.add(pick.match)
         results.append(pick)
 
     return results
-
