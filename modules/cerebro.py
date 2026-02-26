@@ -1,33 +1,43 @@
-# modules/cerebro.py - El motor de decisión real
-from modules.montecarlo import run_simulation
-from modules.stats_fetch import get_last_5_games_stats
+# modules/cerebro.py
+import stats_fetch
+import montecarlo
+import match_probability
+from schemas import PickResult
 
-def get_best_option_per_match(home, away, detected_odds):
-    # 1. Obtener data real de los últimos 5 partidos (API)
-    stats = get_last_5_games_stats(home, away)
+def procesar_partido_exhaustivo(equipo_h, equipo_a, momios_ocr):
+    """
+    Analiza CADA uno de los 13 mercados para un partido específico.
+    """
+    # 1. Obtener data histórica (últimos 5 partidos) de tu API
+    stats = stats_fetch.get_team_stats(equipo_h, equipo_a)
     
-    # 2. Simular TODOS los mercados que enlistaste
-    # Resultado Final, BTTS, O/U 1.5/2.5/3.5, etc.
-    sim_results = run_simulation(stats) 
+    # 2. Ejecutar motores de búsqueda y probabilidad
+    # Esto usa tu montecarlo.py y match_probability.py
+    predicciones = montecarlo.simular_todo(stats) 
     
-    best_market = None
-    highest_ev = -1.0
+    posibles_picks = []
     
-    # 3. Comparar cada probabilidad simulada contra los momios reales
-    for market_name, probability in sim_results.items():
-        # Buscamos el momio correspondiente en lo que detectó el OCR
-        current_odd = match_odd_to_market(market_name, detected_odds)
+    # Lista de mercados a evaluar según tu requerimiento
+    mercados_objetivo = [
+        "Resultado Final", "Ambos Equipos Anotan", "Over 1.5", "Over 2.5", 
+        "Over 3.5", "Doble Oportunidad", "1ra Mitad Over/Under"
+    ]
+
+    for mercado in mercados_objetivo:
+        prob = predicciones.get(mercado)
+        # Buscamos el momio real detectado por el OCR para este mercado
+        cuota = encontrar_momio_correspondiente(mercado, momios_ocr)
         
-        if current_odd:
-            ev = (probability * current_odd) - 1
-            # El sistema elige la "decisión más correcta" por probabilidad y valor
-            if ev > highest_ev:
-                highest_ev = ev
-                best_market = {
-                    "match": f"{home} vs {away}",
-                    "selection": market_name,
-                    "prob": probability,
-                    "odd": current_odd,
-                    "ev": ev
-                }
-    return best_market
+        if prob and cuota:
+            ev = (prob * cuota) - 1
+            if ev > 0: # Solo si hay ventaja estadística real
+                posibles_picks.append(PickResult(
+                    match=f"{equipo_h} vs {equipo_a}",
+                    selection=mercado,
+                    probability=prob,
+                    odd=cuota,
+                    ev=ev
+                ))
+    
+    # Retornamos la "decisión más correcta" (el EV más alto) de este partido
+    return max(posibles_picks, key=lambda x: x.ev) if posibles_picks else None
