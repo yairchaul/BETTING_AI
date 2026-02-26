@@ -1,5 +1,3 @@
-# modules/ev_engine.py
-
 from modules.schemas import Pick
 from modules.team_analyzer import build_team_profile
 from modules.google_context import get_match_context
@@ -10,123 +8,101 @@ from modules.odds_api import get_market_odds
 # UTILIDADES
 # ======================
 
-def clamp(v, a=0, b=1):
-    return max(a, min(v, b))
+def clamp(v):
+    return max(0, min(v, 1))
 
 
 def expected_value(prob, odds):
-    return prob * odds - 1
+    return (prob * odds) - 1
 
 
 # ======================
-# MODELADO PARTIDO
+# SHARP MONEY LOGIC
 # ======================
 
-def goal_rate(home, away):
-    return (home["attack"] + away["attack"]) / 2
+def sharp_adjustment(context):
 
+    penalty = 0
 
-def corner_projection(home, away):
-    avg = home["corners"] + away["corners"]
+    if "injury" in context:
+        penalty += 0.05
 
-    if avg > 11:
-        return 10.5
-    if avg > 10:
-        return 9.5
-    if avg > 9:
-        return 8.5
-    return 7.5
+    if "rotation" in context:
+        penalty += 0.04
+
+    return penalty
 
 
 # ======================
-# PROBABILIDADES
-# ======================
-
-def prob_over15_ht(rate):
-    return clamp(0.40 + rate * 0.35)
-
-
-def prob_btts(home, away):
-    return clamp(0.35 + (home["attack"] * away["attack"]) * 0.4)
-
-
-def prob_over25(rate):
-    return clamp(0.30 + rate * 0.6)
-
-
-def prob_home_win(home, away):
-    return clamp(0.45 + (home["attack"] - away["attack"]) * 0.4)
-
-
-def prob_combo(win, over):
-    return clamp(win * over * 1.2)
-
-
-def prob_corners(home, away):
-    avg = home["corners"] + away["corners"]
-    return clamp(0.55 + (avg - 8) * 0.04)
-
-
-# ======================
-# BOOKMAKER HUNTER CORE
+# ANALISIS PARTIDO
 # ======================
 
 def analyze_match(match):
 
-    home = build_team_profile(match["home"])
-    away = build_team_profile(match["away"])
+    home = match["home"]
+    away = match["away"]
 
-    context = get_match_context(match["home"], match["away"])
-    market = get_market_odds(match["home"], match["away"])
+    home_profile = build_team_profile(home)
+    away_profile = build_team_profile(away)
 
-    rate = goal_rate(home, away)
-    corner_line = corner_projection(home, away)
+    context = get_match_context(home, away)
+    market = get_market_odds(home, away)
 
-    markets = []
+    attack_home = home_profile["attack"]
+    attack_away = away_profile["attack"]
 
-    # PRIORIDAD 1
-    p_ht = prob_over15_ht(rate)
-    markets.append(("Over 1.5 HT", p_ht, 2.1))
+    avg_attack = (attack_home + attack_away) / 2
+    avg_corners = home_profile["corners"] + away_profile["corners"]
 
-    # PRIORIDAD 2
-    p_btts = prob_btts(home, away)
-    markets.append(("BTTS Sí", p_btts, 1.9))
-
-    # PRIORIDAD 3
-    p_o25 = prob_over25(rate)
-    markets.append(("Over 2.5 FT", p_o25, 2.0))
-
-    # PRIORIDAD 4
-    p_corner = prob_corners(home, away)
-    markets.append((f"Over {corner_line} Corners", p_corner, 1.85))
-
-    # PRIORIDAD 5
-    p_home = prob_home_win(home, away)
-    markets.append((f"{match['home']} gana", p_home, 2.2))
-
-    # PRIORIDAD ELITE
-    p_combo = prob_combo(p_home, p_o25)
-    markets.append((f"{match['home']} gana + Over 1.5", p_combo, 3.2))
+    penalty = sharp_adjustment(context)
 
     # ======================
-    # BOOKMAKER FILTER
+    # PROBABILIDADES IA
+    # ======================
+
+    p_over15_ht = clamp(0.45 + avg_attack * 0.35 - penalty)
+    p_btts = clamp(0.40 + attack_home * attack_away * 0.3 - penalty)
+    p_over25 = clamp(0.35 + avg_attack * 0.5 - penalty)
+    p_corners = clamp(0.50 + (avg_corners - 9) * 0.05)
+
+    p_home = clamp(0.45 + (attack_home - attack_away) * 0.35)
+
+    # ======================
+    # MERCADOS
+    # ======================
+
+    options = [
+
+        ("Over 1.5 Goles 1er Tiempo", p_over15_ht, 2.1),
+
+        ("Ambos Equipos Anotan", p_btts, 1.9),
+
+        ("Over 2.5 Goles", p_over25, 2.0),
+
+        (f"Over 9.5 Corners", p_corners, 1.85),
+
+        (f"{home} gana", p_home, 2.2),
+
+        (f"{home} gana + Over 1.5",
+         clamp(p_home * p_over25 * 1.1),
+         3.2),
+    ]
+
+    # ======================
+    # SHARP FILTER
     # ======================
 
     valid = []
 
-    for name, prob, odd in markets:
+    for name, prob, odd in options:
 
         ev = expected_value(prob, odd)
 
-        if prob < 0.60:
+        if prob < 0.63:
             continue
 
         if ev <= 0:
             continue
-
-        # castigo por lesiones
-        if "injury" in context:
-            prob -= 0.05
 
         valid.append((name, prob, ev))
 
@@ -136,15 +112,15 @@ def analyze_match(match):
     best = max(valid, key=lambda x: x[2])
 
     return Pick(
-        match=f"{match['home']} vs {match['away']}",
+        match=f"{home} vs {away}",
         selection=best[0],
         probability=round(best[1],3),
-        ev=round(best[2],3)
+        ev=round(best[2],3),
     )
 
 
 # ======================
-# ANALISIS GLOBAL
+# GLOBAL ANALYSIS
 # ======================
 
 def analyze_matches(matches):
@@ -159,3 +135,4 @@ def analyze_matches(matches):
             results.append(pick)
 
     return results
+
