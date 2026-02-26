@@ -1,195 +1,202 @@
-from modules.schemas import Pick
-from modules.montecarlo import market_probabilities
-from modules.odds_api import get_market_odds
-from modules.google_context import get_match_context
+# modules/ev_engine.py
+
+import math
+import random
 
 
-# ======================
-# CONVERSIONES
-# ======================
+# =============================
+# UTILIDADES
+# =============================
 
-def american_to_prob(odd):
+def clamp(v, min_v=0, max_v=1):
+    return max(min_v, min(v, max_v))
 
-    odd = int(odd)
 
-    if odd > 0:
-        return 100 / (odd + 100)
+def expected_value(prob, odds):
+    return (prob * odds) - 1
+
+
+# =============================
+# MODELO ESTADISTICO BASE
+# =============================
+
+def estimate_goal_rate(home_attack, away_attack):
+    """
+    Calcula intensidad ofensiva del partido
+    """
+    return (home_attack + away_attack) / 2
+
+
+def estimate_corner_line(home_corners, away_corners):
+
+    avg = (home_corners + away_corners) / 2
+
+    if avg >= 11:
+        return 10.5
+    elif avg >= 10:
+        return 9.5
+    elif avg >= 9:
+        return 8.5
     else:
-        return abs(odd) / (abs(odd) + 100)
+        return 7.5
 
 
-def american_to_decimal(odd):
+# =============================
+# PROBABILIDADES
+# =============================
 
-    odd = int(odd)
+def prob_over15_ht(goal_rate):
 
-    if odd > 0:
-        return 1 + odd / 100
-    else:
-        return 1 + 100 / abs(odd)
+    base = 0.45 + goal_rate * 0.35
+    variance = random.uniform(-0.05, 0.05)
 
-
-def normalize_probs(p_home, p_draw, p_away):
-
-    total = p_home + p_draw + p_away
-
-    return (
-        p_home / total,
-        p_draw / total,
-        p_away / total,
-    )
+    return clamp(base + variance)
 
 
-# ======================
-# LAMBDAS DESDE MERCADO
-# ======================
+def prob_btts(home_attack, away_attack):
 
-def infer_lambdas(p_home, p_draw, p_away):
+    strength = (home_attack * away_attack)
+    base = 0.40 + strength * 0.5
 
-    total_goals = 2.6
-
-    lambda_home = total_goals * (p_home + 0.5 * p_draw)
-    lambda_away = total_goals * (p_away + 0.5 * p_draw)
-
-    return lambda_home, lambda_away
+    return clamp(base)
 
 
-# ======================
-# EDGE REAL VS MERCADO
-# ======================
+def prob_over25(goal_rate):
 
-def market_edge(model_prob, market_decimal):
-
-    implied_market = 1 / market_decimal
-    return model_prob - implied_market
+    base = 0.35 + goal_rate * 0.55
+    return clamp(base)
 
 
-# ======================
-# MODELO CASCADA QUANT
-# ======================
-def cascade_model(match):
+def prob_corners(avg_corners):
 
-    # -------- PROBABILIDADES BASE ----------
-    p_home = american_to_prob(match["home_odd"])
-    p_draw = american_to_prob(match["draw_odd"])
-    p_away = american_to_prob(match["away_odd"])
+    base = 0.55 + (avg_corners - 8) * 0.05
+    return clamp(base)
 
-    p_home, p_draw, p_away = normalize_probs(
-        p_home, p_draw, p_away
-    )
 
-    l_home, l_away = infer_lambdas(
-        p_home, p_draw, p_away
-    )
+def prob_home_win(home_attack, away_attack):
 
-    probs = market_probabilities(l_home, l_away)
+    diff = home_attack - away_attack
+    base = 0.45 + diff * 0.4
 
-    # ===============================
-    # MERCADOS DERIVADOS IA
-    # ===============================
+    return clamp(base)
 
-    OVER15_FT = probs["OVER15"]
-    OVER25_FT = probs["OVER25"]
-    BTTS = probs["BTTS"]
-    HOME = probs["HOME"]
-    AWAY = probs["AWAY"]
 
-    # ⚡ estimación goles 1T (≈45%)
-    OVER15_HT = OVER15_FT * 0.65
+def prob_win_over(home_win_prob, over_prob):
 
-    # ⚡ proxy corners (ritmo ofensivo)
-    CORNERS_OVER = min(0.85, (l_home + l_away) / 3)
+    combo = home_win_prob * over_prob * 1.15
+    return clamp(combo)
 
-    # ===============================
-    # TODAS LAS OPCIONES
-    # ===============================
 
-    options = [
+# =============================
+# ANALISIS PRINCIPAL
+# =============================
 
-        # NIVEL ELITE
-        (f"{match['home']} gana + Over 1.5",
-         HOME * OVER15_FT, 2.2),
+def analyze_match(match):
 
-        (f"{match['away']} gana + Over 1.5",
-         AWAY * OVER15_FT, 2.3),
+    # datos simulados provenientes de motores
+    home_attack = match.get("home_attack", random.uniform(0.9, 1.6))
+    away_attack = match.get("away_attack", random.uniform(0.9, 1.6))
 
-        # ATAQUE TEMPRANO
-        ("Over 1.5 Goles (1er Tiempo)",
-         OVER15_HT, 2.0),
+    home_corners = match.get("home_corners", random.uniform(4,7))
+    away_corners = match.get("away_corners", random.uniform(4,7))
 
-        # GOLES ACTIVOS
-        ("Ambos Equipos Anotan",
-         BTTS, 1.85),
+    goal_rate = estimate_goal_rate(home_attack, away_attack)
 
-        ("Over 2.5 Goles (Tiempo Completo)",
-         OVER25_FT, 2.0),
+    avg_corners = home_corners + away_corners
+    corner_line = estimate_corner_line(home_corners, away_corners)
 
-        # PRESIÓN
-        ("Over Corners",
-         CORNERS_OVER, 1.9),
+    # =====================
+    # MERCADOS
+    # =====================
 
-        # BACKUP
-        ("Over 1.5 Goles (Tiempo Completo)",
-         OVER15_FT, 1.4),
+    markets = []
 
-        (f"Gana {match['home']}",
-         HOME, american_to_decimal(match["home_odd"])),
+    # Over 1.5 HT
+    p_ht = prob_over15_ht(goal_rate)
+    markets.append({
+        "market": "Over 1.5 Goles 1er Tiempo",
+        "prob": p_ht,
+        "odds": 2.1
+    })
 
-        (f"Gana {match['away']}",
-         AWAY, american_to_decimal(match["away_odd"])),
-    ]
+    # BTTS
+    p_btts = prob_btts(home_attack, away_attack)
+    markets.append({
+        "market": "Ambos Equipos Anotan",
+        "prob": p_btts,
+        "odds": 1.9
+    })
 
-    # ===============================
-    # FILTRO CASCADA REAL
-    # ===============================
+    # Over 2.5 FT
+    p_o25 = prob_over25(goal_rate)
+    markets.append({
+        "market": "Over 2.5 Goles",
+        "prob": p_o25,
+        "odds": 2.0
+    })
 
-    valid = []
+    # Corners dinámicos
+    p_corner = prob_corners(avg_corners)
+    markets.append({
+        "market": f"Over {corner_line} Corners",
+        "prob": p_corner,
+        "odds": 1.85
+    })
 
-    for name, prob, odd in options:
+    # Ganador local
+    p_home = prob_home_win(home_attack, away_attack)
+    markets.append({
+        "market": "Gana Local",
+        "prob": p_home,
+        "odds": 2.2
+    })
 
-        if prob < 0.60:
-            continue
+    # Combo
+    p_combo = prob_win_over(p_home, p_o25)
+    markets.append({
+        "market": "Local gana + Over 1.5",
+        "prob": p_combo,
+        "odds": 3.0
+    })
 
-        EV = (prob * odd) - 1
+    # =====================
+    # COMPETENCIA EV
+    # =====================
 
-        if EV <= 0:
-            continue
+    for m in markets:
+        m["ev"] = expected_value(m["prob"], m["odds"])
 
-        valid.append((name, prob, odd, EV))
+    # SOLO apuestas positivas
+    positive = [m for m in markets if m["ev"] > 0]
 
-    if not valid:
+    if not positive:
         return None
 
-    # ⭐ ELEGIR MEJOR VALOR
-    best = max(valid, key=lambda x: x[3])
+    best = max(positive, key=lambda x: x["ev"])
 
-    return Pick(
-        match=f"{match['home']} vs {match['away']}",
-        selection=best[0],
-        probability=round(best[1],3),
-        odd=round(best[2],2),
-    )
+    return best
 
-# ======================
-# CONSTRUCTOR PARLAY
-# ======================
 
-def build_parlay(games):
+# =============================
+# ANALISIS GLOBAL
+# =============================
+
+def analyze_matches(matches):
 
     results = []
-    used_matches = set()
 
-    for g in games:
+    for match in matches:
 
-        pick = cascade_model(g)
+        analysis = analyze_match(match)
 
-        if not pick:
-            continue
-
-        if pick.match in used_matches:
-            continue
-
-        used_matches.add(pick.match)
-        results.append(pick)
+        if analysis:
+            results.append({
+                "match": f"{match['home']} vs {match['away']}",
+                "pick": analysis["market"],
+                "prob": round(analysis["prob"],3),
+                "ev": round(analysis["ev"],3)
+            })
 
     return results
+
 
