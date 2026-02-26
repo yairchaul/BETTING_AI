@@ -1,32 +1,43 @@
 import requests
 import streamlit as st
 
-API_KEY = st.secrets["GOOGLE_API_KEY"]
-CSE_ID = st.secrets["GOOGLE_CSE_ID"]
-
 
 def get_match_context(home, away):
 
-    query = f"{home} vs {away} injuries lineup news"
+    api = st.secrets["GOOGLE_API_KEY"]
+    cx = st.secrets["GOOGLE_CSE_ID"]
 
-    url = "https://www.googleapis.com/customsearch/v1"
-
-    params = {
-        "key": API_KEY,
-        "cx": CSE_ID,
-        "q": query,
-        "num": 3
-    }
+    query = f"{home} vs {away} injuries suspension lineup news"
 
     try:
-        r = requests.get(url, params=params).json()
 
-        snippets = [
+        url = "https://www.googleapis.com/customsearch/v1"
+
+        r = requests.get(url, params={
+            "key": api,
+            "cx": cx,
+            "q": query
+        }, timeout=4)
+
+        data = r.json()
+
+        text = " ".join(
             item["snippet"]
-            for item in r.get("items", [])
-        ]
+            for item in data.get("items", [])
+        ).lower()
 
-        return " ".join(snippets).lower()
+        signals = []
+
+        if "injury" in text:
+            signals.append("injury")
+
+        if "rotation" in text:
+            signals.append("rotation")
+
+        if "missing" in text:
+            signals.append("missing_players")
+
+        return signals
 
     except:
-        return ""
+        return []
