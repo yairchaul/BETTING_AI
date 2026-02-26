@@ -2,16 +2,12 @@ from dataclasses import dataclass
 
 @dataclass
 class Match:
-    local: str
-    visitante: str
+    home: str
+    away: str
 
 @dataclass
-class MatchResult:
+class Pick:
     partido: str
     pick: str
     probabilidad: int
-
-@dataclass
-class EVResult:
-    ev: float
-    edge: float
+    cuota: float
