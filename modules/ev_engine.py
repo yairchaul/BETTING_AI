@@ -2,9 +2,9 @@ from modules.schemas import Pick
 from modules.montecarlo import market_probabilities
 
 
-# =========================
-# UTILIDADES
-# =========================
+# ======================
+# CONVERSIONES
+# ======================
 
 def american_to_prob(odd):
 
@@ -37,13 +37,12 @@ def normalize_probs(p_home, p_draw, p_away):
     )
 
 
-# =========================
-# LAMBDAS DESDE CUOTAS
-# =========================
+# ======================
+# INFERIR LAMBDAS
+# ======================
 
 def infer_lambdas(p_home, p_draw, p_away):
 
-    # promedio goles global fútbol
     total_goals = 2.6
 
     strength_home = p_home + 0.5 * p_draw
@@ -55,9 +54,9 @@ def infer_lambdas(p_home, p_draw, p_away):
     return lambda_home, lambda_away
 
 
-# =========================
-# MODELO CASCADA
-# =========================
+# ======================
+# CEREBRO CUÁNTICO
+# ======================
 
 def cascade_model(match):
 
@@ -65,7 +64,9 @@ def cascade_model(match):
     p_draw = american_to_prob(match["draw_odd"])
     p_away = american_to_prob(match["away_odd"])
 
-    p_home, p_draw, p_away = normalize_probs(p_home, p_draw, p_away)
+    p_home, p_draw, p_away = normalize_probs(
+        p_home, p_draw, p_away
+    )
 
     lambda_home, lambda_away = infer_lambdas(
         p_home, p_draw, p_away
@@ -73,51 +74,57 @@ def cascade_model(match):
 
     probs = market_probabilities(lambda_home, lambda_away)
 
-    options = []
+    home = match["home"]
+    away = match["away"]
 
-    # PRIORIDAD 1 — COMBOS
-    options.append(("Home + Over1.5", probs["HOME"] * probs["OVER15"], 2.0))
-    options.append(("Away + Over1.5", probs["AWAY"] * probs["OVER15"], 2.2))
+    options = [
 
-    # PRIORIDAD 2 — BTTS
-    options.append(("Ambos Anotan", probs["BTTS"], 1.7))
+        # GANADOR
+        (f"Gana {home}", probs["HOME"], american_to_decimal(match["home_odd"])),
+        (f"Gana {away}", probs["AWAY"], american_to_decimal(match["away_odd"])),
 
-    # PRIORIDAD 3 — OVER
-    options.append(("Over 1.5 Goles", probs["OVER15"], 1.4))
-    options.append(("Over 2.5 Goles", probs["OVER25"], 1.9))
+        # GOLES
+        ("Over 1.5 Goles (Tiempo Completo)", probs["OVER15"], 1.40),
+        ("Over 2.5 Goles (Tiempo Completo)", probs["OVER25"], 1.85),
+        ("Over 3.5 Goles (Tiempo Completo)", probs["OVER35"], 2.40),
 
-    # PRIORIDAD 4 — 1X2
-    options.append(("Gana Local", probs["HOME"], american_to_decimal(match["home_odd"])))
-    options.append(("Empate", probs["DRAW"], american_to_decimal(match["draw_odd"])))
-    options.append(("Gana Visitante", probs["AWAY"], american_to_decimal(match["away_odd"])))
+        # BTTS
+        ("Ambos Equipos Anotan", probs["BTTS"], 1.75),
 
-    # =========================
-    # FILTRO CASCADA
-    # =========================
+        # COMBOS REALES
+        (f"{home} gana + Over 1.5", probs["HOME"] * probs["OVER15"], 2.2),
+        (f"{away} gana + Over 1.5", probs["AWAY"] * probs["OVER15"], 2.3),
 
-    valid = []
+        (f"{home} gana + BTTS", probs["HOME"] * probs["BTTS"], 3.0),
+        (f"{away} gana + BTTS", probs["AWAY"] * probs["BTTS"], 3.2),
+    ]
 
-    for name, prob, odd in options:
-        if prob >= 0.65:
-            valid.append((name, prob, odd))
+    # ======================
+    # FILTRO CASCADA REAL
+    # ======================
 
-    if not valid:
-        return None
+    thresholds = [0.80, 0.72, 0.65, 0.60]
 
-    # elegir mayor cuota entre las válidas
-    best = max(valid, key=lambda x: x[2])
+    for threshold in thresholds:
 
-    return Pick(
-        match=f"{match['home']} vs {match['away']}",
-        selection=best[0],
-        probability=round(best[1], 3),
-        odd=round(best[2], 2),
-    )
+        valid = [o for o in options if o[1] >= threshold]
+
+        if valid:
+            best = max(valid, key=lambda x: x[2])
+
+            return Pick(
+                match=f"{home} vs {away}",
+                selection=best[0],
+                probability=round(best[1],3),
+                odd=round(best[2],2),
+            )
+
+    return None
 
 
-# =========================
-# BUILDER FINAL
-# =========================
+# ======================
+# BUILDER PARLAY
+# ======================
 
 def build_parlay(games):
 
@@ -138,4 +145,3 @@ def build_parlay(games):
         results.append(pick)
 
     return results
-
