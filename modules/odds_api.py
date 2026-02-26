@@ -1,29 +1,41 @@
-import streamlit as st
 import requests
+import streamlit as st
 
-ODDS_API_KEY = st.secrets["ODDS_API_KEY"]
 
 def get_market_odds(home, away):
 
-    url = "https://api.the-odds-api.com/v4/sports/soccer/odds"
+    key = st.secrets["ODDS_API_KEY"]
 
-    params = {
-        "apiKey": ODDS_API_KEY,
-        "regions": "eu",
-        "markets": "h2h,totals",
-        "oddsFormat": "decimal",
-    }
+    try:
 
-    r = requests.get(url, params=params)
+        url = "https://api.the-odds-api.com/v4/sports/soccer/odds"
 
-    if r.status_code != 200:
+        params = {
+            "apiKey": key,
+            "regions": "eu",
+            "markets": "h2h",
+            "oddsFormat": "decimal"
+        }
+
+        r = requests.get(url, params=params, timeout=6)
+        data = r.json()
+
+        for game in data:
+
+            teams = game.get("teams", [])
+
+            if home in teams and away in teams:
+
+                bookmakers = game["bookmakers"][0]
+                outcomes = bookmakers["markets"][0]["outcomes"]
+
+                odds = {}
+                for o in outcomes:
+                    odds[o["name"]] = o["price"]
+
+                return odds
+
+    except:
         return None
-
-    data = r.json()
-
-    for game in data:
-        teams = game.get("teams", [])
-        if home in teams or away in teams:
-            return {"market_found": True}
 
     return None
