@@ -1,103 +1,94 @@
-import streamlit as st
-import os
-from modules.vision_reader import read_ticket_image
-from modules.ev_engine import analyze_matches, build_smart_parlay
+import math
+from typing import Dict, List, Optional
+try:
+    from modules.team_analyzer import build_team_profile
+    from modules.schemas import PickResult, ParlayResult
+except ImportError:
+    from team_analyzer import build_team_profile
+    from schemas import PickResult, ParlayResult
 
-# Configuración de página
-st.set_page_config(page_title="EV ELITE v4 — Sharp Money Detector", layout="wide")
+# Filtros Sharp para encontrar apuestas reales
+MIN_EV = 0.03  # 3% de ventaja mínima
+MIN_PROB = 0.20 # Probabilidad mínima (permite cuotas más altas)
 
-# --- SIDEBAR: ESTADO DEL SISTEMA ---
-with st.sidebar:
-    st.header("⚙️ Sistema")
-    if os.path.exists("modules/__init__.py"):
-        st.success("Paquete modules: OK")
-    else:
-        st.warning("Falta modules/__init__.py")
+def poisson_prob(lambda_: float, k: int) -> float:
+    if lambda_ <= 0: return 1.0 if k == 0 else 0.0
+    return (math.exp(-lambda_) * (lambda_ ** k)) / math.factorial(k)
+
+def calculate_ev(prob: float, odd: float) -> float:
+    return (prob * odd) - 1
+
+def analyze_match(match: Dict) -> Optional[Dict]:
+    h_name = match.get("home") or match.get("home_team")
+    a_name = match.get("away") or match.get("away_team")
+    odds = match.get("odds", {})
+
+    # Stats de los últimos 5 partidos
+    h_p = build_team_profile(h_name)
+    a_p = build_team_profile(a_name)
+
+    # Goles esperados (Lambdas)
+    lh = (h_p["attack"] / a_p["defense"]) * 1.25 * (0.8 + h_p["form_score"] * 0.4)
+    la = (a_p["attack"] / h_p["defense"]) * 1.10 * (0.8 + a_p["form_score"] * 0.4)
     
-    st.divider()
-    st.info("""
-    **Modo Sharp Activo:**
-    Analizando Resultado Final, Doble Oportunidad, Ambos Anotan y Totales (1.5, 2.5, 3.5).
-    """)
+    # Simulación de mercados reales de Caliente
+    probs = {
+        f"Gana {h_name}": 0.0, f"Gana {a_name}": 0.0, "Empate": 0.0,
+        "Ambos Anotan": 0.0, "Over 2.5": 0.0, "Under 2.5": 0.0,
+        "Doble Op (L/E)": 0.0, "Doble Op (V/E)": 0.0
+    }
 
-# --- CUERPO PRINCIPAL ---
-st.title("🧠 BETTING AI — Sharp Money Detector")
-st.write("Sube tu ticket para detectar valor real comparando cuotas de Caliente vs. Probabilidad Estadística.")
+    for i in range(7):
+        for j in range(7):
+            p = poisson_prob(lh, i) * poisson_prob(la, j)
+            if i > j: probs[f"Gana {h_name}"] += p
+            elif i == j: probs["Empate"] += p
+            else: probs[f"Gana {a_name}"] += p
+            if i > 0 and j > 0: probs["Ambos Anotan"] += p
+            if (i + j) > 2.5: probs["Over 2.5"] += p
+            else: probs["Under 2.5"] += p
+            if i >= j: probs["Doble Op (L/E)"] += p
+            if j >= i: probs["Doble Op (V/E)"] += p
 
-uploaded = st.file_uploader("Sube imagen del ticket", type=["png", "jpg", "jpeg"])
+    candidates = []
+    reporte_text = ""
+    
+    for market, prob in probs.items():
+        odd = odds.get(market)
+        if odd and float(odd) > 1.0:
+            ev = calculate_ev(prob, float(odd))
+            reporte_text += f"{market}: {int(prob*100)}% | EV: {round(ev, 2)}\n"
+            if ev >= MIN_EV:
+                candidates.append(PickResult(
+                    match=f"{h_name} vs {a_name}",
+                    selection=market,
+                    probability=round(prob, 3),
+                    odd=float(odd),
+                    ev=round(ev, 3)
+                ))
 
-if uploaded:
-    with st.status("Analizando últimos 5 partidos y simulando mercados...", expanded=True) as status:
-        # 1. Ejecutar OCR para detectar partidos y cuotas
-        st.write("Leyendo datos del ticket...")
-        games = read_ticket_image(uploaded)
-        
-        if not games:
-            st.error("No se detectaron partidos en el ticket.")
-            st.stop()
-        
-        # 2. Ejecutar Motor de EV (Poisson Multimercado)
-        st.write("Simulando probabilidades por mercado...")
-        results = analyze_matches(games)
-        
-        status.update(label="Análisis Estadístico Completado", state="complete", expanded=False)
+    if not candidates: return None
+    # Elegir la opción con mayor ventaja estadística (EV)
+    best_pick = max(candidates, key=lambda x: x.ev)
+    return {"pick": best_pick, "text": reporte_text}
 
-    # --- RENDERIZADO DE RESULTADOS ---
-    if not results:
-        st.warning("⚠️ No se encontraron oportunidades con Valor Esperado (EV+) positivo bajo los filtros actuales.")
-    else:
-        st.subheader("🔥 Picks Sharp Detectados")
-        st.caption("Se muestra la opción con mayor ventaja matemática por partido.")
-        
-        for res in results:
-            r = res["pick"]
-            # El expander ahora muestra el nombre del equipo sugerido directamente
-            with st.expander(f"📍 {r.match} | Sugerido: {r.selection}", expanded=True):
-                col_stats, col_report = st.columns([1, 2])
-                
-                with col_stats:
-                    st.metric("EV (Ventaja)", f"{round(r.ev * 100, 1)}%", delta=f"{r.odd} cuota")
-                    st.write(f"**Probabilidad:** {int(r.probability * 100)}%")
-                
-                with col_report:
-                    st.markdown("**Comparativa Multimercado:**")
-                    # Muestra el desglose completo que calculó el motor
-                    st.code(res["text"], language="text")
+def analyze_matches(matches: List[Dict]) -> List[Dict]:
+    results = []
+    for m in matches:
+        res = analyze_match(m)
+        if res: results.append(res)
+    return results
 
-        # --- SECCIÓN DE PARLAY INTELIGENTE ---
-        st.divider()
-        lista_picks = [res["pick"] for res in results]
-        parlay = build_smart_parlay(lista_picks)
-
-        if parlay:
-            st.subheader("🚀 Smart Parlay Sugerido (High EV)")
-            
-            with st.container(border=True):
-                st.info(f"**Combinada Sugerida:** {' + '.join(parlay.matches)}")
-                
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Cuota Total", f"{parlay.total_odd}x")
-                c2.metric("Probabilidad Combinada", f"{round(parlay.combined_prob * 100, 2)}%")
-                # Mostramos el EV total del parlay
-                c3.metric("EV Total", f"{parlay.total_ev}")
-
-                st.divider()
-                
-                # --- CALCULADORA DE INVERSIÓN ---
-                col_m, col_g = st.columns([1, 1])
-                
-                with col_m:
-                    monto = st.number_input("Monto a invertir ($)", min_value=10.0, value=100.0, step=10.0)
-                
-                with col_g:
-                    ganancia_pos = monto * parlay.total_odd
-                    st.write(" ") # Espaciado
-                    st.success(f"💰 **Ganancia Posible: ${round(ganancia_pos, 2)}**")
-                
-                if st.button("📥 Registrar en Historial", use_container_width=True):
-                    # Aquí puedes llamar a tu función de tracker.py para guardar el CSV
-                    st.balloons()
-                    st.toast("Parlay registrado con éxito.", icon="✅")
-
-else:
-    st.info("Esperando ticket para iniciar el análisis profundo de los últimos 5 partidos.")
+def build_smart_parlay(picks: List[PickResult]) -> Optional[ParlayResult]:
+    if not picks: return None
+    selected = sorted(picks, key=lambda x: x.ev, reverse=True)[:5] # Máximo 5 picks
+    t_odd, t_prob = 1.0, 1.0
+    for p in selected:
+        t_odd *= p.odd
+        t_prob *= p.probability
+    return ParlayResult(
+        matches=[f"{p.match} ({p.selection})" for p in selected],
+        total_odd=round(t_odd, 2),
+        combined_prob=round(t_prob, 3),
+        total_ev=round(calculate_ev(t_prob, t_odd), 3)
+    )
