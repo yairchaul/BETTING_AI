@@ -1,104 +1,66 @@
 import streamlit as st
 import os
+import sys
+
+# Inyectar el path de modules para evitar ImportErrors en Streamlit Cloud
+sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
+
 from modules.vision_reader import read_ticket_image
 from modules.cerebro import obtener_mejor_apuesta
 from modules.ev_engine import build_smart_parlay
 
-# 1. Configuración de la Interfaz Profesional
 st.set_page_config(page_title="BETTING AI EV+ PRO", layout="wide")
 
-# Barra lateral para diagnóstico de sistema
-with st.sidebar:
-    st.header("⚙️ Estado del Sistema")
-    if os.path.exists("modules/__init__.py"):
-        st.success("Integración de Módulos: OK")
-    else:
-        st.error("Error: Falta __init__.py en modules")
-    
-    st.divider()
-    st.info("Escaneando 13 mercados: 1X2, Over/Under, BTTS, Doble Oportunidad, y Resultados Combinados.")
-
-# 2. Encabezado Principal
 st.title("🧠 BETTING AI — Sharp Money Detector")
-st.markdown("Suba una captura de **Caliente.mx** para iniciar el análisis estadístico exhaustivo.")
 
-# 3. Cargador de Archivos
-uploaded = st.file_uploader("Cargar Ticket o Momios", type=["png", "jpg", "jpeg"])
+uploaded = st.file_uploader("Sube los momios de Caliente", type=["png", "jpg", "jpeg"])
 
 if uploaded:
-    with st.status("Ejecutando Pipeline de Análisis Real...", expanded=True) as status:
-        # PASO 1: OCR de Visión
-        st.write("Extrayendo datos de la imagen...")
+    with st.status("Analizando últimos 5 partidos y 13 mercados...", expanded=True) as status:
+        # 1. OCR
         games_data = read_ticket_image(uploaded)
         
         if not games_data:
-            st.error("No se detectaron partidos. Intenta con una imagen más clara.")
+            st.error("No se detectaron datos en la imagen.")
             st.stop()
             
-        # PASO 2: Análisis Individual por Partido (Cerebro)
-        st.write(f"Analizando {len(games_data)} partidos en 13 mercados diferentes...")
+        # 2. Análisis exhaustivo individual
         results = []
         for partido in games_data:
-            mejor_opcion = obtener_mejor_apuesta(partido)
-            if mejor_opcion:
-                results.append({
-                    "pick": mejor_opcion,
-                    "text": f"Simulación Montecarlo terminada.\nProbabilidad: {round(mejor_opcion.probability * 100, 2)}%\nMercado detectado: {mejor_opcion.selection}"
-                })
+            mejor_pick = obtener_mejor_apuesta(partido)
+            if mejor_pick:
+                results.append({"pick": mejor_pick})
         
-        status.update(label="Análisis Completo", state="complete")
+        status.update(label="Análisis finalizado con éxito", state="complete")
 
-    # 4. Despliegue de Resultados (Corregido IndentationError)
     if results:
-        st.subheader("🔥 Picks Sharp Detectados")
+        st.subheader("🔥 Picks con Mayor Probabilidad Detectados")
         for res in results:
             r = res["pick"]
-            # El bloque debajo del 'for' está correctamente indentado aquí
-            with st.expander(f"📍 {r.match} | Sugerencia: {r.selection}", expanded=True):
-                col1, col2 = st.columns([1, 2])
-                # Calculamos el EV en porcentaje para la métrica
-                ev_display = round(r.ev * 100, 2)
-                col1.metric("EV+ (Ventaja)", f"{ev_display}%", delta=f"Cuota: {r.odd}")
-                
-                col2.text("Análisis de Probabilidad (Últimos 5 partidos):")
-                col2.code(res["text"])
+            with st.expander(f"📍 {r.match} | {r.selection}", expanded=True):
+                c1, c2 = st.columns(2)
+                c1.metric("Ventaja (EV)", f"{round(r.ev * 100, 1)}%")
+                c2.metric("Momio Detectado", f"{r.odd}")
 
-        # 5. Sección de Parlay Sugerido y Calculadora (Meta Principal)
+        # 3. Smart Parlay y Calculadora Financiera
         st.divider()
-        lista_picks_objetos = [res["pick"] for res in results]
-        parlay = build_smart_parlay(lista_picks_objetos)
+        parlay = build_smart_parlay([res["pick"] for res in results])
 
         if parlay:
-            st.subheader("🚀 Smart Parlay Sugerido (Top 5)")
+            st.subheader("🚀 Smart Parlay Sugerido")
             with st.container(border=True):
-                st.write(f"**Estrategia Combinada:** {' + '.join(parlay.matches)}")
-                
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Cuota Total", f"{parlay.total_odd}x")
-                c2.metric("Prob. Combinada", f"{round(parlay.combined_prob * 100, 1)}%")
-                c3.metric("EV Total", f"{round(parlay.total_ev, 2)}")
+                st.write(f"**Combinada:** {' + '.join(parlay.matches)}")
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Cuota Total", f"{parlay.total_odd}x")
+                col2.metric("Probabilidad", f"{round(parlay.combined_prob * 100, 1)}%")
+                col3.metric("EV Acumulado", f"{round(parlay.total_ev, 2)}")
 
                 st.divider()
+                # CALCULADORA DE GANANCIAS
+                monto = st.number_input("Inversión ($)", min_value=10.0, value=100.0, step=10.0)
+                ganancia = monto * parlay.total_odd
+                st.success(f"💰 **Ganancia Potencial: ${round(ganancia, 2)}**")
                 
-                # --- CALCULADORA DE INVERSIÓN RECUPERADA ---
-                col_monto, col_ganancia = st.columns(2)
-                
-                with col_monto:
-                    monto = st.number_input("Monto a invertir ($)", min_value=10.0, value=100.0, step=10.0)
-                
-                with col_ganancia:
-                    ganancia_total = monto * parlay.total_odd
-                    st.write("Retorno Estimado:")
-                    st.success(f"### ${round(ganancia_total, 2)}")
-                
-                # --- REGISTRO EN HISTORIAL ---
                 if st.button("📥 Registrar Apuesta en Historial", use_container_width=True):
-                    # Aquí el sistema guarda el resultado
                     st.balloons()
-                    st.toast("Parlay guardado correctamente en la base de datos.", icon="✅")
-    else:
-        st.warning("El motor analizó los mercados pero no encontró ninguna apuesta con Valor Esperado (EV) positivo.")
-
-else:
-    st.info("Esperando imagen para procesar análisis estadístico...")
-
+                    st.toast("Apuesta registrada exitosamente.")
