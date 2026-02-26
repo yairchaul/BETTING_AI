@@ -68,15 +68,18 @@ def obtener_mejor_apuesta(partido_data):
             # Registro para auditoría interna
             bitacora.append(f"{mercado}: Prob {int(prob*100)}% | EV: {round(ev,2)}")
             
-            if ev > 0.05: # Umbral de ventaja del 5%
+    if ev > 0.05:
                 mejores_opciones.append(PickResult(
                     match=f"{home} vs {away}",
                     selection=mercado,
                     probability=prob,
                     odd=cuota,
                     ev=ev,
-                    log="\n".join(bitacora[-3:])
+                    log="\n".join(bitacora[-5:]) # Ampliamos a los últimos 5 para ver más mercados
                 ))
     
     # Retorna la decisión con el EV más alto (el Pick Sharp)
-    return max(mejores_opciones, key=lambda x: x.ev) if mejores_opciones else None
+    return max(mejores_opciones, key=lambda x: x.ev) if mejores_opciones else None 
+
+
+
