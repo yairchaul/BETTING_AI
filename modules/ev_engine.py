@@ -1,185 +1,151 @@
 # modules/ev_engine.py
 
-import math
-import random
+from modules.schemas import Pick
+from modules.team_analyzer import build_team_profile
+from modules.google_context import get_match_context
+from modules.odds_api import get_market_odds
 
 
-# =============================
+# ======================
 # UTILIDADES
-# =============================
+# ======================
 
-def clamp(v, min_v=0, max_v=1):
-    return max(min_v, min(v, max_v))
+def clamp(v, a=0, b=1):
+    return max(a, min(v, b))
 
 
 def expected_value(prob, odds):
-    return (prob * odds) - 1
+    return prob * odds - 1
 
 
-# =============================
-# MODELO ESTADISTICO BASE
-# =============================
+# ======================
+# MODELADO PARTIDO
+# ======================
 
-def estimate_goal_rate(home_attack, away_attack):
-    """
-    Calcula intensidad ofensiva del partido
-    """
-    return (home_attack + away_attack) / 2
+def goal_rate(home, away):
+    return (home["attack"] + away["attack"]) / 2
 
 
-def estimate_corner_line(home_corners, away_corners):
+def corner_projection(home, away):
+    avg = home["corners"] + away["corners"]
 
-    avg = (home_corners + away_corners) / 2
-
-    if avg >= 11:
+    if avg > 11:
         return 10.5
-    elif avg >= 10:
+    if avg > 10:
         return 9.5
-    elif avg >= 9:
+    if avg > 9:
         return 8.5
-    else:
-        return 7.5
+    return 7.5
 
 
-# =============================
+# ======================
 # PROBABILIDADES
-# =============================
+# ======================
 
-def prob_over15_ht(goal_rate):
-
-    base = 0.45 + goal_rate * 0.35
-    variance = random.uniform(-0.05, 0.05)
-
-    return clamp(base + variance)
+def prob_over15_ht(rate):
+    return clamp(0.40 + rate * 0.35)
 
 
-def prob_btts(home_attack, away_attack):
-
-    strength = (home_attack * away_attack)
-    base = 0.40 + strength * 0.5
-
-    return clamp(base)
+def prob_btts(home, away):
+    return clamp(0.35 + (home["attack"] * away["attack"]) * 0.4)
 
 
-def prob_over25(goal_rate):
-
-    base = 0.35 + goal_rate * 0.55
-    return clamp(base)
+def prob_over25(rate):
+    return clamp(0.30 + rate * 0.6)
 
 
-def prob_corners(avg_corners):
-
-    base = 0.55 + (avg_corners - 8) * 0.05
-    return clamp(base)
+def prob_home_win(home, away):
+    return clamp(0.45 + (home["attack"] - away["attack"]) * 0.4)
 
 
-def prob_home_win(home_attack, away_attack):
-
-    diff = home_attack - away_attack
-    base = 0.45 + diff * 0.4
-
-    return clamp(base)
+def prob_combo(win, over):
+    return clamp(win * over * 1.2)
 
 
-def prob_win_over(home_win_prob, over_prob):
+def prob_corners(home, away):
+    avg = home["corners"] + away["corners"]
+    return clamp(0.55 + (avg - 8) * 0.04)
 
-    combo = home_win_prob * over_prob * 1.15
-    return clamp(combo)
 
-
-# =============================
-# ANALISIS PRINCIPAL
-# =============================
+# ======================
+# BOOKMAKER HUNTER CORE
+# ======================
 
 def analyze_match(match):
 
-    # datos simulados provenientes de motores
-    home_attack = match.get("home_attack", random.uniform(0.9, 1.6))
-    away_attack = match.get("away_attack", random.uniform(0.9, 1.6))
+    home = build_team_profile(match["home"])
+    away = build_team_profile(match["away"])
 
-    home_corners = match.get("home_corners", random.uniform(4,7))
-    away_corners = match.get("away_corners", random.uniform(4,7))
+    context = get_match_context(match["home"], match["away"])
+    market = get_market_odds(match["home"], match["away"])
 
-    goal_rate = estimate_goal_rate(home_attack, away_attack)
-
-    avg_corners = home_corners + away_corners
-    corner_line = estimate_corner_line(home_corners, away_corners)
-
-    # =====================
-    # MERCADOS
-    # =====================
+    rate = goal_rate(home, away)
+    corner_line = corner_projection(home, away)
 
     markets = []
 
-    # Over 1.5 HT
-    p_ht = prob_over15_ht(goal_rate)
-    markets.append({
-        "market": "Over 1.5 Goles 1er Tiempo",
-        "prob": p_ht,
-        "odds": 2.1
-    })
+    # PRIORIDAD 1
+    p_ht = prob_over15_ht(rate)
+    markets.append(("Over 1.5 HT", p_ht, 2.1))
 
-    # BTTS
-    p_btts = prob_btts(home_attack, away_attack)
-    markets.append({
-        "market": "Ambos Equipos Anotan",
-        "prob": p_btts,
-        "odds": 1.9
-    })
+    # PRIORIDAD 2
+    p_btts = prob_btts(home, away)
+    markets.append(("BTTS Sí", p_btts, 1.9))
 
-    # Over 2.5 FT
-    p_o25 = prob_over25(goal_rate)
-    markets.append({
-        "market": "Over 2.5 Goles",
-        "prob": p_o25,
-        "odds": 2.0
-    })
+    # PRIORIDAD 3
+    p_o25 = prob_over25(rate)
+    markets.append(("Over 2.5 FT", p_o25, 2.0))
 
-    # Corners dinámicos
-    p_corner = prob_corners(avg_corners)
-    markets.append({
-        "market": f"Over {corner_line} Corners",
-        "prob": p_corner,
-        "odds": 1.85
-    })
+    # PRIORIDAD 4
+    p_corner = prob_corners(home, away)
+    markets.append((f"Over {corner_line} Corners", p_corner, 1.85))
 
-    # Ganador local
-    p_home = prob_home_win(home_attack, away_attack)
-    markets.append({
-        "market": "Gana Local",
-        "prob": p_home,
-        "odds": 2.2
-    })
+    # PRIORIDAD 5
+    p_home = prob_home_win(home, away)
+    markets.append((f"{match['home']} gana", p_home, 2.2))
 
-    # Combo
-    p_combo = prob_win_over(p_home, p_o25)
-    markets.append({
-        "market": "Local gana + Over 1.5",
-        "prob": p_combo,
-        "odds": 3.0
-    })
+    # PRIORIDAD ELITE
+    p_combo = prob_combo(p_home, p_o25)
+    markets.append((f"{match['home']} gana + Over 1.5", p_combo, 3.2))
 
-    # =====================
-    # COMPETENCIA EV
-    # =====================
+    # ======================
+    # BOOKMAKER FILTER
+    # ======================
 
-    for m in markets:
-        m["ev"] = expected_value(m["prob"], m["odds"])
+    valid = []
 
-    # SOLO apuestas positivas
-    positive = [m for m in markets if m["ev"] > 0]
+    for name, prob, odd in markets:
 
-    if not positive:
+        ev = expected_value(prob, odd)
+
+        if prob < 0.60:
+            continue
+
+        if ev <= 0:
+            continue
+
+        # castigo por lesiones
+        if "injury" in context:
+            prob -= 0.05
+
+        valid.append((name, prob, ev))
+
+    if not valid:
         return None
 
-    best = max(positive, key=lambda x: x["ev"])
+    best = max(valid, key=lambda x: x[2])
 
-    return best
+    return Pick(
+        match=f"{match['home']} vs {match['away']}",
+        selection=best[0],
+        probability=round(best[1],3),
+        ev=round(best[2],3)
+    )
 
 
-# =============================
+# ======================
 # ANALISIS GLOBAL
-# =============================
+# ======================
 
 def analyze_matches(matches):
 
@@ -187,16 +153,9 @@ def analyze_matches(matches):
 
     for match in matches:
 
-        analysis = analyze_match(match)
+        pick = analyze_match(match)
 
-        if analysis:
-            results.append({
-                "match": f"{match['home']} vs {match['away']}",
-                "pick": analysis["market"],
-                "prob": round(analysis["prob"],3),
-                "ev": round(analysis["ev"],3)
-            })
+        if pick:
+            results.append(pick)
 
     return results
-
-
