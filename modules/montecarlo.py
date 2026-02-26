@@ -1,81 +1,41 @@
-import math
+import numpy as np
 
-
-# ======================
-# POISSON
-# ======================
-
-def poisson(lmbda, k):
-    return (lmbda ** k * math.exp(-lmbda)) / math.factorial(k)
-
-
-# ======================
-# MATRIZ DE MARCADORES
-# ======================
-
-def score_matrix(lambda_home, lambda_away, max_goals=6):
-
-    matrix = {}
-
-    for h in range(max_goals):
-        for a in range(max_goals):
-
-            prob = poisson(lambda_home, h) * poisson(lambda_away, a)
-            matrix[(h, a)] = prob
-
-    return matrix
-
-
-# ======================
-# PROBABILIDADES MERCADO
-# ======================
-
-def market_probabilities(lambda_home, lambda_away):
-
-    matrix = score_matrix(lambda_home, lambda_away)
-
-    p_home = 0
-    p_draw = 0
-    p_away = 0
-
-    over15 = 0
-    over25 = 0
-    over35 = 0
-    btts = 0
-
-    for (h, a), p in matrix.items():
-
-        # RESULTADO
-        if h > a:
-            p_home += p
-        elif h == a:
-            p_draw += p
-        else:
-            p_away += p
-
-        total_goals = h + a
-
-        # GOLES
-        if total_goals >= 2:
-            over15 += p
-
-        if total_goals >= 3:
-            over25 += p
-
-        if total_goals >= 4:
-            over35 += p
-
-        # BTTS
-        if h > 0 and a > 0:
-            btts += p
-
-    return {
-        "HOME": p_home,
-        "DRAW": p_draw,
-        "AWAY": p_away,
-        "OVER15": over15,
-        "OVER25": over25,
-        "OVER35": over35,
-        "BTTS": btts,
+def run_simulations(stats):
+    """
+    Simulación de Montecarlo para los 13 mercados específicos basados en 
+    la media de goles de los últimos 5 partidos.
+    """
+    # Extraer métricas de los últimos 5 partidos (stats viene de stats_fetch)
+    h_avg = stats.get('home_goals_avg', 1.5)
+    a_avg = stats.get('away_goals_avg', 1.2)
+    
+    # Simulamos 10,000 partidos
+    sim_home = np.random.poisson(h_avg, 10000)
+    sim_away = np.random.poisson(a_avg, 10000)
+    total_g = sim_home + sim_away
+    
+    # Diccionario de resultados (Probabilidades)
+    predicciones = {
+        # Resultados Finales
+        "Resultado Final (Local)": np.mean(sim_home > sim_away),
+        "Resultado Final (Empate)": np.mean(sim_home == sim_away),
+        "Resultado Final (Visitante)": np.mean(sim_away > sim_home),
+        
+        # Goles y Ambos Anotan
+        "Ambos Equipos Anotan": np.mean((sim_home > 0) & (sim_away > 0)),
+        "Over 1.5": np.mean(total_g > 1.5),
+        "Over 2.5": np.mean(total_g > 2.5),
+        "Over 3.5": np.mean(total_g > 3.5),
+        "Under 2.5": np.mean(total_g < 2.5),
+        
+        # Mercados Combinados (Doble Oportunidad aproximada)
+        "Doble Oportunidad (L/E)": np.mean(sim_home >= sim_away),
+        "Doble Oportunidad (V/E)": np.mean(sim_away >= sim_home),
+        
+        # 1ra Mitad (Estimación estadística 45% del total)
+        "1ra Mitad Over 0.5": np.mean(np.random.poisson(h_avg * 0.45 + a_avg * 0.45, 10000) > 0.5),
+        "1ra Mitad Over 1.5": np.mean(np.random.poisson(h_avg * 0.45 + a_avg * 0.45, 10000) > 1.5),
+        "Resultado del partido / Ambos equipos anotan": np.mean((sim_home > sim_away) & (sim_away > 0))
     }
-
+    
+    return predicciones
