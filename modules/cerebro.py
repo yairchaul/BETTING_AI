@@ -1,43 +1,31 @@
-# modules/cerebro.py
-import stats_fetch
-import montecarlo
-import match_probability
-from schemas import PickResult
+from modules.stats_fetch import get_team_stats
+from modules.montecarlo import run_simulations
+from modules.schemas import PickResult
 
-def procesar_partido_exhaustivo(equipo_h, equipo_a, momios_ocr):
-    """
-    Analiza CADA uno de los 13 mercados para un partido específico.
-    """
-    # 1. Obtener data histórica (últimos 5 partidos) de tu API
-    stats = stats_fetch.get_team_stats(equipo_h, equipo_a)
+def obtener_mejor_apuesta(partido_data):
+    home, away = partido_data['home'], partido_data['away']
+    # 1. API: Análisis de los últimos 5 partidos
+    stats = get_team_stats(home, away)
     
-    # 2. Ejecutar motores de búsqueda y probabilidad
-    # Esto usa tu montecarlo.py y match_probability.py
-    predicciones = montecarlo.simular_todo(stats) 
+    # 2. Motores: Simulación exhaustiva de los 13 mercados
+    predicciones = run_simulations(stats) 
     
-    posibles_picks = []
+    mejores_opciones = []
     
-    # Lista de mercados a evaluar según tu requerimiento
-    mercados_objetivo = [
-        "Resultado Final", "Ambos Equipos Anotan", "Over 1.5", "Over 2.5", 
-        "Over 3.5", "Doble Oportunidad", "1ra Mitad Over/Under"
-    ]
-
-    for mercado in mercados_objetivo:
-        prob = predicciones.get(mercado)
-        # Buscamos el momio real detectado por el OCR para este mercado
-        cuota = encontrar_momio_correspondiente(mercado, momios_ocr)
-        
-        if prob and cuota:
+    # 3. Mapeo de Valor (EV) comparando simulación vs momios del OCR
+    for mercado, prob in predicciones.items():
+        # Función interna para asignar el momio correcto al mercado analizado
+        cuota = asignar_cuota_real(mercado, partido_data['all_odds'])
+        if cuota:
             ev = (prob * cuota) - 1
-            if ev > 0: # Solo si hay ventaja estadística real
-                posibles_picks.append(PickResult(
-                    match=f"{equipo_h} vs {equipo_a}",
+            if ev > 0.05: # Filtro de Valor Esperado positivo
+                mejores_opciones.append(PickResult(
+                    match=f"{home} vs {away}",
                     selection=mercado,
                     probability=prob,
                     odd=cuota,
                     ev=ev
                 ))
     
-    # Retornamos la "decisión más correcta" (el EV más alto) de este partido
-    return max(posibles_picks, key=lambda x: x.ev) if posibles_picks else None
+    # Retorna la opción con mayor ventaja estadística para este partido
+    return max(mejores_opciones, key=lambda x: x.ev) if mejores_opciones else None
