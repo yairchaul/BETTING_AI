@@ -1,67 +1,46 @@
 import streamlit as st
-
 from modules.vision_reader import analyze_betting_image
-from modules.ev_engine import EVEngine
-from modules.learning import save_result, success_rate
-from modules.bankroll import kelly_stake
-from modules.montecarlo import simulate_parlay
+from modules.ev_engine import build_parlay
+
 
 st.set_page_config(layout="wide")
 
-st.title("🤖 BETTING AI — QUANT SYSTEM")
+st.title("🔥 Análisis de la Mejor Opción")
 
-archivo = st.file_uploader("Sube ticket", type=["png","jpg","jpeg"])
+uploaded = st.file_uploader("Sube ticket", type=["png","jpg","jpeg"])
 
-if archivo:
+if uploaded:
 
-    equipos = analyze_betting_image(archivo)
+    games = analyze_betting_image(uploaded)
 
-    st.write("Equipos:", equipos)
+    st.subheader("📋 Verificación de Partidos")
+    st.dataframe(games)
 
-    if len(equipos) >= 2:
+    results = build_parlay(games)
 
-        engine = EVEngine()
+    if results:
 
-        resultados, parlay = engine.build_parlay(equipos)
+        total_odd = 1
 
-        st.header("📊 Picks IA")
+        for r in results:
 
-        for r in resultados:
-            st.info(f"{r.partido} → {r.pick} | {r.probabilidad}%")
+            total_odd *= r.odd
 
-        if parlay:
+            st.success(
+                f"🎯 {r.match}\n"
+                f"Sugerido: {r.selection} | "
+                f"Cuota: x{r.odd} | "
+                f"Prob: {r.probability}"
+            )
 
-            st.header("🔥 Parlay Detectado")
+        st.divider()
 
-            monto = st.number_input("Monto MXN", value=100.0)
+        stake = st.number_input("Inversión (MXN)", value=10.0)
 
-            cuota_total = 1
-            for p in parlay:
-                cuota_total *= p.cuota
-                st.success(f"{p.partido} → {p.pick}")
+        payout = stake * total_odd
 
-            pago = monto * cuota_total
-            ganancia = pago - monto
+        col1, col2, col3 = st.columns(3)
 
-            st.metric("Cuota Total", round(cuota_total,2))
-            st.metric("Ganancia", round(ganancia,2))
-
-            prob_real = simulate_parlay(parlay)
-
-            st.metric("Probabilidad Real IA", f"{prob_real}%")
-
-            winrate = success_rate()
-            st.metric("Winrate IA", f"{winrate}%")
-
-            for p in parlay:
-
-                c1,c2 = st.columns(2)
-
-                with c1:
-                    if st.button(f"✅ Ganó {p.partido}"):
-                        save_result(p,"win")
-
-                with c2:
-                    if st.button(f"❌ Perdió {p.partido}"):
-                        save_result(p,"lose")
-
+        col1.metric("Cuota Final", f"{total_odd:.2f}x")
+        col2.metric("Pago Potencial", f"${payout:.2f}")
+        col3.metric("Ganancia Neta", f"${payout-stake:.2f}")
