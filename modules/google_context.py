@@ -1,14 +1,13 @@
-import os
 import random
 
-def get_google_context(home, away):
+
+def get_match_context(home, away):
     """
-    Simulación contextual.
-    Luego podrás conectar búsquedas reales.
+    Contexto externo tipo noticias / momentum.
     """
 
-    # placeholder inteligente
-    injury_factor = random.uniform(-0.05, 0.05)
-    motivation_factor = random.uniform(-0.05, 0.05)
-
-    return injury_factor + motivation_factor
+    return {
+        "injuries": random.choice([0, 1]),
+        "importance": random.uniform(0.4, 1.0),
+        "public_hype": random.uniform(0.3, 1.0),
+    }
