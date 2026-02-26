@@ -1,56 +1,81 @@
 import math
 
 
-def poisson_prob(lmbda, k):
-    return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
+# ======================
+# POISSON
+# ======================
 
+def poisson(lmbda, k):
+    return (lmbda ** k * math.exp(-lmbda)) / math.factorial(k)
+
+
+# ======================
+# MATRIZ DE MARCADORES
+# ======================
 
 def score_matrix(lambda_home, lambda_away, max_goals=6):
 
     matrix = {}
 
-    for h in range(max_goals + 1):
-        for a in range(max_goals + 1):
-            p = poisson_prob(lambda_home, h) * poisson_prob(lambda_away, a)
-            matrix[(h, a)] = p
+    for h in range(max_goals):
+        for a in range(max_goals):
+
+            prob = poisson(lambda_home, h) * poisson(lambda_away, a)
+            matrix[(h, a)] = prob
 
     return matrix
 
+
+# ======================
+# PROBABILIDADES MERCADO
+# ======================
 
 def market_probabilities(lambda_home, lambda_away):
 
     matrix = score_matrix(lambda_home, lambda_away)
 
-    home = 0
-    draw = 0
-    away = 0
+    p_home = 0
+    p_draw = 0
+    p_away = 0
+
     over15 = 0
     over25 = 0
+    over35 = 0
     btts = 0
 
     for (h, a), p in matrix.items():
 
+        # RESULTADO
         if h > a:
-            home += p
+            p_home += p
         elif h == a:
-            draw += p
+            p_draw += p
         else:
-            away += p
+            p_away += p
 
-        if h + a >= 2:
+        total_goals = h + a
+
+        # GOLES
+        if total_goals >= 2:
             over15 += p
 
-        if h + a >= 3:
+        if total_goals >= 3:
             over25 += p
 
+        if total_goals >= 4:
+            over35 += p
+
+        # BTTS
         if h > 0 and a > 0:
             btts += p
 
     return {
-        "HOME": home,
-        "DRAW": draw,
-        "AWAY": away,
+        "HOME": p_home,
+        "DRAW": p_draw,
+        "AWAY": p_away,
         "OVER15": over15,
         "OVER25": over25,
+        "OVER35": over35,
         "BTTS": btts,
     }
+
