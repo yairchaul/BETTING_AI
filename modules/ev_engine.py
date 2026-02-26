@@ -1,201 +1,182 @@
 # modules/ev_engine.py
+# ev_engine.py  --  versión mejorada 2025/26 – más mercados, menos empate automático
+
 import random
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 from modules.schemas import PickResult, ParlayResult
 from modules.team_analyzer import build_team_profile
 from modules.google_context import get_match_context
 
-# ======================================
-# UTILIDADES DE CALIBRACIÓN
-# ======================================
-
+# ────────────────────────────────────────────────
+# UTILIDADES
+# ────────────────────────────────────────────────
 def clamp(x: float) -> float:
-    """Mantiene la probabilidad dentro de límites realistas (Regla de Oro)."""
-    return max(0.15, min(0.82, x))
+    return max(0.01, min(0.99, x))
+
 
 def expected_value(prob: float, odd: float) -> float:
-    """Calcula el Valor Esperado (EV)."""
     return (prob * odd) - 1
 
-# ======================================
-# MOTOR DE PROBABILIDAD AVANZADO
-# ======================================
 
-def calculate_base_probabilities(home: Dict, away: Dict) -> Dict:
-    """Calcula las probabilidades base de 1X2 y dinámica del partido."""
-    # Extracción segura de atributos (Mapeo de seguridad)
-    h_atk = home.get("attack", home.get("home_strength", 0.5))
-    h_def = home.get("defense", home.get("home_defense", 0.5))
-    a_atk = away.get("attack", away.get("away_strength", 0.5))
-    a_def = away.get("defense", away.get("away_defense", 0.5))
-    
-    # Ventaja de localía (HFA) estandarizada (+5% ataque, +3% defensa)
-    h_atk_adj = h_atk * 1.05
-    h_def_adj = h_def * 1.03
+def poisson_prob(lambda_: float, k: int) -> float:
+    """Probabilidad Poisson simplificada (k = 0,1,2,3+)"""
+    if k == 0:
+        return pow(2.71828, -lambda_)
+    elif k == 1:
+        return lambda_ * pow(2.71828, -lambda_)
+    elif k == 2:
+        return (lambda_ ** 2 / 2) * pow(2.71828, -lambda_)
+    else:  # 3 o más
+        return 1 - (poisson_prob(lambda_, 0) + poisson_prob(lambda_, 1) + poisson_prob(lambda_, 2))
 
-    # Diferenciales
-    home_edge = h_atk_adj - a_def
-    away_edge = a_atk - h_def_adj
-    
-    # Cálculo de Win/Draw/Loss
-    prob_home = clamp(0.38 + (home_edge - away_edge) * 0.30)
-    prob_draw = clamp(0.25 - (abs(home_edge - away_edge) * 0.15))
-    prob_away = clamp(1.0 - prob_home - prob_draw)
 
-    # Tempo y Expectativa de goles
-    tempo = (home.get("tempo", 0.5) + away.get("tempo", 0.5)) / 2
-    goal_expectancy = (h_atk_adj + a_atk) / (h_def_adj + a_def + 0.1)
+# ────────────────────────────────────────────────
+# CÁLCULO DE LAMBDA (goles esperados)
+# ────────────────────────────────────────────────
+def calculate_lambdas(home: Dict, away: Dict, context: Dict) -> tuple[float, float]:
+    # Goles esperados base
+    home_attack  = home.get("attack",  home.get("attack_home",  1.35))
+    away_defense = away.get("defense", away.get("defense_away", 1.30))
+    away_attack  = away.get("attack",  away.get("attack_away",  1.10))
+    home_defense = home.get("defense", home.get("defense_home", 1.25))
 
-    return {
-        "home": prob_home,
-        "draw": prob_draw,
-        "away": prob_away,
-        "tempo": tempo,
-        "goal_expectancy": goal_expectancy
+    # Ajustes
+    home_adv     = 0.28                      # ventaja local típica
+    tempo        = (home.get("tempo", 0.5) + away.get("tempo", 0.5)) / 2
+    tempo_factor = 0.7 + tempo * 0.6         # 0.7–1.3
+
+    lambda_home = (home_attack / away_defense) * home_adv * tempo_factor
+    lambda_away = (away_attack / home_defense) * (1.0 / home_adv) * tempo_factor
+
+    # Contexto (lesiones, motivación, etc.)
+    lambda_home *= (1 + context.get("home_boost", 0.0))
+    lambda_away *= (1 + context.get("away_boost", 0.0))
+    lambda_home *= (1 - context.get("injuries_home", 0.0) * 0.15)
+    lambda_away *= (1 - context.get("injuries_away", 0.0) * 0.15)
+
+    return round(lambda_home, 2), round(lambda_away, 2)
+
+
+# ────────────────────────────────────────────────
+# TODOS LOS MERCADOS – probabilidades independientes
+# ────────────────────────────────────────────────
+def calculate_all_market_probs(
+    home_profile: Dict,
+    away_profile: Dict,
+    context: Dict
+) -> Dict[str, float]:
+
+    λh, λa = calculate_lambdas(home_profile, away_profile, context)
+
+    # 1×2
+    home_win   = 0.0
+    draw       = 0.0
+    away_win   = 0.0
+    for i in range(10):
+        for j in range(10):
+            p = poisson_prob(λh, i) * poisson_prob(λa, j)
+            if i > j:   home_win += p
+            elif i == j: draw    += p
+            else:       away_win += p
+
+    # Over / Under
+    total_goals_exp = λh + λa
+    over_2_5   = 1 - (poisson_prob(total_goals_exp, 0) +
+                      poisson_prob(total_goals_exp, 1) +
+                      poisson_prob(total_goals_exp, 2))
+    under_2_5  = 1 - over_2_5
+    over_1_5   = 1 - (poisson_prob(total_goals_exp, 0) + poisson_prob(total_goals_exp, 1))
+
+    # BTTS
+    btts_yes = 1 - (poisson_prob(λh, 0) + poisson_prob(λa, 0) - poisson_prob(λh, 0) * poisson_prob(λa, 0))
+    btts_no  = 1 - btts_yes
+
+    # Corners (estimación muy simplificada)
+    corners_exp = 9.0 + (total_goals_exp - 2.5) * 1.4
+    corners_over_8_5 = 0.45 + (corners_exp - 9.0) * 0.09
+    corners_over_8_5 = clamp(corners_over_8_5)
+
+    probs = {
+        "Gana Local"     : clamp(home_win   + 0.03),   # pequeño boost local
+        "Empate"         : clamp(draw),
+        "Gana Visitante" : clamp(away_win),
+        "Over 2.5"       : clamp(over_2_5   + 0.02 * (total_goals_exp > 2.8)),
+        "Under 2.5"      : clamp(under_2_5),
+        "BTTS Sí"        : clamp(btts_yes),
+        "BTTS No"        : clamp(btts_no),
+        "Over 1.5"       : clamp(over_1_5),
+        "Corners Over 8.5": clamp(corners_over_8_5),
     }
 
-def calculate_all_markets(home: Dict, away: Dict, base_probs: Dict, context: Dict) -> Dict:
-    """Genera probabilidades detalladas para múltiples mercados."""
-    
-    # Factores de contexto
-    importance = context.get("importance", 0.5)
-    injuries_h = context.get("injuries_home", 0.0)
-    injuries_a = context.get("injuries_away", 0.0)
-    
-    # Ajustes por lesiones e importancia
-    # Menos importancia = juego más abierto/caótico; Más importancia = más cerrado
-    defensive_adjustment = 0.05 if importance > 0.7 else -0.05
-    
-    # 1. BTTS Sí
-    # Correlación: Alta expectativa de gol y defensas similares
-    btts_base = (base_probs["goal_expectancy"] * 0.4) + (base_probs["tempo"] * 0.2)
-    prob_btts = clamp(btts_base + 0.10 - (injuries_h + injuries_a) * 0.05)
+    return probs
 
-    # 2. Over / Under 2.5
-    over_base = (base_probs["goal_expectancy"] * 0.5) + (base_probs["tempo"] * 0.15)
-    prob_over_25 = clamp(over_base - defensive_adjustment)
-    prob_under_25 = clamp(1.0 - prob_over_25)
 
-    # 3. Corners Over 8.5
-    # Basado en Tempo + Ataque Promedio + Factor de Despejes Defensivos
-    h_atk = home.get("attack", 0.5)
-    a_atk = away.get("attack", 0.5)
-    corner_prob = clamp((h_atk + a_atk) * 0.4 + base_probs["tempo"] * 0.3 + 0.15)
+# ────────────────────────────────────────────────
+# ANÁLISIS DE UN PARTIDO – genera reporte como pediste
+# ────────────────────────────────────────────────
+def analyze_match(match: Dict) -> Optional[Dict]:
 
-    # 4. Mercados Bonus (Over 1.5 y Local Win)
-    prob_over_15 = clamp(prob_over_25 + 0.22)
-    prob_local_win = base_probs["home"]
+    home_profile = build_team_profile(match["home"])
+    away_profile = build_team_profile(match["away"])
+    context      = get_match_context(match["home"], match["away"])
 
-    return {
-        "Empate": prob_draw_final := clamp(base_probs["draw"]),
-        "BTTS": prob_btts,
-        "Over 2.5": prob_over_25,
-        "Local Win": prob_local_win,
-        "Under 2.5": prob_under_25,
-        "Corners 8.5": corner_prob,
-        "Over 1.5": prob_over_15
-    }
+    probs = calculate_all_market_probs(home_profile, away_profile, context)
 
-# ======================================
-# ANALIZADOR POR PARTIDO
-# ======================================
+    # ── Formato exacto que pediste ──────────────────────────────────────
+    lines = []
+    lines.append(f"Empate              {int(probs['Empate']*100)}%")
+    lines.append(f"BTTS Sí             {int(probs['BTTS Sí']*100)}%")
+    lines.append(f"Over 2.5            {int(probs['Over 2.5']*100)}%")
+    lines.append(f"Local Win           {int(probs['Gana Local']*100)}%")
+    lines.append(f"Under 2.5           {int(probs['Under 2.5']*100)}%")
+    lines.append(f"Corners Over 8.5    {int(probs['Corners Over 8.5']*100)}%")
 
-def generate_full_analysis(match: Dict) -> Optional[PickResult]:
-    """Realiza el análisis profundo partido por partido."""
-    
-    home_name = match.get("home", "Local")
-    away_name = match.get("away", "Visitante")
-    
-    # Construcción de perfiles
-    home_profile = build_team_profile(home_name)
-    away_profile = build_team_profile(away_name)
-    
-    # Obtención de contexto
-    context = get_match_context(home_name, away_name)
-    
-    # 1. Probabilidades base
-    base_probs = calculate_base_probabilities(home_profile, away_profile)
-    
-    # 2. Cálculo de todos los mercados
-    all_probs = calculate_all_markets(home_profile, away_profile, base_probs, context)
-    
-    # 3. Formateo de salida según requerimiento
-    print(f"\n--- Análisis: {home_name} vs {away_name} ---")
-    print(f"Empate {int(all_probs['Empate'] * 100)}%")
-    print(f"BTTS {int(all_probs['BTTS'] * 100)}%")
-    print(f"Over 2.5 {int(all_probs['Over 2.5'] * 100)}%")
-    print(f"Local Win {int(all_probs['Local Win'] * 100)}%")
-    print(f"Under 2.5 {int(all_probs['Under 2.5'] * 100)}%")
-    print(f"Corners 8.5 {int(all_probs['Corners 8.5'] * 100)}%")
-    
-    # 4. Selección del Pick Recomendado (Mayor Probabilidad)
-    # Filtramos mercados para el PickResult (excluimos Over 1.5 del log si no se pidió pero lo usamos para comparar)
-    selectable_markets = {k: v for k, v in all_probs.items() if k != "Over 1.5"}
-    best_market_name = max(selectable_markets, key=selectable_markets.get)
-    best_prob = selectable_markets[best_market_name]
-    
-    print(f"Resultado esperado después del análisis en el partido de {home_name} vs {away_name}: corresponde al {best_market_name}")
+    # Pick recomendado = el de mayor probabilidad
+    best_market = max(probs.items(), key=lambda x: x[1])
+    best_name   = best_market[0]
+    best_prob   = int(best_market[1] * 100)
 
-    # Asignación de cuotas estimadas para cálculo de EV (si no se proveen en match)
-    # En producción, estas vendrían de un odds_provider
-    estimated_odds = {
-        "Empate": 3.40, "BTTS": 1.90, "Over 2.5": 2.05, 
-        "Local Win": 2.10, "Under 2.5": 1.85, "Corners 8.5": 1.80
-    }
-    current_odd = match.get("odds", {}).get(best_market_name, estimated_odds.get(best_market_name, 2.0))
+    lines.append("")
+    lines.append(f"Resultado esperado después del análisis en el partido")
+    lines.append(f"{match['home']} vs {match['away']}: corresponde al **{best_name}** ({best_prob}%)")
 
-    return PickResult(
-        match=f"{home_name} vs {away_name}",
-        selection=best_market_name,
-        probability=round(best_prob, 3),
-        odd=current_odd,
-        ev=round(expected_value(best_prob, current_odd), 3)
+    analysis_text = "\n".join(lines)
+
+    # Para mantener compatibilidad con tu sistema anterior
+    pick = PickResult(
+        match     = f"{match['home']} vs {match['away']}",
+        selection = best_name,
+        probability = round(best_market[1], 3),
+        odd       = 1.0,                # placeholder – puedes mapear odds reales después
+        ev        = 0.0
     )
 
-def analyze_match(match: Dict) -> Optional[PickResult]:
-    """Alias compatible con la estructura modular anterior."""
-    return generate_full_analysis(match)
+    return {
+        "text": analysis_text,
+        "pick": pick,
+        "all_probs": probs,
+        "lambdas": calculate_lambdas(home_profile, away_profile, context)
+    }
 
-# ======================================
-# ANALISIS GLOBAL
-# ======================================
 
-def analyze_matches(matches: List[Dict]) -> List[PickResult]:
-    """Analiza una lista de partidos uno por uno."""
+# ────────────────────────────────────────────────
+# MÚLTIPLES PARTIDOS
+# ────────────────────────────────────────────────
+def analyze_matches(matches: List[Dict]) -> List[Dict]:
     results = []
     for match in matches:
-        analysis = analyze_match(match)
-        if analysis:
-            results.append(analysis)
+        result = analyze_match(match)
+        if result:
+            results.append(result)
     return results
 
-# ======================================
-# PARLAY BUILDER (SYNDICATE)
-# ======================================
 
-def build_smart_parlay(picks: List[PickResult]) -> Optional[ParlayResult]:
-    """Construye una combinada optimizada basada en probabilidad y EV."""
-    if not picks:
-        return None
-
-    # Seleccionamos los mejores picks basados en Probabilidad para asegurar el parlay
-    # pero limitamos a los que tengan EV positivo si es posible
-    safe_picks = sorted(picks, key=lambda x: x.probability, reverse=True)[:3]
-
-    total_odd = 1.0
-    combined_prob = 1.0
-    match_list = []
-
-    for p in safe_picks:
-        total_odd *= p.odd
-        combined_prob *= p.probability
-        match_list.append(f"{p.match} ({p.selection})")
-
-    total_ev = expected_value(combined_prob, total_odd)
-
-    return ParlayResult(
-        matches=match_list,
-        total_odd=round(total_odd, 2),
-        combined_prob=round(combined_prob, 3),
-        total_ev=round(total_ev, 3)
-    )
+# Ejemplo de uso (para pruebas)
+if __name__ == "__main__":
+    ejemplo = {
+        "home": "América",
+        "away": "Cruz Azul"
+    }
+    res = analyze_match(ejemplo)
+    if res:
+        print(res["text"])
