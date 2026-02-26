@@ -1,54 +1,28 @@
-import requests
-import streamlit as st
 import random
 
+def analyze_team_strength(home, away):
+    """
+    Simulación dinámica estilo modelo estadístico.
+    NO depende del nombre del equipo.
+    """
 
-def build_team_profile(team_name):
+    base_home = random.uniform(0.45, 0.75)
+    base_away = random.uniform(0.35, 0.65)
 
-    # ======================
-    # GOOGLE INTELLIGENCE
-    # ======================
+    goal_expectancy = random.uniform(1.8, 3.4)
 
-    api = st.secrets["GOOGLE_API_KEY"]
-    cx = st.secrets["GOOGLE_CSE_ID"]
+    attack_home = random.uniform(0.4, 0.8)
+    attack_away = random.uniform(0.4, 0.8)
 
-    query = f"{team_name} football team statistics goals scored corners form"
-
-    try:
-
-        url = "https://www.googleapis.com/customsearch/v1"
-
-        params = {
-            "key": api,
-            "cx": cx,
-            "q": query
-        }
-
-        r = requests.get(url, params=params, timeout=4)
-        data = r.json()
-
-        text_blob = " ".join(
-            item["snippet"]
-            for item in data.get("items", [])
-        ).lower()
-
-        attack = 1.2
-        corners = 5.5
-
-        if "attacking" in text_blob:
-            attack += 0.2
-
-        if "defensive" in text_blob:
-            attack -= 0.15
-
-        if "corner" in text_blob:
-            corners += 1
-
-    except:
-        attack = random.uniform(1.0, 1.5)
-        corners = random.uniform(4.5, 6.5)
+    defense_home = random.uniform(0.3, 0.7)
+    defense_away = random.uniform(0.3, 0.7)
 
     return {
-        "attack": attack,
-        "corners": corners
+        "home_strength": base_home,
+        "away_strength": base_away,
+        "goal_expectancy": goal_expectancy,
+        "attack_home": attack_home,
+        "attack_away": attack_away,
+        "defense_home": defense_home,
+        "defense_away": defense_away
     }
