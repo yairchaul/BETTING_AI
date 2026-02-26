@@ -42,7 +42,7 @@ if uploaded_file:
             
         st.write(f"Partidos detectados: {len(games)}")
         
-        # 2. Análisis Multimotor (Estadísticas + Contexto + Odds API)
+        # 2. Análisis Multimotor
         st.write("Ejecutando motores de probabilidad y EV...")
         results = analyze_matches(games)
         
@@ -53,7 +53,6 @@ if uploaded_file:
         st.divider()
         st.subheader("🔥 Picks Sharp Detectados")
         
-        # Grid para picks individuales
         for r in results:
             with st.expander(f"📍 {r.match} | Sugerido: {r.selection}", expanded=True):
                 col1, col2, col3 = st.columns(3)
@@ -63,7 +62,6 @@ if uploaded_file:
         
         # --- SECCIÓN DE PARLAY ---
         st.divider()
-        # Generamos el parlay inteligente (Top 3 por EV)
         parlay = build_smart_parlay(results) 
         
         if parlay:
@@ -79,7 +77,22 @@ if uploaded_file:
 
                 st.divider()
                 
-                # Formulario de registro
                 col_m, col_b = st.columns([1, 1])
                 with col_m:
-                    monto_parlay = st.number_input("Monto para invertir ($
+                    # LÍNEA CORREGIDA:
+                    monto_parlay = st.number_input("Monto para invertir ($)", min_value=1.0, value=100.0, step=10.0)
+                
+                with col_b:
+                    st.write(" ")
+                    st.write(" ")
+                    if st.button("📥 Registrar Parlay en Historial", use_container_width=True):
+                        from modules.tracker import registrar_parlay_automatico
+                        success = registrar_parlay_automatico(parlay, monto_parlay)
+                        if success:
+                            st.success("✅ ¡Parlay guardado! Revisa el Sidebar.")
+                            st.balloons()
+    else:
+        st.warning("No se encontraron oportunidades con Valor Esperado (EV+) positivo.")
+
+else:
+    st.info("Esperando ticket para procesar...")
