@@ -8,6 +8,26 @@ from modules.google_context import get_match_context
 
 
 # ======================================
+# SAFE PROFILE NORMALIZER ⭐ NUEVO
+# ======================================
+
+def normalize_profile(profile):
+
+    return {
+        "attack": profile.get("attack")
+                  or profile.get("attack_rating")
+                  or random.uniform(0.4, 0.7),
+
+        "defense": profile.get("defense")
+                   or profile.get("defense_rating")
+                   or random.uniform(0.4, 0.7),
+
+        "tempo": profile.get("tempo")
+                 or random.uniform(0.45, 0.75)
+    }
+
+
+# ======================================
 # UTILIDADES
 # ======================================
 
@@ -20,7 +40,7 @@ def expected_value(prob, odd):
 
 
 # ======================================
-# PROBABILITY ENGINE (NUEVO)
+# PROBABILITY ENGINE
 # ======================================
 
 def calculate_base_probabilities(home, away):
@@ -62,7 +82,7 @@ def detect_archetype(home, away):
 
 
 # ======================================
-# MARKET GENERATOR (MEJORADO)
+# MARKET GENERATOR
 # ======================================
 
 def generate_markets(archetype, home, away, probs, context):
@@ -71,32 +91,32 @@ def generate_markets(archetype, home, away, probs, context):
 
     goal_rate = (home["attack"] + away["attack"]) / 2
     tempo_boost = probs["tempo"] * 0.1
-    hype_boost = context["importance"] * 0.05
+    hype_boost = context.get("importance", 0.5) * 0.05
 
-    # =====================
-    # OPEN GAME
-    # =====================
     if archetype == "OPEN":
 
-        over_prob = clamp(0.45 + goal_rate * 0.35 + tempo_boost)
-        btts_prob = clamp(0.48 + goal_rate * 0.30)
+        markets.append(
+            ("Over 2.5 Goles",
+             clamp(0.45 + goal_rate * 0.35 + tempo_boost),
+             2.05)
+        )
 
-        markets.append(("Over 2.5 Goles", over_prob, 2.05))
-        markets.append(("BTTS Sí", btts_prob, 1.85))
+        markets.append(
+            ("BTTS Sí",
+             clamp(0.48 + goal_rate * 0.30),
+             1.85)
+        )
 
-    # =====================
-    # BALANCED GAME
-    # =====================
     elif archetype == "BALANCED":
 
-        draw_prob = clamp(probs["draw"] + hype_boost)
+        markets.append(
+            ("Empate",
+             clamp(probs["draw"] + hype_boost),
+             3.3)
+        )
 
-        markets.append(("Empate", draw_prob, 3.3))
-        markets.append(("Under 3.5", clamp(0.60), 1.6))
+        markets.append(("Under 3.5", 0.60, 1.6))
 
-    # =====================
-    # HOME DOMINANT
-    # =====================
     elif archetype == "HOME_DOMINANT":
 
         home_win = clamp(probs["home"] + hype_boost)
@@ -104,14 +124,9 @@ def generate_markets(archetype, home, away, probs, context):
         markets.append(("Gana Local", home_win, 2.0))
         markets.append(("Local + Over 1.5", clamp(home_win * 0.8), 2.8))
 
-    # =====================
-    # DEFENSIVE
-    # =====================
     else:
 
-        under_prob = clamp(0.55 + (1 - goal_rate) * 0.3)
-
-        markets.append(("Under 2.5", under_prob, 1.9))
+        markets.append(("Under 2.5", clamp(0.55), 1.9))
 
     return markets
 
@@ -122,8 +137,12 @@ def generate_markets(archetype, home, away, probs, context):
 
 def analyze_match(match):
 
-    home_profile = build_team_profile(match["home"])
-    away_profile = build_team_profile(match["away"])
+    raw_home = build_team_profile(match["home"])
+    raw_away = build_team_profile(match["away"])
+
+    # ⭐ NORMALIZACIÓN ANTI-ERROR
+    home_profile = normalize_profile(raw_home)
+    away_profile = normalize_profile(raw_away)
 
     context = get_match_context(match["home"], match["away"])
 
@@ -146,9 +165,8 @@ def analyze_match(match):
 
     for name, prob, odd in markets:
 
-        # SHARP MONEY ADJUSTMENT
-        prob += context["importance"] * 0.03
-        prob -= context["injuries"] * 0.02
+        prob += context.get("importance", 0.5) * 0.03
+        prob -= context.get("injuries", 0.2) * 0.02
 
         prob = clamp(prob)
 
@@ -170,7 +188,6 @@ def analyze_match(match):
     if not candidates:
         return None
 
-    # Sindicato elige mejor EV
     return max(candidates, key=lambda x: x.ev)
 
 
@@ -191,7 +208,7 @@ def analyze_matches(matches):
 
 
 # ======================================
-# PARLAY BUILDER (SYNDICATE)
+# PARLAY BUILDER
 # ======================================
 
 def build_smart_parlay(picks):
@@ -199,7 +216,6 @@ def build_smart_parlay(picks):
     if not picks:
         return None
 
-    # evita correlación excesiva
     picks = sorted(picks, key=lambda x: x.ev, reverse=True)[:4]
 
     total_odd = 1
