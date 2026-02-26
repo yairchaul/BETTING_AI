@@ -1,182 +1,188 @@
-# modules/ev_engine.py
-# ev_engine.py  --  versión mejorada 2025/26 – más mercados, menos empate automático
-
 import random
-from typing import Dict, List, Optional
+import math
+from typing import Dict, List, Optional, Tuple
 from modules.schemas import PickResult, ParlayResult
 from modules.team_analyzer import build_team_profile
 from modules.google_context import get_match_context
 
-# ────────────────────────────────────────────────
-# UTILIDADES
-# ────────────────────────────────────────────────
-def clamp(x: float) -> float:
-    return max(0.01, min(0.99, x))
+# ======================================
+# UTILIDADES MATEMÁTICAS
+# ======================================
 
+def clamp(x: float) -> float:
+    """Mantiene la probabilidad dentro de límites realistas (Regla de Oro: 15%-82%)."""
+    return max(0.15, min(0.82, x))
 
 def expected_value(prob: float, odd: float) -> float:
+    """Calcula el Valor Esperado (EV)."""
     return (prob * odd) - 1
 
-
 def poisson_prob(lambda_: float, k: int) -> float:
-    """Probabilidad Poisson simplificada (k = 0,1,2,3+)"""
-    if k == 0:
-        return pow(2.71828, -lambda_)
-    elif k == 1:
-        return lambda_ * pow(2.71828, -lambda_)
-    elif k == 2:
-        return (lambda_ ** 2 / 2) * pow(2.71828, -lambda_)
-    else:  # 3 o más
-        return 1 - (poisson_prob(lambda_, 0) + poisson_prob(lambda_, 1) + poisson_prob(lambda_, 2))
+    """Calcula la probabilidad de que ocurran exactamente k eventos."""
+    if lambda_ <= 0: return 1.0 if k == 0 else 0.0
+    return (exp_val := math.exp(-lambda_)) * (lambda_ ** k) / math.factorial(k)
 
+# ======================================
+# MOTOR DE PROBABILIDAD (LAMBDAS)
+# ======================================
 
-# ────────────────────────────────────────────────
-# CÁLCULO DE LAMBDA (goles esperados)
-# ────────────────────────────────────────────────
-def calculate_lambdas(home: Dict, away: Dict, context: Dict) -> tuple[float, float]:
-    # Goles esperados base
-    home_attack  = home.get("attack",  home.get("attack_home",  1.35))
-    away_defense = away.get("defense", away.get("defense_away", 1.30))
-    away_attack  = away.get("attack",  away.get("attack_away",  1.10))
-    home_defense = home.get("defense", home.get("defense_home", 1.25))
+def calculate_lambdas(home: Dict, away: Dict, context: Dict) -> Tuple[float, float]:
+    """Calcula los goles esperados (λ) ajustados por contexto y localía."""
+    # Extracción segura de atributos
+    h_atk = home.get("attack", home.get("home_strength", 1.3))
+    h_def = home.get("defense", home.get("home_defense", 1.2))
+    a_atk = away.get("attack", away.get("away_strength", 1.1))
+    a_def = away.get("defense", away.get("away_defense", 1.3))
+    
+    # Ventaja local (HFA) y Tempo
+    hfa = 1.25 # Factor multiplicador local
+    tempo = (home.get("tempo", 0.5) + away.get("tempo", 0.5)) / 2
+    tempo_factor = 0.8 + (tempo * 0.4) # Escala de 0.8 a 1.2
 
-    # Ajustes
-    home_adv     = 0.28                      # ventaja local típica
-    tempo        = (home.get("tempo", 0.5) + away.get("tempo", 0.5)) / 2
-    tempo_factor = 0.7 + tempo * 0.6         # 0.7–1.3
+    # Cálculo de Lambdas (Goles Esperados)
+    lambda_h = (h_atk / a_def) * hfa * tempo_factor
+    lambda_a = (a_atk / h_def) * (1 / hfa) * tempo_factor
 
-    lambda_home = (home_attack / away_defense) * home_adv * tempo_factor
-    lambda_away = (away_attack / home_defense) * (1.0 / home_adv) * tempo_factor
+    # Ajustes de Contexto (Lesiones e Importancia)
+    importance = context.get("importance", 0.5)
+    # Partidos de alta importancia tienden a ser más cerrados (menos goles)
+    if importance > 0.8:
+        lambda_h *= 0.9
+        lambda_a *= 0.9
 
-    # Contexto (lesiones, motivación, etc.)
-    lambda_home *= (1 + context.get("home_boost", 0.0))
-    lambda_away *= (1 + context.get("away_boost", 0.0))
-    lambda_home *= (1 - context.get("injuries_home", 0.0) * 0.15)
-    lambda_away *= (1 - context.get("injuries_away", 0.0) * 0.15)
+    # Impacto de lesiones
+    lambda_h *= (1 - context.get("injuries_home", 0.0) * 0.15)
+    lambda_away = lambda_a * (1 - context.get("injuries_away", 0.0) * 0.15)
 
-    return round(lambda_home, 2), round(lambda_away, 2)
+    return round(lambda_h, 2), round(lambda_away, 2)
 
+# ======================================
+# GENERADOR DE MERCADOS (ALL MARKETS)
+# ======================================
 
-# ────────────────────────────────────────────────
-# TODOS LOS MERCADOS – probabilidades independientes
-# ────────────────────────────────────────────────
-def calculate_all_market_probs(
-    home_profile: Dict,
-    away_profile: Dict,
-    context: Dict
-) -> Dict[str, float]:
+def calculate_all_markets(home_profile: Dict, away_profile: Dict, context: Dict) -> Dict[str, float]:
+    """Calcula todas las probabilidades de mercado usando Poisson y heurística de corners."""
+    
+    lh, la = calculate_lambdas(home_profile, away_profile, context)
+    
+    # 1. Probabilidades 1X2 mediante Matriz de Poisson
+    prob_h, prob_d, prob_a = 0.0, 0.0, 0.0
+    for i in range(7): # Goles local
+        for j in range(7): # Goles visitante
+            p = poisson_prob(lh, i) * poisson_prob(la, j)
+            if i > j: prob_h += p
+            elif i == j: prob_d += p
+            else: prob_a += p
 
-    λh, λa = calculate_lambdas(home_profile, away_profile, context)
+    # 2. Over / Under 2.5
+    # P(U2.5) = P(0-0, 1-0, 0-1, 1-1, 2-0, 0-2)
+    l_total = lh + la
+    prob_u25 = poisson_prob(l_total, 0) + poisson_prob(l_total, 1) + poisson_prob(l_total, 2)
+    prob_o25 = 1.0 - prob_u25
 
-    # 1×2
-    home_win   = 0.0
-    draw       = 0.0
-    away_win   = 0.0
-    for i in range(10):
-        for j in range(10):
-            p = poisson_prob(λh, i) * poisson_prob(λa, j)
-            if i > j:   home_win += p
-            elif i == j: draw    += p
-            else:       away_win += p
+    # 3. BTTS (Ambos Anotan)
+    # P(BTTS) = (1 - P(Home 0)) * (1 - P(Away 0))
+    prob_btts = (1.0 - poisson_prob(lh, 0)) * (1.0 - poisson_prob(la, 0))
 
-    # Over / Under
-    total_goals_exp = λh + λa
-    over_2_5   = 1 - (poisson_prob(total_goals_exp, 0) +
-                      poisson_prob(total_goals_exp, 1) +
-                      poisson_prob(total_goals_exp, 2))
-    under_2_5  = 1 - over_2_5
-    over_1_5   = 1 - (poisson_prob(total_goals_exp, 0) + poisson_prob(total_goals_exp, 1))
+    # 4. Corners Over 8.5
+    # Basado en el ataque total y el tempo del partido
+    h_atk = home_profile.get("attack", 0.5)
+    a_atk = away_profile.get("attack", 0.5)
+    tempo = (home_profile.get("tempo", 0.5) + away_profile.get("tempo", 0.5)) / 2
+    prob_corners = clamp((h_atk + a_atk) * 0.4 + tempo * 0.3 + 0.10)
 
-    # BTTS
-    btts_yes = 1 - (poisson_prob(λh, 0) + poisson_prob(λa, 0) - poisson_prob(λh, 0) * poisson_prob(λa, 0))
-    btts_no  = 1 - btts_yes
+    # 5. Over 1.5 (Bonus para cálculos internos)
+    prob_o15 = 1.0 - (poisson_prob(l_total, 0) + poisson_prob(l_total, 1))
 
-    # Corners (estimación muy simplificada)
-    corners_exp = 9.0 + (total_goals_exp - 2.5) * 1.4
-    corners_over_8_5 = 0.45 + (corners_exp - 9.0) * 0.09
-    corners_over_8_5 = clamp(corners_over_8_5)
-
-    probs = {
-        "Gana Local"     : clamp(home_win   + 0.03),   # pequeño boost local
-        "Empate"         : clamp(draw),
-        "Gana Visitante" : clamp(away_win),
-        "Over 2.5"       : clamp(over_2_5   + 0.02 * (total_goals_exp > 2.8)),
-        "Under 2.5"      : clamp(under_2_5),
-        "BTTS Sí"        : clamp(btts_yes),
-        "BTTS No"        : clamp(btts_no),
-        "Over 1.5"       : clamp(over_1_5),
-        "Corners Over 8.5": clamp(corners_over_8_5),
+    return {
+        "Empate": clamp(prob_d),
+        "BTTS Sí": clamp(prob_btts),
+        "Over 2.5": clamp(prob_o25),
+        "Local Win": clamp(prob_h),
+        "Under 2.5": clamp(prob_u25),
+        "Corners Over 8.5": prob_corners,
+        "Over 1.5": clamp(prob_o15)
     }
 
-    return probs
+# ======================================
+# ANALIZADOR POR PARTIDO
+# ======================================
 
-
-# ────────────────────────────────────────────────
-# ANÁLISIS DE UN PARTIDO – genera reporte como pediste
-# ────────────────────────────────────────────────
 def analyze_match(match: Dict) -> Optional[Dict]:
+    """Realiza el análisis completo y genera el reporte textual."""
+    
+    h_name = match.get("home", "Local")
+    a_name = match.get("away", "Visitante")
+    
+    # Perfiles y Contexto
+    home_p = build_team_profile(h_name)
+    away_p = build_team_profile(a_name)
+    ctx = get_match_context(h_name, a_name)
+    
+    # Ejecución de motores
+    probs = calculate_all_markets(home_p, away_p, ctx)
+    
+    # Construcción del reporte visual solicitado
+    report = [
+        f"Empate              {int(probs['Empate']*100)}%",
+        f"BTTS Sí             {int(probs['BTTS Sí']*100)}%",
+        f"Over 2.5            {int(probs['Over 2.5']*100)}%",
+        f"Local Win           {int(probs['Local Win']*100)}%",
+        f"Under 2.5           {int(probs['Under 2.5']*100)}%",
+        f"Corners Over 8.5    {int(probs['Corners Over 8.5']*100)}%"
+    ]
 
-    home_profile = build_team_profile(match["home"])
-    away_profile = build_team_profile(match["away"])
-    context      = get_match_context(match["home"], match["away"])
+    # Selección del Pick Recomendado (Mayor Probabilidad)
+    # Excluimos Over 1.5 de la recomendación principal para cumplir con la lista base
+    selectable = {k: v for k, v in probs.items() if k != "Over 1.5"}
+    best_name, best_val = max(selectable.items(), key=lambda x: x[1])
+    
+    report.append("")
+    report.append(f"Resultado esperado después del análisis en el partido de {h_name} vs {a_name}:")
+    report.append(f"corresponde al **{best_name}** ({int(best_val*100)}%)")
 
-    probs = calculate_all_market_probs(home_profile, away_profile, context)
+    analysis_text = "\n".join(report)
 
-    # ── Formato exacto que pediste ──────────────────────────────────────
-    lines = []
-    lines.append(f"Empate              {int(probs['Empate']*100)}%")
-    lines.append(f"BTTS Sí             {int(probs['BTTS Sí']*100)}%")
-    lines.append(f"Over 2.5            {int(probs['Over 2.5']*100)}%")
-    lines.append(f"Local Win           {int(probs['Gana Local']*100)}%")
-    lines.append(f"Under 2.5           {int(probs['Under 2.5']*100)}%")
-    lines.append(f"Corners Over 8.5    {int(probs['Corners Over 8.5']*100)}%")
-
-    # Pick recomendado = el de mayor probabilidad
-    best_market = max(probs.items(), key=lambda x: x[1])
-    best_name   = best_market[0]
-    best_prob   = int(best_market[1] * 100)
-
-    lines.append("")
-    lines.append(f"Resultado esperado después del análisis en el partido")
-    lines.append(f"{match['home']} vs {match['away']}: corresponde al **{best_name}** ({best_prob}%)")
-
-    analysis_text = "\n".join(lines)
-
-    # Para mantener compatibilidad con tu sistema anterior
+    # Objeto PickResult para el sistema de apuestas
     pick = PickResult(
-        match     = f"{match['home']} vs {match['away']}",
-        selection = best_name,
-        probability = round(best_market[1], 3),
-        odd       = 1.0,                # placeholder – puedes mapear odds reales después
-        ev        = 0.0
+        match=f"{h_name} vs {a_name}",
+        selection=best_name,
+        probability=round(best_val, 3),
+        odd=match.get("odds", {}).get(best_name, 1.85), # Cuota real o default
+        ev=0.0 # Se calcula en el módulo de odds
     )
 
     return {
         "text": analysis_text,
         "pick": pick,
-        "all_probs": probs,
-        "lambdas": calculate_lambdas(home_profile, away_profile, context)
+        "all_probs": probs
     }
 
+# ======================================
+# ANALISIS GLOBAL Y PARLAY
+# ======================================
 
-# ────────────────────────────────────────────────
-# MÚLTIPLES PARTIDOS
-# ────────────────────────────────────────────────
 def analyze_matches(matches: List[Dict]) -> List[Dict]:
-    results = []
-    for match in matches:
-        result = analyze_match(match)
-        if result:
-            results.append(result)
-    return results
+    """Procesa una lista de partidos."""
+    return [res for m in matches if (res := analyze_match(m))]
 
-
-# Ejemplo de uso (para pruebas)
-if __name__ == "__main__":
-    ejemplo = {
-        "home": "América",
-        "away": "Cruz Azul"
-    }
-    res = analyze_match(ejemplo)
-    if res:
-        print(res["text"])
+def build_smart_parlay(picks: List[PickResult]) -> Optional[ParlayResult]:
+    """Crea una combinada con los 3 picks de mayor probabilidad."""
+    if not picks: return None
+    
+    # Ordenar por probabilidad pura
+    top_picks = sorted(picks, key=lambda x: x.probability, reverse=True)[:3]
+    
+    t_odd, t_prob = 1.0, 1.0
+    names = []
+    for p in top_picks:
+        t_odd *= p.odd
+        t_prob *= p.probability
+        names.append(p.match)
+        
+    return ParlayResult(
+        matches=names,
+        total_odd=round(t_odd, 2),
+        combined_prob=round(t_prob, 3),
+        total_ev=round((t_prob * t_odd) - 1, 3)
+    )
