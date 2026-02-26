@@ -32,26 +32,25 @@ def google_search(query):
 
 def build_team_profile(team):
 
-    query = f"{team} football team stats goals per game corners possession shots"
+    context = google_search(
+        f"{team} football stats goals per game corners possession attacking defensive style"
+    )
 
-    context = google_search(query)
+    attack = 1.2
+    defense = 1.2
+    pace = 1.2
+    corners = 5.0
 
-    # defaults neutrales
-    attack = 1.3
-    defense = 1.3
-    pace = 1.3
-    corners = 5
-
-    if "high scoring" in context or "attacking" in context:
-        attack += 0.3
+    if "attacking" in context:
+        attack += 0.4
 
     if "defensive" in context:
         defense += 0.3
 
-    if "fast" in context or "high tempo" in context:
+    if "fast" in context or "pressing" in context:
         pace += 0.3
 
-    if "many corners" in context:
+    if "corner" in context:
         corners += 1.5
 
     return {
