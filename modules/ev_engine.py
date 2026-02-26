@@ -1,138 +1,99 @@
-from modules.schemas import Pick
-from modules.team_analyzer import build_team_profile
-from modules.google_context import get_match_context
-from modules.odds_api import get_market_odds
+from modules.schemas import PickResult
+from modules.team_analyzer import analyze_team_strength
+from modules.google_context import get_google_context
+from modules.odds_provider import get_market_odds
+import math
+import random
 
 
-# ======================
-# UTILIDADES
-# ======================
-
-def clamp(v):
-    return max(0, min(v, 1))
+def sigmoid(x):
+    return 1 / (1 + math.exp(-x))
 
 
-def expected_value(prob, odds):
-    return (prob * odds) - 1
+def calculate_probability(stats, context, market):
 
-
-# ======================
-# SHARP MONEY LOGIC
-# ======================
-
-def sharp_adjustment(context):
-
-    penalty = 0
-
-    if "injury" in context:
-        penalty += 0.05
-
-    if "rotation" in context:
-        penalty += 0.04
-
-    return penalty
-
-
-# ======================
-# ANALISIS PARTIDO
-# ======================
-
-def analyze_match(match):
-
-    home = match["home"]
-    away = match["away"]
-
-    home_profile = build_team_profile(home)
-    away_profile = build_team_profile(away)
-
-    context = get_match_context(home, away)
-    market = get_market_odds(home, away)
-
-    attack_home = home_profile["attack"]
-    attack_away = away_profile["attack"]
-
-    avg_attack = (attack_home + attack_away) / 2
-    avg_corners = home_profile["corners"] + away_profile["corners"]
-
-    penalty = sharp_adjustment(context)
-
-    # ======================
-    # PROBABILIDADES IA
-    # ======================
-
-    p_over15_ht = clamp(0.45 + avg_attack * 0.35 - penalty)
-    p_btts = clamp(0.40 + attack_home * attack_away * 0.3 - penalty)
-    p_over25 = clamp(0.35 + avg_attack * 0.5 - penalty)
-    p_corners = clamp(0.50 + (avg_corners - 9) * 0.05)
-
-    p_home = clamp(0.45 + (attack_home - attack_away) * 0.35)
-
-    # ======================
-    # MERCADOS
-    # ======================
-
-    options = [
-
-        ("Over 1.5 Goles 1er Tiempo", p_over15_ht, 2.1),
-
-        ("Ambos Equipos Anotan", p_btts, 1.9),
-
-        ("Over 2.5 Goles", p_over25, 2.0),
-
-        (f"Over 9.5 Corners", p_corners, 1.85),
-
-        (f"{home} gana", p_home, 2.2),
-
-        (f"{home} gana + Over 1.5",
-         clamp(p_home * p_over25 * 1.1),
-         3.2),
-    ]
-
-    # ======================
-    # SHARP FILTER
-    # ======================
-
-    valid = []
-
-    for name, prob, odd in options:
-
-        ev = expected_value(prob, odd)
-
-        if prob < 0.63:
-            continue
-
-        if ev <= 0:
-            continue
-
-        valid.append((name, prob, ev))
-
-    if not valid:
-        return None
-
-    best = max(valid, key=lambda x: x[2])
-
-    return Pick(
-        match=f"{home} vs {away}",
-        selection=best[0],
-        probability=round(best[1],3),
-        ev=round(best[2],3),
+    base = (
+        stats["home_strength"] * 0.30 +
+        stats["goal_expectancy"] / 4 * 0.25 +
+        stats["attack_home"] * 0.20 +
+        (0.5 + context) * 0.15 +
+        random.uniform(-0.05, 0.05)
     )
 
+    if market == "Home Win":
+        base += 0.05
 
-# ======================
-# GLOBAL ANALYSIS
-# ======================
+    elif market == "Away Win":
+        base -= 0.03
 
-def analyze_matches(matches):
+    elif market == "Draw":
+        base *= 0.75
+
+    elif market == "Over 1.5":
+        base += stats["goal_expectancy"] * 0.05
+
+    elif market == "Over 2.5":
+        base += stats["goal_expectancy"] * 0.02
+
+    elif market == "Under 3.5":
+        base -= stats["goal_expectancy"] * 0.03
+
+    elif market == "BTTS Yes":
+        base += (
+            stats["attack_home"] +
+            stats["attack_away"]
+        ) * 0.05
+
+    prob = sigmoid(base)
+
+    # 🔥 Anti fake 0.95 probabilities
+    prob = max(0.40, min(prob, 0.82))
+
+    return prob
+
+
+def analyze_matches(games):
 
     results = []
 
-    for match in matches:
+    for g in games:
 
-        pick = analyze_match(match)
+        home = g["home"]
+        away = g["away"]
 
-        if pick:
-            results.append(pick)
+        stats = analyze_team_strength(home, away)
+        context = get_google_context(home, away)
+        odds = get_market_odds(home, away)
+
+        best_pick = None
+        best_ev = -999
+
+        # 🔥 MERCADOS COMPITEN ENTRE SÍ
+        for market, odd in odds.items():
+
+            prob = calculate_probability(stats, context, market)
+
+            ev = (prob * odd) - 1
+
+            # penalización confianza falsa
+            ev -= random.uniform(0.02, 0.06)
+
+            if ev > best_ev:
+                best_ev = ev
+                best_pick = PickResult(
+                    match=f"{home} vs {away}",
+                    selection=market,
+                    probability=round(prob, 2),
+                    odd=round(odd, 2),
+                    ev=round(ev, 2)
+                )
+
+        if best_pick and best_pick.ev > 0:
+            results.append(best_pick)
 
     return results
+
+
+def build_parlay(games):
+    return analyze_matches(games)
 
