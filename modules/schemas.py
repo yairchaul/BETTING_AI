@@ -10,5 +10,5 @@ class PickResult:
     match: str
     selection: str
     probability: float
-    odd: float  # Antes podía causar error si se llamaba 'cuota'
+    odd: float  # <--- Este nombre debe ser exacto para corregir el AttributeError
     ev: float
