@@ -1,124 +1,71 @@
 import math
 from typing import Dict, List, Optional
-
-try:
-    from modules.team_analyzer import build_team_profile
-    from modules.schemas import PickResult, ParlayResult
-except ModuleNotFoundError:
-    from .team_analyzer import build_team_profile
-    from .schemas import PickResult, ParlayResult
-
-MIN_EV = 0.02
-MIN_PROB = 0.25
+from modules.team_analyzer import build_team_profile
+from modules.schemas import PickResult, ParlayResult
 
 def poisson_prob(lambda_: float, k: int) -> float:
-    if lambda_ <= 0: return 1.0 if k == 0 else 0.0
     return (math.exp(-lambda_) * (lambda_ ** k)) / math.factorial(k)
 
 def calculate_ev(prob: float, odd: float) -> float:
-    if not odd or odd <= 0: return -1.0
     return (prob * odd) - 1
-
-def calculate_caliente_probabilities(home_name: str, away_name: str):
-    h_p = build_team_profile(home_name)
-    a_p = build_team_profile(away_name)
-
-    lh = (h_p.get("attack", 50) / a_p.get("defense", 50)) * 1.25 * (0.8 + h_p.get("form_score", 0.5) * 0.4)
-    la = (a_p.get("attack", 50) / h_p.get("defense", 50)) * 1.10 * (0.8 + a_p.get("form_score", 0.5) * 0.4)
-    
-    p_win_h, p_draw, p_win_a = 0.0, 0.0, 0.0
-    p_btts, p_o25 = 0.0, 0.0
-
-    for i in range(7):
-        for j in range(7):
-            prob = poisson_prob(lh, i) * poisson_prob(la, j)
-            if i > j: p_win_h += prob
-            elif i == j: p_draw += prob
-            else: p_win_a += prob
-            if i > 0 and j > 0: p_btts += prob
-            if (i + j) > 2.5: p_o25 += prob
-
-    return {
-        "Gana Local": p_win_h,
-        "Empate": p_draw,
-        "Gana Visitante": p_win_a,
-        "Ambos Anotan": p_btts,
-        "Over 2.5 Goles": p_o25
-    }
 
 def analyze_match(match: Dict) -> Optional[Dict]:
     h_name = match.get("home") or match.get("home_team")
     a_name = match.get("away") or match.get("away_team")
-    if not h_name or not a_name: return None
+    odds = match.get("odds", {}) # Diccionario con todos los mercados del OCR
 
-    raw_odds = match.get("odds", {})
-    odds_map = {
-        "Gana Local": raw_odds.get("Gana Local") or match.get("home_odd") or match.get("Local"),
-        "Empate": raw_odds.get("Empate") or match.get("draw_odd") or match.get("Empate"),
-        "Gana Visitante": raw_odds.get("Gana Visitante") or match.get("away_odd") or match.get("Visitante"),
-        "Ambos Anotan": raw_odds.get("Ambos Anotan"),
-        "Over 2.5 Goles": raw_odds.get("Over 2.5 Goles")
+    # 1. Obtener Data de los últimos 5 partidos
+    h_p = build_team_profile(h_name)
+    a_p = build_team_profile(a_name)
+
+    # 2. Generar Lambdas (Goles esperados) basados en stats reales
+    lh = (h_p["attack"] / a_p["defense"]) * 1.25 * (0.8 + h_p["form_score"] * 0.4)
+    la = (a_p["attack"] / h_p["defense"]) * 1.10 * (0.8 + a_p["form_score"] * 0.4)
+    
+    # 3. Simulación Multimercado (Matriz de Poisson 7x7)
+    probs = {
+        f"Gana {h_name}": 0.0, f"Gana {a_name}": 0.0, "Empate": 0.0,
+        "Ambos Anotan": 0.0, "Over 2.5": 0.0, "Under 2.5": 0.0,
+        f"{h_name} y Over 1.5": 0.0, f"{h_name} y Over 2.5": 0.0,
+        "Doble Op (L/E)": 0.0, "Doble Op (V/E)": 0.0
     }
 
-    probs = calculate_caliente_probabilities(h_name, a_name)
+    for i in range(7):
+        for j in range(7):
+            p = poisson_prob(lh, i) * poisson_prob(la, j)
+            # Resultado Final
+            if i > j: probs[f"Gana {h_name}"] += p
+            elif i == j: probs["Empate"] += p
+            else: probs[f"Gana {a_name}"] += p
+            # Goles
+            if i > 0 and j > 0: probs["Ambos Anotan"] += p
+            if (i + j) > 2.5: probs["Over 2.5"] += p
+            else: probs["Under 2.5"] += p
+            # Combinados Caliente
+            if i > j and (i + j) > 1.5: probs[f"{h_name} y Over 1.5"] += p
+            if i > j and (i + j) > 2.5: probs[f"{h_name} y Over 2.5"] += p
+            # Doble Oportunidad
+            if i >= j: probs["Doble Op (L/E)"] += p
+            if j >= i: probs["Doble Op (V/E)"] += p
+
+    # 4. Encontrar la MEJOR opción entre todos los mercados detectados
     candidates = []
-    
-    # Traducción de mercado a Nombre de Equipo para claridad
-    translation = {
-        "Gana Local": f"Gana {h_name}",
-        "Empate": "Empate",
-        "Gana Visitante": f"Gana {a_name}",
-        "Ambos Anotan": "Ambos Anotan (Sí)",
-        "Over 2.5 Goles": "Over 2.5 Goles"
-    }
+    for market_name, probability in probs.items():
+        # Aquí es donde el OCR debe haber mapeado el nombre correctamente
+        odd = odds.get(market_name)
+        if odd and float(odd) > 1.0:
+            ev = calculate_ev(probability, float(odd))
+            if ev > 0.05: # Solo si hay ventaja > 5%
+                candidates.append(PickResult(
+                    match=f"{h_name} vs {a_name}",
+                    selection=market_name,
+                    probability=round(probability, 3),
+                    odd=float(odd),
+                    ev=round(ev, 3)
+                ))
 
-    for market, prob in probs.items():
-        odd = odds_map.get(market)
-        if not odd or float(odd) <= 1: continue
-        
-        ev = calculate_ev(prob, float(odd))
-        if ev >= MIN_EV and prob >= MIN_PROB:
-            candidates.append({
-                "market": market, 
-                "display": translation[market], 
-                "prob": prob, 
-                "odd": float(odd), 
-                "ev": ev
-            })
-
+    # Retornamos la que tenga mayor EV (La decisión más correcta estadísticamente)
     if not candidates: return None
-    best = max(candidates, key=lambda x: x["ev"])
+    best_pick = max(candidates, key=lambda x: x.ev)
     
-    pick_obj = PickResult(
-        match=f"{h_name} vs {a_name}",
-        selection=best["display"], # Aquí ahora enviamos el nombre del equipo
-        probability=round(best["prob"], 3),
-        odd=best["odd"],
-        ev=round(best["ev"], 3)
-    )
-    return {"pick": pick_obj, "text": f"Mercado: {best['display']} | Prob: {int(best['prob']*100)}%"}
-
-def analyze_matches(matches: List[Dict]) -> List[Dict]:
-    results = []
-    for m in matches:
-        res = analyze_match(m)
-        if res: results.append(res)
-    return results
-
-def build_smart_parlay(picks: List[PickResult], max_picks=3) -> Optional[ParlayResult]:
-    if not picks: return None
-    # Filtramos picks válidos y ordenamos por EV
-    selected = sorted(picks, key=lambda x: x.ev, reverse=True)[:max_picks]
-    
-    t_odd, t_prob = 1.0, 1.0
-    for p in selected:
-        t_odd *= p.odd
-        t_prob *= p.probability
-    
-    # IMPORTANTE: Asegúrate de que ParlayResult en schemas.py coincida con estos nombres
-    return ParlayResult(
-        matches=[f"{p.match} ({p.selection})" for p in selected],
-        total_odd=round(t_odd, 2),
-        combined_prob=round(t_prob, 3),
-        total_ev=round(calculate_ev(t_prob, t_odd), 3)
-    )
+    return {"pick": best_pick, "report": probs}
