@@ -66,10 +66,9 @@ def market_edge(model_prob, market_decimal):
 # ======================
 # MODELO CASCADA QUANT
 # ======================
-
 def cascade_model(match):
 
-    # ---------- PROBABILIDADES DEL TICKET ----------
+    # -------- PROBABILIDADES BASE ----------
     p_home = american_to_prob(match["home_odd"])
     p_draw = american_to_prob(match["draw_odd"])
     p_away = american_to_prob(match["away_odd"])
@@ -84,69 +83,73 @@ def cascade_model(match):
 
     probs = market_probabilities(l_home, l_away)
 
-    # ---------- DATOS EXTERNOS ----------
-    market_odds = get_market_odds(
-        match["home"], match["away"]
-    )
+    # ===============================
+    # MERCADOS DERIVADOS IA
+    # ===============================
 
-    context = get_match_context(
-        match["home"], match["away"]
-    )
+    OVER15_FT = probs["OVER15"]
+    OVER25_FT = probs["OVER25"]
+    BTTS = probs["BTTS"]
+    HOME = probs["HOME"]
+    AWAY = probs["AWAY"]
 
-    injury_penalty = 0.05 if "injury" in context.lower() else 0
+    # ⚡ estimación goles 1T (≈45%)
+    OVER15_HT = OVER15_FT * 0.65
 
-    # ---------- TODAS LAS OPCIONES ----------
+    # ⚡ proxy corners (ritmo ofensivo)
+    CORNERS_OVER = min(0.85, (l_home + l_away) / 3)
+
+    # ===============================
+    # TODAS LAS OPCIONES
+    # ===============================
+
     options = [
 
-        (
-            f"{match['home']} gana + Over 1.5",
-            probs["HOME"] * probs["OVER15"] - injury_penalty,
-            2.10,
-        ),
+        # NIVEL ELITE
+        (f"{match['home']} gana + Over 1.5",
+         HOME * OVER15_FT, 2.2),
 
-        (
-            f"{match['away']} gana + Over 1.5",
-            probs["AWAY"] * probs["OVER15"] - injury_penalty,
-            2.20,
-        ),
+        (f"{match['away']} gana + Over 1.5",
+         AWAY * OVER15_FT, 2.3),
 
-        (
-            "BTTS Sí",
-            probs["BTTS"],
-            1.85,
-        ),
+        # ATAQUE TEMPRANO
+        ("Over 1.5 Goles (1er Tiempo)",
+         OVER15_HT, 2.0),
 
-        (
-            "Over 2.5 Goles (Tiempo Completo)",
-            probs["OVER25"],
-            2.00,
-        ),
+        # GOLES ACTIVOS
+        ("Ambos Equipos Anotan",
+         BTTS, 1.85),
 
-        (
-            "Over 1.5 Goles (Tiempo Completo)",
-            probs["OVER15"],
-            1.40,
-        ),
+        ("Over 2.5 Goles (Tiempo Completo)",
+         OVER25_FT, 2.0),
+
+        # PRESIÓN
+        ("Over Corners",
+         CORNERS_OVER, 1.9),
+
+        # BACKUP
+        ("Over 1.5 Goles (Tiempo Completo)",
+         OVER15_FT, 1.4),
+
+        (f"Gana {match['home']}",
+         HOME, american_to_decimal(match["home_odd"])),
+
+        (f"Gana {match['away']}",
+         AWAY, american_to_decimal(match["away_odd"])),
     ]
 
-    # ---------- FILTRO VALUE BETTING ----------
+    # ===============================
+    # FILTRO CASCADA REAL
+    # ===============================
+
     valid = []
 
     for name, prob, odd in options:
 
-        if prob < 0.55:
+        if prob < 0.60:
             continue
 
         EV = (prob * odd) - 1
-
-        # comparar contra mercado real si existe
-        if market_odds:
-            for market_name, market_decimal in market_odds.items():
-
-                edge = market_edge(prob, market_decimal)
-
-                if edge < -0.02:
-                    continue
 
         if EV <= 0:
             continue
@@ -156,16 +159,15 @@ def cascade_model(match):
     if not valid:
         return None
 
-    # elegir MAYOR VALOR ESPERADO
+    # ⭐ ELEGIR MEJOR VALOR
     best = max(valid, key=lambda x: x[3])
 
     return Pick(
         match=f"{match['home']} vs {match['away']}",
         selection=best[0],
-        probability=round(best[1], 3),
-        odd=round(best[2], 2),
+        probability=round(best[1],3),
+        odd=round(best[2],2),
     )
-
 
 # ======================
 # CONSTRUCTOR PARLAY
@@ -190,3 +192,4 @@ def build_parlay(games):
         results.append(pick)
 
     return results
+
