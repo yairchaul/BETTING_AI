@@ -1,6 +1,12 @@
 from modules.schemas import Pick
 from modules.montecarlo import market_probabilities
+from modules.odds_api import get_market_odds
+from modules.google_context import get_match_context
 
+
+# ======================
+# CONVERSIONES
+# ======================
 
 def american_to_prob(odd):
 
@@ -33,90 +39,128 @@ def normalize_probs(p_home, p_draw, p_away):
     )
 
 
+# ======================
+# LAMBDAS
+# ======================
+
 def infer_lambdas(p_home, p_draw, p_away):
 
     total_goals = 2.6
 
-    strength_home = p_home + 0.5 * p_draw
-    strength_away = p_away + 0.5 * p_draw
+    lambda_home = total_goals * (p_home + 0.5 * p_draw)
+    lambda_away = total_goals * (p_away + 0.5 * p_draw)
 
-    return (
-        total_goals * strength_home,
-        total_goals * strength_away,
-    )
+    return lambda_home, lambda_away
 
 
 # ======================
-# CASCADA UNIVERSAL
+# EDGE CHECK
+# ======================
+
+def market_edge(ticket_prob, market_decimal):
+
+    implied_market = 1 / market_decimal
+
+    return ticket_prob - implied_market
+
+
+# ======================
+# MODELO CASCADA IA
 # ======================
 
 def cascade_model(match):
 
-    try:
+    # --- PROBS DESDE TICKET ---
+    p_home = american_to_prob(match["home_odd"])
+    p_draw = american_to_prob(match["draw_odd"])
+    p_away = american_to_prob(match["away_odd"])
 
-        p_home = american_to_prob(match["home_odd"])
-        p_draw = american_to_prob(match["draw_odd"])
-        p_away = american_to_prob(match["away_odd"])
+    p_home, p_draw, p_away = normalize_probs(
+        p_home, p_draw, p_away
+    )
 
-        p_home, p_draw, p_away = normalize_probs(
-            p_home, p_draw, p_away
-        )
+    l_home, l_away = infer_lambdas(
+        p_home, p_draw, p_away
+    )
 
-        lambda_home, lambda_away = infer_lambdas(
-            p_home, p_draw, p_away
-        )
+    probs = market_probabilities(l_home, l_away)
 
-        probs = market_probabilities(lambda_home, lambda_away)
+    # --- MERCADO REAL ---
+    market_odds = get_market_odds(
+        match["home"], match["away"]
+    )
 
-        home = match["home"]
-        away = match["away"]
+    # --- CONTEXTO IA ---
+    context = get_match_context(
+        match["home"], match["away"]
+    )
 
-        options = [
+    injury_penalty = 0.05 if "injury" in context else 0
 
-            (f"Gana {home}", probs["HOME"], american_to_decimal(match["home_odd"])),
+    # ======================
+    # OPCIONES CASCADA
+    # ======================
 
-            (f"Gana {away}", probs["AWAY"], american_to_decimal(match["away_odd"])),
+    options = [
 
-            ("Over 1.5 Goles (Tiempo Completo)", probs["OVER15"], 1.40),
+        (f"{match['home']} gana + Over 1.5",
+         probs["HOME"] * probs["OVER15"] - injury_penalty,
+         2.1),
 
-            ("Over 2.5 Goles (Tiempo Completo)", probs["OVER25"], 1.85),
+        (f"{match['away']} gana + Over 1.5",
+         probs["AWAY"] * probs["OVER15"] - injury_penalty,
+         2.2),
 
-            ("Over 3.5 Goles (Tiempo Completo)", probs["OVER35"], 2.40),
+        ("BTTS Sí",
+         probs["BTTS"],
+         1.8),
 
-            ("Ambos Equipos Anotan", probs["BTTS"], 1.75),
+        ("Over 2.5 Goles (Tiempo Completo)",
+         probs["OVER25"],
+         2.0),
 
-            (f"{home} gana + Over 1.5",
-             probs["HOME"] * probs["OVER15"], 2.2),
+        ("Over 1.5 Goles (Tiempo Completo)",
+         probs["OVER15"],
+         1.4),
+    ]
 
-            (f"{away} gana + Over 1.5",
-             probs["AWAY"] * probs["OVER15"], 2.3),
-        ]
+    # ======================
+    # FILTRO IA
+    # ======================
 
-        thresholds = [0.80, 0.72, 0.65, 0.60]
+    valid = []
 
-        for t in thresholds:
+    for name, prob, odd in options:
 
-            valid = [o for o in options if o[1] >= t]
+        if prob < 0.70:
+            continue
 
-            if valid:
+        edge = 0
 
-                best = max(valid, key=lambda x: x[2])
+        if market_odds:
+            for key, val in market_odds.items():
+                edge = market_edge(prob, val)
 
-                return Pick(
-                    match=f"{home} vs {away}",
-                    selection=best[0],
-                    probability=round(best[1],3),
-                    odd=round(best[2],2),
-                )
+        if edge < -0.02:
+            continue
 
-    except Exception as e:
-        print("ERROR CASCADE:", e)
+        valid.append((name, prob, odd))
 
-    return None
+    if not valid:
+        return None
+
+    best = max(valid, key=lambda x: x[2])
+
+    return Pick(
+        match=f"{match['home']} vs {match['away']}",
+        selection=best[0],
+        probability=round(best[1], 3),
+        odd=round(best[2], 2),
+    )
 
 
 # ======================
-# BUILDER
+# BUILDER FINAL
 # ======================
 
 def build_parlay(games):
@@ -138,3 +182,4 @@ def build_parlay(games):
         results.append(pick)
 
     return results
+
