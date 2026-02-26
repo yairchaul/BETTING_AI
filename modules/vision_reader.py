@@ -10,21 +10,49 @@ def is_odd(text: str) -> bool:
         return abs(val) >= 100 or val == 0
     except: return False
 
-def parse_row(texts: list) -> dict | None:
+def parse_row(row_words: list) -> dict | None:
+    # Ordenar palabras horizontalmente para reconstruir la fila
+    row_words.sort(key=lambda w: w["x"])
+    texts = [w["text"] for w in row_words]
+    
     odds = [t for t in texts if is_odd(t)]
-    if not odds: return None
+    if len(odds) < 2: return None # Necesitamos al menos momio local y visitante
     
-    # Filtramos nombres de equipos: longitud > 3, no momio, no "Empate"
-    teams = [t for t in texts if not is_odd(t) and len(t) > 3 and t.lower() != "empate"]
+    # En la interfaz de Caliente: [Equipo Local] [Momio] [Empate] [Momio] [Equipo Visitante] [Momio]
+    # Buscamos el texto que está ANTES del primer momio y DESPUÉS del último momio de equipo
     
-    return {
-        "home": teams[0] if len(teams) > 0 else "Local",
-        "away": teams[1] if len(teams) > 1 else "Visitante",
-        "all_odds": odds, # Enviamos todos los momios para mapeo
-        "context": " ".join(texts)
-    }
+    full_text = " ".join(texts)
+    
+    # Lógica de segmentación por posición de momios
+    try:
+        # El primer equipo termina donde empieza el primer momio
+        home_parts = []
+        for w in row_words:
+            if is_odd(w["text"]): break
+            if w["text"].lower() != "empate":
+                home_parts.append(w["text"])
+        
+        # El segundo equipo empieza después del momio del empate o del centro
+        away_parts = []
+        found_center = False
+        momios_encontrados = 0
+        for w in row_words:
+            if is_odd(w["text"]):
+                momios_encontrados += 1
+                continue
+            if momios_encontrados >= 2: # Después del momio de Local y Empate
+                if w["text"].lower() != "empate":
+                    away_parts.append(w["text"])
 
-# Función principal que llama el main.py
+        return {
+            "home": " ".join(home_parts) if home_parts else "Local",
+            "away": " ".join(away_parts) if away_parts else "Visitante",
+            "all_odds": odds,
+            "context": full_text
+        }
+    except:
+        return None
+
 def read_ticket_image(uploaded_file):
     content = uploaded_file.getvalue()
     client = vision.ImageAnnotatorClient.from_service_account_info(dict(st.secrets["google_credentials"]))
@@ -38,23 +66,28 @@ def read_ticket_image(uploaded_file):
                 for word in paragraph.words:
                     word_text = ''.join(s.text for s in word.symbols).strip()
                     v = word.bounding_box.vertices
-                    word_list.append({"text": word_text, "x": (v[0].x + v[2].x)/2, "y": (v[0].y + v[2].y)/2, "height": v[2].y - v[0].y})
+                    word_list.append({
+                        "text": word_text, 
+                        "x": (v[0].x + v[2].x)/2, 
+                        "y": (v[0].y + v[2].y)/2, 
+                        "height": v[2].y - v[0].y
+                    })
 
     if not word_list: return []
     
+    # Agrupación por filas (eje Y)
     word_list.sort(key=lambda w: w["y"])
     rows, current_row = [], [word_list[0]]
     for w in word_list[1:]:
         if abs(w["y"] - current_row[-1]["y"]) < (current_row[-1]["height"] * 1.5):
             current_row.append(w)
         else:
-            rows.append(current_row); current_row = [w]
+            rows.append(current_row)
+            current_row = [w]
     rows.append(current_row)
 
     matches = []
     for row_words in rows:
-        row_words.sort(key=lambda w: w["x"])
-        texts = [w["text"] for w in row_words if len(w["text"]) >= 2]
-        match = parse_row(texts)
+        match = parse_row(row_words)
         if match: matches.append(match)
     return matches
