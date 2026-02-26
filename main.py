@@ -68,4 +68,26 @@ if uploaded:
                         if st.button("📥 Registrar en Historial", use_container_width=True):
                             st.balloons()
                             st.toast("Guardado en historial de apuestas.")
+# main.py
+# ... (Bloque de carga de imagen)
+if results:
+    # Verificación de partidos recuperada
+    st.subheader("✅ Validación de Datos Extraídos")
+    st.write(f"Partidos detectados: {len(results)}")
+
+    # Selección de picks
+    for res in results:
+        # Renderizado de picks...
+
+    st.divider()
+    # CALCULADORA FINANCIERA (Recuperada)
+    monto = st.number_input("Monto a invertir ($)", min_value=10.0, value=100.0)
+    # total_odd viene del parlay construido
+    ganancia_pos = monto * parlay.total_odd
+    st.success(f"💰 Ganancia Posible: ${round(ganancia_pos, 2)}")
+    
+    if st.button("📥 Registrar en Historial"):
+        # Llamada a modules/results_tracker.py
+        save_to_history(parlay, monto, ganancia_pos)
+        st.balloons()
 
