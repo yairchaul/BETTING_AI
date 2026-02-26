@@ -4,7 +4,7 @@ from modules.google_context import get_google_context
 from modules.odds_provider import get_market_odds
 import math
 
-# --- 1. MODELOS DE PROBABILIDAD INDEPENDIENTES ---
+# --- 1. MODELOS DE PROBABILIDAD POR MERCADO ---
 
 def model_1x2(gap, context):
     """Calcula probabilidades para Local, Empate y Visitante."""
@@ -14,10 +14,9 @@ def model_1x2(gap, context):
     return {"Home Win": p_home, "Away Win": p_away, "Draw": p_draw}
 
 def model_goals(expectancy, atq_total, def_total, archetype):
-    """Calcula probabilidades de Over/Under según el ritmo del partido."""
+    """Calcula Over/Under basado en ritmo y arquetipo del partido."""
     base_over25 = (expectancy / 4.2) + (atq_total * 0.10) - (def_total * 0.05)
     
-    # Ajustes por Arquetipo
     if archetype == "PARK_THE_BUS":
         base_over25 -= 0.12
     elif archetype == "SHOOTOUT":
@@ -30,14 +29,14 @@ def model_goals(expectancy, atq_total, def_total, archetype):
     }
 
 def model_btts(atq_home, atq_away, def_home, def_away):
-    """Probabilidad de Ambos Anotan (BTTS)."""
+    """Calcula la probabilidad de Ambos Anotan."""
     prob = (atq_home * 0.20 + atq_away * 0.20) + (def_home * 0.05 + def_away * 0.05)
     return {"BTTS Yes": prob}
 
 # --- 2. CLASIFICADOR DE ARQUETIPOS ---
 
 def get_match_archetype(stats):
-    """Detecta la naturaleza del encuentro para ajustar el valor."""
+    """Detecta el tipo de partido para ajustar sesgos."""
     gap = abs(stats["home_strength"] - stats["away_strength"])
     exp = stats["goal_expectancy"]
     
@@ -47,10 +46,10 @@ def get_match_archetype(stats):
     if gap < 0.15 and exp < 2.4: return "BALANCED_STALEMATE"
     return "STANDARD_GAME"
 
-# --- 3. PROCESADOR DE MERCADOS ---
+# --- 3. PROCESADOR PRINCIPAL ---
 
 def calculate_market_probabilities(stats, context, archetype):
-    """Aplica la Regla de Oro: Máximo 0.82, Mínimo 0.18."""
+    """Une modelos y aplica el cap profesional (Regla de Oro)."""
     probs = {}
     gap = stats["home_strength"] - stats["away_strength"]
     atq_total = stats["attack_home"] + stats["attack_away"]
@@ -60,15 +59,14 @@ def calculate_market_probabilities(stats, context, archetype):
     probs.update(model_goals(stats["goal_expectancy"], atq_total, def_total, archetype))
     probs.update(model_btts(stats["attack_home"], stats["attack_away"], stats["defense_home"], stats["defense_away"]))
     
-    # Normalización Profesional (Evita el error del 0.95 constante)
+    # 🔥 REGLA DE ORO: Normalización (Evita el error de 0.95 constante)
     for market in probs:
         probs[market] = max(0.18, min(probs[market], 0.82))
         
     return probs
 
-# --- 4. MOTOR DE SELECCIÓN ---
-
 def analyze_matches(games):
+    """Ciclo de análisis completo para generar la lista de resultados."""
     results = []
     for g in games:
         stats = analyze_team_strength(g["home"], g["away"])
@@ -86,16 +84,17 @@ def analyze_matches(games):
                 prob = probabilities[market]
                 ev = (prob * odd) - 1
                 
-                # Penalización por mercado de alto volumen
-                if "Over" in market: ev -= 0.04
+                # Penalización por mercado de alto volumen (Overs)
+                if "Over" in market: 
+                    ev -= 0.04
                 
-                if ev > max_edge and ev > 0.05:
+                if ev > max_edge and ev > 0.05: # Edge mínimo del 5%
                     max_edge = ev
                     best_pick = PickResult(
                         match=f"{g['home']} vs {g['away']}",
                         selection=market,
                         probability=round(prob, 2),
-                        odd=round(odd, 2), # Sincronizado con schemas.py
+                        odd=round(odd, 2), # Sincronizado con schemas.py y main.py
                         ev=round(ev, 2)
                     )
         
