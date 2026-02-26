@@ -1,19 +1,56 @@
-import random
+import math
 
-def simulate_parlay(picks, simulations=500):
 
-    wins = 0
+def poisson_prob(lmbda, k):
+    return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
 
-    for _ in range(simulations):
 
-        success = True
+def score_matrix(lambda_home, lambda_away, max_goals=6):
 
-        for p in picks:
-            if random.random() > (p.probabilidad/100):
-                success = False
-                break
+    matrix = {}
 
-        if success:
-            wins += 1
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            p = poisson_prob(lambda_home, h) * poisson_prob(lambda_away, a)
+            matrix[(h, a)] = p
 
-    return round((wins/simulations)*100,2)
+    return matrix
+
+
+def market_probabilities(lambda_home, lambda_away):
+
+    matrix = score_matrix(lambda_home, lambda_away)
+
+    home = 0
+    draw = 0
+    away = 0
+    over15 = 0
+    over25 = 0
+    btts = 0
+
+    for (h, a), p in matrix.items():
+
+        if h > a:
+            home += p
+        elif h == a:
+            draw += p
+        else:
+            away += p
+
+        if h + a >= 2:
+            over15 += p
+
+        if h + a >= 3:
+            over25 += p
+
+        if h > 0 and a > 0:
+            btts += p
+
+    return {
+        "HOME": home,
+        "DRAW": draw,
+        "AWAY": away,
+        "OVER15": over15,
+        "OVER25": over25,
+        "BTTS": btts,
+    }
