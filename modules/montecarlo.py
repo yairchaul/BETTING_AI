@@ -16,12 +16,18 @@ def adjusted_lambda(home_stats, away_stats):
 
     return home_lambda, away_lambda
 
-def run_simulations(stats):
-    # Extraemos stats de forma segura para evitar errores de llave
-    home_data = stats.get("home", stats) 
-    away_data = stats.get("away", stats)
 
+def run_simulations(stats):
+    # Verificamos si stats tiene la estructura nueva o la vieja
+    if "home" in stats:
+        home_data = stats["home"]
+        away_data = stats["away"]
+    else:
+        # Fallback por si stats viene plano
+        home_data = away_data = stats
+    
     lam_home, lam_away = adjusted_lambda(home_data, away_data)
+    # ... resto del código ...
 
     # Mantenemos tu VARIANZA REALISTA
     noise_home = np.random.normal(1, 0.12, SIMULATIONS)
@@ -49,4 +55,5 @@ def run_simulations(stats):
         "Total Goles Under 2.5": np.mean(total_goals < 2.5),
         "Ambos Anotan": np.mean((goals_home > 0) & (goals_away > 0))
     }
+
 
