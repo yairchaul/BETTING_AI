@@ -2,6 +2,34 @@ import streamlit as st
 import os
 import sys
 
+# Esto asegura que el sistema encuentre tus archivos en la carpeta 'modules'
+sys.path.append(os.path.dirname(__file__))
+
+try:
+    # Intento de importación desde la estructura de carpetas
+    from modules.stats_fetch import get_team_stats
+    from modules.montecarlo import run_simulations
+    from modules.schemas import PickResult
+except ImportError:
+    # Fallback si el entorno de ejecución es distinto
+    from stats_fetch import get_team_stats
+    from montecarlo import run_simulations
+    from schemas import PickResult
+
+def obtener_mejor_apuesta(partido_data):
+    home = partido_data.get('home', 'Local')
+    away = partido_data.get('away', 'Visitante')
+    all_odds = partido_data.get('all_odds', [])
+
+    # AHORA SÍ: Esta función ya está importada arriba
+    stats = get_team_stats(home, away)
+    predicciones = run_simulations(stats) 
+    
+    # ... resto de tu código de cerebro.py ...
+import streamlit as st
+import os
+import sys
+
 # Asegurar que el sistema encuentre los módulos locales
 sys.path.append(os.path.dirname(__file__))
 
