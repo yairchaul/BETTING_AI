@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import List
 
 @dataclass
 class PickResult:
@@ -8,10 +9,9 @@ class PickResult:
     odd: float
     ev: float
 
-
 @dataclass
 class ParlayResult:
-    picks: list
-    total_odds: float
-    combined_probability: float
+    matches: List[str]
+    total_odd: float
+    combined_prob: float
     total_ev: float
