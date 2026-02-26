@@ -42,7 +42,7 @@ if uploaded_file:
             
         st.write(f"Partidos detectados: {len(games)}")
         
-        # 2. Análisis Multimotor
+        # 2. Análisis Multimotor (Nuevo Motor Poisson)
         st.write("Ejecutando motores de probabilidad y EV...")
         results = analyze_matches(games)
         
@@ -53,16 +53,30 @@ if uploaded_file:
         st.divider()
         st.subheader("🔥 Picks Sharp Detectados")
         
-        for r in results:
+        for res in results:
+            # ADAPTACIÓN: Extraemos el pick y el reporte del diccionario
+            r = res["pick"]
+            reporte_detallado = res["text"]
+            
             with st.expander(f"📍 {r.match} | Sugerido: {r.selection}", expanded=True):
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Probabilidad", f"{int(r.probability * 100)}%")
-                col2.metric("Cuota", f"{r.odd}")
-                col3.metric("EV (Value)", f"{r.ev}", delta=f"{round(r.ev * 100, 1)}%")
+                col_stats, col_report = st.columns([1, 2])
+                
+                with col_stats:
+                    st.metric("Probabilidad", f"{int(r.probability * 100)}%")
+                    st.metric("Cuota", f"{r.odd}")
+                    # Mostramos EV si es mayor a 0, si no, lo indicamos neutral
+                    ev_color = "normal" if r.ev > 0 else "off"
+                    st.metric("EV (Value)", f"{r.ev}", delta=f"{round(r.ev * 100, 1)}%", delta_color=ev_color)
+                
+                with col_report:
+                    st.markdown("**Desglose de Probabilidades:**")
+                    st.code(reporte_detallado, language="text")
         
         # --- SECCIÓN DE PARLAY ---
         st.divider()
-        parlay = build_smart_parlay(results) 
+        # ADAPTACIÓN: Extraemos solo los objetos 'pick' para el constructor del Parlay
+        lista_picks_para_parlay = [res["pick"] for res in results]
+        parlay = build_smart_parlay(lista_picks_para_parlay) 
         
         if parlay:
             st.subheader("🚀 Parlay Sugerido (High EV)")
@@ -79,7 +93,6 @@ if uploaded_file:
                 
                 col_m, col_b = st.columns([1, 1])
                 with col_m:
-                    # LÍNEA CORREGIDA:
                     monto_parlay = st.number_input("Monto para invertir ($)", min_value=1.0, value=100.0, step=10.0)
                 
                 with col_b:
