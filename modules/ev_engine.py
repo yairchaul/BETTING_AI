@@ -23,7 +23,7 @@ def calculate_ev(prob: float, odds: float) -> float:
 # ======================================
 # MOTOR SHARP: CALIENTE.MX OPTIMIZED
 # ======================================
-def calculate_real_probabilities(home_p: Dict, away_p: Dict, context: Dict) -> Dict[str, float]:
+from modules.match_probability import calculate_match_probabilities(home_p: Dict, away_p: Dict, context: Dict) -> Dict[str, float]:
     """
     Simula la decisión de un sharp bettor analizando tendencia reciente y contexto.
     """
@@ -147,3 +147,4 @@ def analyze_match(match: Dict) -> Optional[Dict]:
         "text": text,
         "pick": pick_res
     }
+
