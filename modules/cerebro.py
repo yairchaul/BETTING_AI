@@ -64,9 +64,13 @@ def obtener_mejor_apuesta(partido_data):
             # Conversión a decimal para cálculo de Valor Esperado (EV)
             decimal_odd = (cuota/100 + 1) if cuota > 0 else (100/abs(cuota) + 1)
             ev = (prob * decimal_odd) - 1
+
+
+# Dentro de obtener_mejor_apuesta en cerebro.py
+# Asegúrate de que el log de auditoría refleje la realidad
+bitacora.append(f"Mercado: {mercado} | Prob calculada: {int(prob*100)}%")
             
-            # Registro para auditoría interna
-            bitacora.append(f"{mercado}: Prob {int(prob*100)}% | EV: {round(ev,2)}")
+    
             
     if ev > 0.05:
                 mejores_opciones.append(PickResult(
