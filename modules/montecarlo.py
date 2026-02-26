@@ -1,5 +1,4 @@
 import numpy as np
-import numpy as np
 
 
 SIMULATIONS = 20000
@@ -61,3 +60,4 @@ def run_simulations(stats):
             (goals_home > 0) & (goals_away > 0)
         ),
     }
+
