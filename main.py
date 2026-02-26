@@ -1,3 +1,20 @@
+import os
+
+def check_structure():
+    files = [
+        "modules/__init__.py",
+        "modules/ev_engine.py",
+        "modules/team_profiles.py",
+        "modules/schemas.py"
+    ]
+    st.sidebar.subheader("🔍 Status de Archivos")
+    for f in files:
+        if os.path.exists(f):
+            st.sidebar.success(f"✅ {f}")
+        else:
+            st.sidebar.error(f"❌ Falta: {f}")
+
+check_structure()
 import streamlit as st
 from modules.vision_reader import read_ticket_image
 from modules.ev_engine import analyze_matches, build_smart_parlay
@@ -46,3 +63,4 @@ if uploaded:
                         col1.metric("Cuota Total", f"{parlay.total_odd}x")
                         col2.metric("Probabilidad", f"{round(parlay.combined_prob * 100, 1)}%")
                         col3.metric("EV Total", f"{round(parlay.total_ev * 100, 1)}%")
+
