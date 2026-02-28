@@ -1,30 +1,33 @@
-import re
+import requests
+import os
+from datetime import datetime
 
-def clean_name(name):
-    name = re.sub(r'[^a-zA-Z0-9 ]', '', name)
-    suffixes = [' SE', ' FC', ' ES', ' UNPFM', ' United', ' U20', ' CD']
-    for s in suffixes:
-        name = re.sub(rf'{s}$', '', name, flags=re.IGNORECASE)
-    return name.strip()
+API_KEY = os.getenv("API_FOOTBALL_KEY")  # o st.secrets["API_FOOTBALL_KEY"] en Streamlit
 
-def build_team_rating(last5):
-    if not last5:
-        return {"attack": 50, "defense": 50}
+def get_team_stats(home, away, league_id=140):  # 140=LaLiga, cambia por liga
+    url = "https://api-football-v1.p.rapidapi.com/v3/teams/statistics"
+    headers = {"X-RapidAPI-Key": API_KEY}
     
-    goals_for = sum(m["gf"] for m in last5) / len(last5)
-    goals_against = sum(m["ga"] for m in last5) / len(last5)
-    shots_on_target = sum(m["shots"] for m in last5) / len(last5)
-
-    attack = max(30, min(80, (goals_for * 35) + (shots_on_target * 5)))
-    defense = max(30, min(80, 100 - (goals_against * 30)))
-
-    return {"attack": attack, "defense": defense}
-
-def get_team_stats(home, away):
-    # Por ahora simulamos datos para que el sistema corra
-    mock_last5 = [{"gf": 1, "ga": 1, "shots": 4}]
+    # Busca IDs de equipos (simplificado; añade búsqueda si nombres varían)
+    team_ids = get_team_ids(home, away)  # Implementa esto: API /teams?search=home
+    if not team_ids:
+        return {"home": {"attack": 50, "defense": 50}, "away": {"attack": 50, "defense": 50}}  # Fallback
     
-    return {
-        "home": build_team_rating(mock_last5),
-        "away": build_team_rating(mock_last5)
-    }
+    stats = {}
+    for team, tid in [("home", team_ids["home"]), ("away", team_ids["away"])]:
+        params = {"league": league_id, "season": datetime.now().year - 1, "team": tid}
+        response = requests.get(url, headers=headers, params=params)
+        if response.status_code == 200:
+            data = response.json()["response"]
+            goals_for = data["goals"]["for"]["average"]["total"]
+            goals_against = data["goals"]["against"]["average"]["total"]
+            stats[team] = {"attack": goals_for * 25, "defense": 100 - (goals_against * 25)}  # Normaliza a 0-100
+        else:
+            stats[team] = {"attack": 50, "defense": 50}
+    
+    return stats
+
+def get_team_ids(home, away):
+    # Implementa búsqueda real via /teams?search=
+    # Por ahora, hardcodea para pruebas o usa web_search si necesitas
+    return {"home": 123, "away": 456}  # Reemplaza con IDs reales de API
