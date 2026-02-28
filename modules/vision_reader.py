@@ -7,65 +7,73 @@ def analyze_betting_image(uploaded_file):
     word_list = []
 
     try:
-        # Configuración de cliente (asegúrate de que st.secrets esté bien)
         client = vision.ImageAnnotatorClient.from_service_account_info(dict(st.secrets["google_credentials"]))
         image = vision.Image(content=content)
         response = client.document_text_detection(image=image)
         
-        # 1. Extraer palabras con sus coordenadas
+        # 1. Extraer palabras con sus cajas de colisión (bounding boxes)
         for page in response.full_text_annotation.pages:
             for block in page.blocks:
                 for paragraph in block.paragraphs:
-                    # Unimos símbolos para formar palabras completas
-                    word_text = "".join([s.text for s in paragraph.words[0].symbols]) 
-                    # Usamos el promedio de Y para situar la línea
-                    vertices = paragraph.bounding_box.vertices
-                    avg_y = sum(v.y for v in vertices) / 4
-                    avg_x = sum(v.x for v in vertices) / 4
-                    word_list.append({"text": " ".join(["".join([s.text for s in w.symbols]) for w in paragraph.words]), "x": avg_x, "y": avg_y})
+                    text = "".join(["".join([s.text for s in w.symbols]) for w in paragraph.words])
+                    v = paragraph.bounding_box.vertices
+                    # Coordenadas promedio
+                    avg_y = (v[0].y + v[2].y) / 2
+                    avg_x = (v[0].x + v[2].x) / 2
+                    word_list.append({"text": text, "x": avg_x, "y": avg_y})
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error Vision: {e}")
         return []
 
-    # 2. Agrupar por "Líneas" (Y similares)
-    # Tolerancia de 15-20 píxeles para considerar que están en la misma fila
+    # 2. Agrupar por FILAS (Y similares) con una tolerancia mayor (30-40px)
+    # porque los nombres de los equipos suelen estar en dos renglones
     word_list.sort(key=lambda w: w["y"])
-    lines = []
+    rows = []
     if word_list:
-        current_line = [word_list[0]]
+        current_row = [word_list[0]]
         for i in range(1, len(word_list)):
-            if abs(word_list[i]["y"] - current_line[-1]["y"]) < 15:
-                current_line.append(word_list[i])
+            # Si la diferencia en Y es pequeña, es la misma fila de apuesta
+            if abs(word_list[i]["y"] - current_row[-1]["y"]) < 45: 
+                current_row.append(word_list[i])
             else:
-                current_line.sort(key=lambda w: w["x"]) # Ordenar de izquierda a derecha
-                lines.append(current_line)
-                current_line = [word_list[i]]
-        lines.append(current_line)
+                rows.append(current_row)
+                current_row = [word_list[i]]
+        rows.append(current_row)
 
-    # 3. Filtrar y Estructurar
-    matches = []
-    for line in lines:
-        text_line = " ".join([w["text"] for w in line])
+    final_matches = []
+
+    # 3. Procesar cada fila detectada
+    for row in rows:
+        # Separar elementos de la fila por su posición X (Izquierda=Equipos, Derecha=Momios)
+        row.sort(key=lambda w: w["x"])
         
-        # Buscamos momios (números con + o - y 3 dígitos)
-        odds = re.findall(r'[+-]\d{3,}', text_line)
+        # Filtramos momios: texto que empieza con + o - y tiene números
+        odds = [w["text"] for w in row if re.match(r'^[+-]\d{2,}$', w["text"])]
         
-        if len(odds) >= 3:
-            # Si hay 3 momios, lo que esté a la izquierda suelen ser los equipos
-            # Limpiamos el texto para quitar la fecha y el "+43"
-            clean_text = re.sub(r'\+\s*\d+', '', text_line) # Quita +43
-            clean_text = re.sub(r'\d{1,2}\s*[A-Za-z]{3}\s*\d{2}:\d{2}', '', clean_text) # Quita fecha
-            clean_text = clean_text.replace(odds[0], "").replace(odds[1], "").replace(odds[2], "").strip()
+        # Filtramos nombres: texto que NO sea fecha, ni momio, ni el "+43"
+        names = []
+        for w in row:
+            t = w["text"]
+            # Ignorar si es momio, si es "+43", o si parece fecha (28, Feb, 03:00)
+            if not re.match(r'^[+-]\d+$', t) and \
+               not re.match(r'^\+\d+$', t) and \
+               not re.match(r'^\d{2}$', t) and \
+               t not in ["Feb", "Mar", "Jan"] and \
+               ":" not in t:
+                names.append(t)
+
+        # Si tenemos al menos 2 nombres y 3 momios, es un partido válido
+        if len(odds) >= 3 and len(names) >= 2:
+            # Los nombres suelen venir en orden: Equipo 1, Equipo 2
+            # Unimos los nombres por si el equipo tiene varias palabras (ej. Brisbane Strikers)
+            mid = len(names) // 2
+            home = " ".join(names[:mid])
+            away = " ".join(names[mid:])
             
-            # Intentar separar local y visitante (usualmente por saltos de línea o espacios largos)
-            # En esa imagen, los nombres están uno sobre otro o separados
-            parts = [p.strip() for p in clean_text.split("  ") if len(p.strip()) > 2]
-            
-            matches.append({
-                "equipos": clean_text,
-                "home_odd": odds[0],
-                "draw_odd": odds[1],
-                "away_odd": odds[2]
+            final_matches.append({
+                "home": home,
+                "away": away,
+                "odds": odds[:3] # 1, X, 2
             })
 
-    return matches
+    return final_matches
