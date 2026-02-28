@@ -1,86 +1,88 @@
 import numpy as np
-from .stats_fetch import get_team_stats
-from .odds_api import fetch_odds
+import requests
+import streamlit as st
+from .odds_api import fetch_odds  # si ya tienes este archivo, úsalo; si no, lo creamos después
 
 SIMULATIONS = 20000
 
-def adjusted_lambda(home_stats, away_stats):
-    league_avg = 1.35
-    home_lambda = league_avg * (home_stats.get("attack", 50) / 50) * (50 / away_stats.get("defense", 50))
-    away_lambda = league_avg * (away_stats.get("attack", 50) / 50) * (50 / home_stats.get("defense", 50))
-    home_lambda *= 1.12
-    return home_lambda, away_lambda
+def get_real_stats(home, away):
+    api_key = st.secrets.get("API_FOOTBALL_KEY")
+    if not api_key:
+        st.warning("No hay API_FOOTBALL_KEY en secrets")
+        return {"home": {"attack": 50, "defense": 50}, "away": {"attack": 50, "defense": 50}}
+
+    url = "https://v3.football.api-sports.io/teams/statistics"
+    headers = {"x-apisports-key": api_key}
+
+    # Esto es simplificado. En producción busca IDs de equipos primero
+    # Por ahora asumimos que tienes league=140 (LaLiga) y season actual
+    params_home = {"league": 140, "season": 2025, "team": 541}  # ejemplo IDs, cámbialos por reales
+    params_away = {"league": 140, "season": 2025, "team": 529}   # ejemplo
+
+    stats = {"home": {}, "away": {}}
+
+    try:
+        r_home = requests.get(url, headers=headers, params=params_home)
+        data_home = r_home.json().get("response", {})
+        stats["home"]["attack"] = data_home.get("goals", {}).get("for", {}).get("average", {}).get("total", 1.0) * 25
+        stats["home"]["defense"] = 100 - (data_home.get("goals", {}).get("against", {}).get("average", {}).get("total", 1.0) * 25)
+
+        r_away = requests.get(url, headers=headers, params=params_away)
+        data_away = r_away.json().get("response", {})
+        stats["away"]["attack"] = data_away.get("goals", {}).get("for", {}).get("average", {}).get("total", 1.0) * 25
+        stats["away"]["defense"] = 100 - (data_away.get("goals", {}).get("against", {}).get("average", {}).get("total", 1.0) * 25)
+    except:
+        st.warning("Fallo al obtener stats reales, usando defaults")
+        stats = {"home": {"attack": 50, "defense": 50}, "away": {"attack": 50, "defense": 50}}
+
+    return stats
 
 def run_simulations(stats):
-    lam_home, lam_away = adjusted_lambda(stats.get("home", {}), stats.get("away", {}))
-    noise_home = np.random.normal(1, 0.12, SIMULATIONS)
-    noise_away = np.random.normal(1, 0.12, SIMULATIONS)
-    goals_home = np.random.poisson(lam_home * noise_home)
-    goals_away = np.random.poisson(lam_away * noise_away)
-    total_goals = goals_home + goals_away
-    h1_goals = np.random.poisson(lam_home/2 * noise_home) + np.random.poisson(lam_away/2 * noise_away)
+    lam_home, lam_away = adjusted_lambda(stats["home"], stats["away"])
+    noise_h = np.random.normal(1, 0.12, SIMULATIONS)
+    noise_a = np.random.normal(1, 0.12, SIMULATIONS)
+    g_h = np.random.poisson(lam_home * noise_h)
+    g_a = np.random.poisson(lam_away * noise_a)
+    total = g_h + g_a
+    h1 = np.random.poisson(lam_home/2 * noise_h) + np.random.poisson(lam_away/2 * noise_a)
 
-    probs = {
-        "Resultado Final (Local)": np.mean(goals_home > goals_away),
-        "Resultado Final (Empate)": np.mean(goals_home == goals_away),
-        "Resultado Final (Visitante)": np.mean(goals_home < goals_away),
-        "Ambos Equipos Anotan": np.mean((goals_home > 0) & (goals_away > 0)),
-        "Total Goles Over 2.5": np.mean(total_goals > 2.5),
-        "1ra Mitad Total Over 1.5": np.mean(h1_goals > 1.5),
+    return {
+        "Resultado Final (Local)": np.mean(g_h > g_a),
+        "Resultado Final (Empate)": np.mean(g_h == g_a),
+        "Resultado Final (Visitante)": np.mean(g_h < g_a),
+        "Ambos Equipos Anotan": np.mean((g_h > 0) & (g_a > 0)),
+        "Total Goles Over 2.5": np.mean(total > 2.5),
+        "1ra Mitad Total Over 1.5": np.mean(h1 > 1.5),
     }
-    return probs
 
 def obtener_mejor_apuesta(partido):
-    home = partido.get("home", "Equipo Local")
-    away = partido.get("away", partido.get("context", "Equipo Visitante").split()[-1] or "Desconocido")  # intento de rescatar visitante del context
-    stats = get_team_stats(home, away)
+    home = partido.get("home", "Local")
+    away = partido.get("away", "Visitante")
+    stats = get_real_stats(home, away)
     probs = run_simulations(stats)
 
-    odds_from_api = fetch_odds(home, away)
+    odds = fetch_odds(home, away) or partido.get("all_odds", [])
 
-    odds = {}
-    if isinstance(odds_from_api, dict) and odds_from_api:
-        odds = odds_from_api
-    else:
-        all_odds_raw = partido.get("all_odds", [])
-        if isinstance(all_odds_raw, list) and len(all_odds_raw) >= 3:
-            cleaned = [0.0] * 3
-            for idx, o in enumerate(all_odds_raw[:3]):
-                try:
-                    cleaned_str = str(o).strip()
-                    if cleaned_str:
-                        val = float(cleaned_str)
-                        cleaned[idx] = val
-                except ValueError:
-                    pass  # deja 0.0
-            if cleaned[0] != 0.0 and cleaned[1] != 0.0 and cleaned[2] != 0.0:
-                odds["Resultado Final (Local)"] = cleaned[0]
-                odds["Resultado Final (Empate)"] = cleaned[1]
-                odds["Resultado Final (Visitante)"] = cleaned[2]
+    # Si odds es lista de imagen, convertir a dict básico
+    if isinstance(odds, list) and len(odds) >= 3:
+        try:
+            odds = {
+                "Resultado Final (Local)": float(odds[0]),
+                "Resultado Final (Empate)": float(odds[1]),
+                "Resultado Final (Visitante)": float(odds[2])
+            }
+        except:
+            odds = {}
 
     mejores = []
     for mercado, prob in probs.items():
-        odd = odds.get(mercado)
-        if not odd or odd == 0:
+        odd = odds.get(mercado, 0)
+        if not odd:
             continue
-
-        try:
-            odd = float(odd)
-        except (ValueError, TypeError):
-            continue
-
-        decimal = (odd / 100 + 1) if odd > 0 else (100 / abs(odd) + 1) if odd < 0 else 0
-        if decimal <= 1:
-            continue
-
+        decimal = (odd / 100 + 1) if odd > 0 else (100 / abs(odd) + 1) if odd < 0 else 1
         ev = (prob * decimal) - 1
         if ev > 0.05:
-            mejores.append({
-                "mercado": mercado,
-                "prob": prob,
-                "odd": odd,
-                "ev": ev
-            })
+            mejores.append({"mercado": mercado, "prob": prob, "odd": odd, "ev": ev})
 
     if not mejores:
         return None
