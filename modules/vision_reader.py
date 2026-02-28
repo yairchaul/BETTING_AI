@@ -2,16 +2,6 @@ import re
 import os
 import streamlit as st
 from google.cloud import vision
-from PIL import Image
-
-TESSERACT_AVAILABLE = False
-try:
-    import pytesseract
-    if os.name != "nt":
-        pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-    TESSERACT_AVAILABLE = True
-except Exception:
-    pass
 
 
 # ==============================
@@ -29,7 +19,7 @@ def is_odd(text: str) -> bool:
 
 def clean_text(text):
     """
-    Limpieza fuerte para eliminar fechas, horas, números y ruido.
+    Limpieza fuerte para eliminar fechas, horas y ruido.
     """
 
     # Ignorar números puros (ej: 28)
@@ -54,26 +44,29 @@ def clean_text(text):
     return text.strip()
 
 
-def cluster_rows(word_list, tolerance=18):
+def cluster_match_blocks(word_list, block_tolerance=75):
     """
-    Agrupa palabras en filas reales usando proximidad vertical.
+    Agrupa palabras en bloques verticales grandes (cada bloque = un partido).
     """
-    rows = []
+
+    if not word_list:
+        return []
+
     word_list.sort(key=lambda w: w["y"])
 
-    for word in word_list:
-        placed = False
+    blocks = []
+    current_block = [word_list[0]]
 
-        for row in rows:
-            if abs(word["y"] - row[0]["y"]) < tolerance:
-                row.append(word)
-                placed = True
-                break
+    for word in word_list[1:]:
+        if abs(word["y"] - current_block[-1]["y"]) < block_tolerance:
+            current_block.append(word)
+        else:
+            blocks.append(current_block)
+            current_block = [word]
 
-        if not placed:
-            rows.append([word])
+    blocks.append(current_block)
 
-    return rows
+    return blocks
 
 
 # ==============================
@@ -97,6 +90,7 @@ def analyze_betting_image(uploaded_file):
                 for block in page.blocks:
                     for paragraph in block.paragraphs:
                         for word in paragraph.words:
+
                             word_text = ''.join(s.text for s in word.symbols).strip()
                             if not word_text:
                                 continue
@@ -113,45 +107,45 @@ def analyze_betting_image(uploaded_file):
 
     except Exception as e:
         st.error(f"Google Vision falló: {str(e)}")
+        return []
 
     if not word_list:
         st.error("No se extrajo texto.")
         return []
 
-    # 🔥 CLUSTER REAL POR FILAS
-    rows = cluster_rows(word_list)
+    # 🔥 AGRUPAR POR BLOQUES VERTICALES
+    blocks = cluster_match_blocks(word_list)
 
     matches = []
 
-    for row in rows:
+    for block in blocks:
 
-        # Ordenar por eje X dentro de la fila
-        row.sort(key=lambda w: w["x"])
+        # Ordenar por eje Y para mantener orden visual
+        block.sort(key=lambda w: w["y"])
 
-        odds = [w["text"] for w in row if is_odd(w["text"])]
+        # Extraer momios
+        odds = [w["text"] for w in block if is_odd(w["text"])]
 
         if len(odds) < 3:
             continue
 
         odds = odds[:3]
 
-        # Extraer palabras limpias
+        # Extraer texto limpio
         words_only = []
 
-        for w in row:
+        for w in block:
             if not is_odd(w["text"]):
                 cleaned = clean_text(w["text"])
                 if cleaned:
                     words_only.append(cleaned)
 
-        if len(words_only) < 1:
+        # Necesitamos al menos dos nombres reales
+        if len(words_only) < 2:
             continue
 
-        # Estrategia simple y estable:
-        # Primer bloque alfabético = local
-        # Último bloque alfabético = visitante
         home = words_only[0]
-        away = words_only[-1] if len(words_only) > 1 else "Visitante"
+        away = words_only[1]
 
         matches.append({
             "home": home,
