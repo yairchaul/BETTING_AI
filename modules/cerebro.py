@@ -1,92 +1,56 @@
-import streamlit as st
-import os
-import sys
+import numpy as np
+from .stats_fetch import get_team_stats
+from .odds_api import fetch_odds
 
-# Esto asegura que el sistema encuentre tus archivos en la carpeta 'modules'
-sys.path.append(os.path.dirname(__file__))
+SIMULATIONS = 20000
 
-try:
-    # Intento de importación desde la estructura de carpetas
-    from modules.stats_fetch import get_team_stats
-    from modules.montecarlo import run_simulations
-    from modules.schemas import PickResult
-except ImportError:
-    # Fallback si el entorno de ejecución es distinto
-    from stats_fetch import get_team_stats
-    from montecarlo import run_simulations
-    from schemas import PickResult
+def adjusted_lambda(home_stats, away_stats):
+    # Tu lógica, con stats reales ahora
+    league_avg = 1.35
+    home_lambda = league_avg * (home_stats["attack"] / 50) * (50 / away_stats["defense"])
+    away_lambda = league_avg * (away_stats["attack"] / 50) * (50 / home_stats["defense"])
+    home_lambda *= 1.12
+    return home_lambda, away_lambda
 
-def obtener_mejor_apuesta(partido_data):
-    home = partido_data.get('home', 'Local')
-    away = partido_data.get('away', 'Visitante')
-    all_odds = partido_data.get('all_odds', [])
+def run_simulations(stats):
+    lam_home, lam_away = adjusted_lambda(stats["home"], stats["away"])
+    noise_home = np.random.normal(1, 0.12, SIMULATIONS)
+    noise_away = np.random.normal(1, 0.12, SIMULATIONS)
+    goals_home = np.random.poisson(lam_home * noise_home)
+    goals_away = np.random.poisson(lam_away * noise_away)
+    total_goals = goals_home + goals_away
+    h1_goals = np.random.poisson(lam_home/2 * noise_home) + np.random.poisson(lam_away/2 * noise_away)  # Aprox 1ra mitad
 
-    # AHORA SÍ: Esta función ya está importada arriba
-    stats = get_team_stats(home, away)
-    predicciones = run_simulations(stats) 
-    
-    # ... resto de tu código de cerebro.py ...
-import streamlit as st
-import os
-import sys
+    probs = {
+        "Resultado Final (Local)": np.mean(goals_home > goals_away),
+        "Resultado Final (Empate)": np.mean(goals_home == goals_away),
+        "Resultado Final (Visitante)": np.mean(goals_home < goals_away),
+        "Ambos Equipos Anotan": np.mean((goals_home > 0) & (goals_away > 0)),
+        "Total Goles Over 2.5": np.mean(total_goals > 2.5),  # Añade under, ajusta thresholds
+        "1ra Mitad Total Over 1.5": np.mean(h1_goals > 1.5),  # Expande
+        # Añade combos: e.g. "Local + Over 2.5": np.mean((goals_home > goals_away) & (total_goals > 2.5))
+    }
+    return probs
 
-# Asegurar que el sistema encuentre los módulos locales
-sys.path.append(os.path.dirname(__file__))
+def obtener_mejor_apuesta(partido):
+    stats = get_team_stats(partido["home"], partido["away"])
+    probs = run_simulations(stats)
+    odds = fetch_odds(partido["home"], partido["away"]) or partido["all_odds"]  # Fallback a imagen
 
-try:
-    from modules.montecarlo import run_simulations
-    from modules.stats_fetch import get_team_stats
-    from modules.schemas import PickResult
-except ImportError:
-    try:
-        from montecarlo import run_simulations
-        from stats_fetch import get_team_stats
-        from schemas import PickResult
-    except ImportError:
-        st.error("Error crítico: No se pudieron cargar los módulos de lógica.")
-
-def obtener_mejor_apuesta(partido_data):
-    home = partido_data.get('home', 'Local')
-    away = partido_data.get('away', 'Visitante')
-    all_odds = partido_data.get('all_odds', [])
-
-    # Obtener estadísticas y simulación
-    stats = get_team_stats(home, away)
-    predicciones = run_simulations(stats) 
-    
-    mejores_opciones = []
-    
-    for mercado, prob in predicciones.items():
-        try:
-            # Extraemos el momio base (primer elemento detectado)
-            cuota_base = float(str(all_odds[0]).replace('+', '')) if all_odds else 100
-            
-            # Ajuste de cuota para Doble Oportunidad
-            cuota = cuota_base if "Doble Oportunidad" not in mercado else cuota_base * 0.9
-            
-            # Filtro de seguridad cuotas altas
-            if cuota > 500: 
-                continue 
-                
-            decimal_odd = (cuota/100 + 1) if cuota > 0 else (100/abs(cuota) + 1)
-            ev = (prob * decimal_odd) - 1
-
-            # PRIORIDAD: Bono para la combinada Gana/Empata + Over 1.5
-            prioridad = 1.8 if "Doble Oportunidad / Over 1.5" in mercado else 1.0
-            
-            if ev > 0.02 and prob > 0.35:
-                mejores_opciones.append(PickResult(
-                    match=f"{home} vs {away}",
-                    selection=mercado,
-                    probability=prob,
-                    odd=cuota,
-                    ev=ev * prioridad,
-                    log=f"Prob: {int(prob*100)}% | EV: {round(ev,2)}"
-                ))
-        except: 
+    mejores = []
+    for mercado, prob in probs.items():
+        odd = odds.get(mercado, 0)
+        if odd > 0:  # Americano positivo
+            decimal = odd / 100 + 1
+        elif odd < 0:
+            decimal = 100 / abs(odd) + 1
+        else:
             continue
-    
-    if not mejores_opciones:
-        return None
-        
-    return max(mejores_opciones, key=lambda x: x.ev)
+        ev = (prob * decimal) - 1
+        if ev > 0.05:  # Threshold value
+            mejores.append({"mercado": mercado, "prob": prob, "odd": odd, "ev": ev})
+
+    if mejores:
+        mejor = max(mejores, key=lambda x: x["ev"])
+        return PickResult(match=f"{partido['home']} vs {partido['away']}", selection=mejor["mercado"], odd=mejor["odd"], probability=mejor["prob"], ev=mejor["ev"])
+    return None
