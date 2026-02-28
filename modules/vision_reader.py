@@ -127,3 +127,13 @@ def analyze_betting_image(uploaded_file):
 
 def read_ticket_image(uploaded_file):
     return analyze_betting_image(uploaded_file)
+# Tu código original + fix para móvil/PC
+if not TESSERACT_AVAILABLE:
+    st.warning("Tesseract no disponible; usa Google Vision solo.")
+else:
+    # En analyze_betting_image, si Google falla:
+    if not word_list:
+        img = Image.open(uploaded_file)
+        text = pytesseract.image_to_string(img, lang='eng+spa')  # Añade lang para español
+        # Parsea text manual con regex para rows
+        # Implementa simple parse aquí si necesario
