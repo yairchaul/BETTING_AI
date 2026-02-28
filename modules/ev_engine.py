@@ -1,22 +1,16 @@
 import math
 from typing import List, Optional
 
-# Corrección de importación para Streamlit Cloud
-try:
-    from modules.schemas import PickResult, ParlayResult
-except ImportError:
-    from schemas import PickResult, ParlayResult
-
-def build_smart_parlay(picks: List[PickResult]) -> Optional[ParlayResult]:
-    """
-    Selecciona los mejores 5 picks y los une en una sola sugerencia de parlay.
-    """
+def build_smart_parlay(picks: List[dict]) -> Optional[dict]:
     if not picks:
         return None
     
-    # Filtramos y ordenamos los mejores picks por ventaja estadística (EV)
-    # Solo tomamos picks con EV positivo real
-    mejores_picks = sorted([p for p in picks if p.ev > 0], key=lambda x: x.ev, reverse=True)[:5]
+    # Filtramos y ordenamos por EV > 0
+    mejores_picks = sorted(
+        [p for p in picks if p.get("ev", 0) > 0],
+        key=lambda x: x.get("ev", 0),
+        reverse=True
+    )[:5]
     
     if not mejores_picks:
         return None
@@ -26,18 +20,27 @@ def build_smart_parlay(picks: List[PickResult]) -> Optional[ParlayResult]:
     matches_list = []
 
     for p in mejores_picks:
-        # Convertimos momio americano a decimal para el cálculo total
-        decimal = (p.odd/100 + 1) if p.odd > 0 else (100/abs(p.odd) + 1)
-        total_odd *= decimal
-        combined_prob *= p.probability
-        matches_list.append(f"{p.match}: {p.selection} ({p.odd})")
+        odd = p.get("odd", 0)
+        prob = p.get("probability", 0)
+        match = p.get("match", "Desconocido")
+        selection = p.get("selection", "Desconocido")
         
+        if odd <= 0 or prob <= 0:
+            continue
+        
+        decimal = (odd / 100 + 1) if odd > 0 else (100 / abs(odd) + 1)
+        total_odd *= decimal
+        combined_prob *= prob
+        matches_list.append(f"{match}: {selection} ({odd})")
+    
+    if not matches_list:
+        return None
+
     total_ev = (combined_prob * total_odd) - 1
     
-    return ParlayResult(
-        matches=matches_list,
-        total_odd=round(total_odd, 2),
-        combined_prob=round(combined_prob, 4),
-        total_ev=round(total_ev, 4)
-    )
-
+    return {
+        "matches": matches_list,
+        "total_odd": round(total_odd, 2),
+        "combined_prob": round(combined_prob, 4),
+        "total_ev": round(total_ev, 4)
+    }
