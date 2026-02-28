@@ -4,12 +4,11 @@ from google.cloud import vision
 
 def clean_ocr_noise(text):
     """Elimina ruidos de la interfaz y nombres de ligas."""
-    # Eliminar fechas, horas y marcadores (+43)
     text = re.sub(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\d{2}:\d{2}', '', text)
     text = re.sub(r'\+\s*\d+', '', text)
     
-    # Lista negra de palabras que NO son equipos para evitar falsos positivos
+    # Lista negra para que no confunda ligas con equipos
     blacklist = [
         "Europa", "Rumania", "Turquía", "Italia", "Liga 2", "Liga 3", 
         "TFF League", "Primavera", "Championship", "Resultado", "Final", 
@@ -30,13 +29,10 @@ def read_ticket_image(uploaded_file):
         if not response.text_annotations: return []
         full_text = response.text_annotations[0].description
         
-        # Extraer momios americanos (+/- 3 o 4 dígitos)
         all_odds = re.findall(r'[+-]\d{3,4}', full_text)
-        
         clean_text = clean_ocr_noise(full_text)
         for o in all_odds: clean_text = clean_text.replace(o, "")
         
-        # Filtrar líneas que realmente parezcan equipos
         lines = [l.strip() for l in clean_text.split('\n') if len(l.strip()) > 3]
         
         matches = []
