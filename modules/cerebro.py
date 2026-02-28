@@ -5,27 +5,27 @@ import streamlit as st
 SIMULATIONS = 20000
 
 def validar_y_obtener_stats(nombre_equipo):
-    """Busca el equipo en la API con re-intento elástico si falla el nombre largo."""
+    """Busca equipos de forma elástica si el nombre exacto falla."""
     try:
         api_key = st.secrets["football_api_key"]
         headers = {'x-apisports-key': api_key}
         
-        # Intento 1: Nombre completo (limpiando términos comunes)
-        nombre_limpio = nombre_equipo.replace("Borussia", "").replace("Union", "").strip()
-        # Si el nombre es muy largo, probamos con la palabra clave principal
+        # Limpieza inicial de términos que ensucian la búsqueda
+        nombre_limpio = nombre_equipo.replace("Borussia", "").replace("Real", "").replace("Atletico", "").strip()
         palabras = nombre_equipo.split()
-        busqueda_principal = palabras[0] if len(palabras[0]) > 3 else nombre_equipo
-
+        
+        # NIVEL 1: Búsqueda exacta como se escribió
         url = f"https://v3.football.api-sports.io/teams?search={nombre_equipo.strip()}"
         response = requests.get(url, headers=headers).json()
 
-        # Intento 2: Si falla, buscamos solo la palabra clave
-        if response.get('results', 0) == 0:
-            url = f"https://v3.football.api-sports.io/teams?search={busqueda_principal}"
+        # NIVEL 2: Si falla, buscar la palabra más larga (ej. 'Monchengladbach' o 'Oviedo')
+        if response.get('results', 0) == 0 and len(palabras) > 1:
+            palabra_clave = max(palabras, key=len)
+            url = f"https://v3.football.api-sports.io/teams?search={palabra_clave}"
             response = requests.get(url, headers=headers).json()
 
         if response.get('results', 0) > 0:
-            # Seleccionamos el primer resultado que sea un club real
+            # Seleccionamos el primer equipo de la lista de resultados
             team_data = response['response'][0]['team']
             return {
                 "nombre_real": team_data['name'],
@@ -33,48 +33,53 @@ def validar_y_obtener_stats(nombre_equipo):
                 "id": team_data['id'],
                 "valido": True
             }
+        
         return {"valido": False}
-    except:
+    except Exception:
         return {"valido": False}
 
 def obtener_forma_reciente(team_id):
-    """Extrae los goles de los últimos 5 partidos para calcular ataque/defensa real."""
+    """Analiza los goles de los últimos 5 partidos reales para calcular fuerza."""
     try:
         api_key = st.secrets["football_api_key"]
         url = f"https://v3.football.api-sports.io/fixtures?team={team_id}&last=5"
         headers = {'x-apisports-key': api_key}
         response = requests.get(url, headers=headers).json()
         
-        g_h, g_r = [], []
+        g_hechos = []
+        g_recibidos = []
+        
         for game in response.get('response', []):
-            is_home = game['teams']['home']['id'] == team_id
-            # Sumamos goles anotados y recibidos
-            g_h.append(game['goals']['home'] if is_home else game['goals']['away'])
-            g_r.append(game['goals']['away'] if is_home else game['goals']['home'])
+            es_local = game['teams']['home']['id'] == team_id
+            g_hechos.append(game['goals']['home'] if es_local else game['goals']['away'])
+            g_recibidos.append(game['goals']['away'] if es_local else game['goals']['home'])
             
-        ataque = min(100, (sum(g_h or [0]) / 7.5) * 50 + 20)
-        defensa = min(100, 100 - (sum(g_r or [0]) / 5) * 40)
+        # Cálculo de poder basado en promedio de goles
+        ataque = min(100, (sum(g_hechos or [0]) / 7.5) * 50 + 20)
+        defensa = min(100, 100 - (sum(g_recibidos or [0]) / 5) * 40)
         return {"attack": ataque, "defense": defensa}
     except:
         return {"attack": 50, "defense": 50}
 
 def obtener_mejor_apuesta(partido, stats_h, stats_a):
-    """Simulación Poisson para elegir el pick basado en datos reales."""
+    """Simulación Monte Carlo para encontrar el pick con mayor probabilidad."""
     lam_h = 1.35 * (stats_h["attack"]/50) * (50/stats_a["defense"])
     lam_a = 1.10 * (stats_a["attack"]/50) * (50/stats_h["defense"])
     
     h_g = np.random.poisson(lam_h, SIMULATIONS)
     a_g = np.random.poisson(lam_a, SIMULATIONS)
     
-    prob_1 = np.mean(h_g > a_g)
-    prob_2 = np.mean(a_g > h_g)
+    p_1 = np.mean(h_g > a_g)
+    p_2 = np.mean(a_g > h_g)
+    p_1x = np.mean(h_g >= a_g)
     
-    if prob_1 > 0.52:
-        res = {"label": f"Gana {partido['home']}", "prob": prob_1, "odd": partido['odds'][0]}
-    elif prob_2 > 0.52:
-        res = {"label": f"Gana {partido['away']}", "prob": prob_2, "odd": partido['odds'][2]}
+    # Decisión del mercado basado en probabilidad real
+    if p_1 > 0.52:
+        res = {"label": f"Gana {partido['home']}", "prob": p_1, "odd": partido['odds'][0]}
+    elif p_2 > 0.52:
+        res = {"label": f"Gana Visitante", "prob": p_2, "odd": partido['odds'][2]}
     else:
-        res = {"label": "Local o Empate", "prob": np.mean(h_g >= a_g), "odd": "-210"}
+        res = {"label": "Local o Empate (1X)", "prob": p_1x, "odd": "-230"}
         
     return {
         "match": f"{partido['home']} vs {partido['away']}",
