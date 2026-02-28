@@ -2,76 +2,68 @@ import streamlit as st
 from modules.vision_reader import read_ticket_image, procesar_texto_manual
 from modules.cerebro import validar_y_obtener_stats, obtener_forma_reciente, obtener_mejor_apuesta
 
-st.set_page_config(page_title="Bet Radar Pro", layout="wide")
+st.set_page_config(page_title="Analizador de Apuestas Pro", layout="wide")
 
-# Estilos CSS para emular la interfaz de tu imagen
+# Estilos visuales
 st.markdown("""
     <style>
-    .match-card {
-        background-color: #0d1117;
-        padding: 15px;
-        border-radius: 12px;
-        border: 1px solid #30363d;
-        margin-bottom: 15px;
-    }
-    .check-icon { color: #4cd964; margin-right: 10px; }
-    .pick-title { font-weight: bold; font-size: 1.1em; }
+    .card { background-color: #0d1117; padding: 15px; border-radius: 12px; border: 1px solid #30363d; margin-bottom: 10px; }
+    .status-ok { color: #4cd964; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🎯 Analizador de Apuestas Inteligente")
 
-col_left, col_right = st.columns([1, 1.2])
+# --- Sección de Entrada ---
+tab_manual, tab_img = st.tabs(["📝 Entrada Manual", "📸 Cargar Imagen"])
 
-with col_left:
-    st.subheader("📥 Entrada de Datos")
-    manual = st.text_area("✍️ Pega tus equipos:", placeholder="Ej: PSG vs Le Havre", height=120)
-    archivo = st.file_uploader("📸 O sube la captura de Caliente", type=['png', 'jpg', 'jpeg'])
+with tab_manual:
+    input_text = st.text_area("Pega tus partidos aquí:", placeholder="Ej: PSG vs Le Havre", height=120)
 
-# Obtener partidos de cualquiera de las fuentes
-partidos_detectados = []
-if manual:
-    partidos_detectados = procesar_texto_manual(manual)
-elif archivo:
-    partidos_detectados = read_ticket_image(archivo)
+with tab_img:
+    file = st.file_uploader("Sube tu captura de pantalla", type=['png', 'jpg', 'jpeg'])
 
-with col_right:
-    st.subheader("📋 Selecciones Recomendadas")
-    if partidos_detectados:
-        picks_parlay = []
-        for p in partidos_detectados:
-            with st.spinner(f"Analizando {p['home']}..."):
-                res_h = validar_y_obtener_stats(p['home'])
-                res_a = validar_y_obtener_stats(p['away'])
-                
-                if res_h['valido'] and res_a['valido']:
-                    sh = obtener_forma_reciente(res_h['id'])
-                    sa = obtener_forma_reciente(res_a['id'])
-                    pick = obtener_mejor_apuesta(p, sh, sa)
-                    
-                    # Mostrar tarjeta estilo la imagen que subiste
-                    st.markdown(f"""
-                    <div class="match-card">
-                        <span class="check-icon">✅</span>
-                        <span class="pick-title">{res_h['nombre_real']} vs {res_a['nombre_real']}</span>
-                        <div style="margin-left: 30px; margin-top: 5px;">
-                            <span>{pick['selection']} ({pick['odd']})</span><br>
-                            <small style="color: #8b949e;">Confianza: {round(pick['probability']*100, 1)}%</small>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    picks_parlay.append(pick)
-                else:
-                    st.warning(f"⚠️ No se encontró: {p['home']} o {p['away']}. Intenta nombres cortos.")
-        
-        # Resumen del Parlay (Análisis de Valor)
-        if picks_parlay:
-            st.divider()
-            st.markdown("### 📈 Análisis de Valor")
-            prob_total = 1.0
-            for pk in picks_parlay: prob_total *= pk['probability']
+# Obtener datos brutos
+raw_games = []
+if input_text:
+    raw_games = procesar_texto_manual(input_text)
+elif file:
+    raw_games = read_ticket_image(file)
+
+# --- Procesamiento y Resultados ---
+if raw_games:
+    st.subheader("📋 Resultados del Análisis")
+    for g in raw_games:
+        with st.spinner(f"Buscando datos para {g['home']} vs {g['away']}..."):
+            res_h = validar_y_obtener_stats(g['home'])
+            res_a = validar_y_obtener_stats(g['away'])
             
-            st.metric("Cuota Final Estimada", f"{round(1.85**len(picks_parlay), 2)}x")
-            st.metric("Probabilidad Combinada", f"{round(prob_total*100, 1)}%")
-    else:
-        st.info("Esperando datos para iniciar el análisis...")
+            if res_h['valido'] and res_a['valido']:
+                sh = obtener_forma_reciente(res_h['id'])
+                sa = obtener_forma_reciente(res_a['id'])
+                pick = obtener_mejor_apuesta(g, sh, sa)
+                
+                st.markdown(f"""
+                <div class="card">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <img src="{res_h['logo']}" width="35">
+                        <span class="status-ok">✔</span>
+                        <b>{res_h['nombre_real']}</b> vs <b>{res_a['nombre_real']}</b>
+                        <img src="{res_a['logo']}" width="35">
+                    </div>
+                    <div style="margin-left: 55px; margin-top: 10px;">
+                        <span>📢 <b>Sugerencia:</b> {pick['selection']}</span><br>
+                        <small style="color: #8b949e;">Confianza: {round(pick['probability']*100, 1)}%</small>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.error(f"❌ No se encontró coincidencia exacta para: **{g['home']}** o **{g['away']}**. Revisa la ortografía o usa el nombre de la ciudad.")
+
+
+### ¿Por qué esto sí va a funcionar?
+1.  **Detección de "PSG":** Al escribirlo, el diccionario de alias lo cambiará a "Paris Saint Germain" antes de preguntar a la API.
+2.  **Detección de "Philadelphia Union II":** El limpiador de ruido quitará el "II", dejando solo "Philadelphia Union", lo que permitirá a la API encontrarlo de inmediato.
+3.  **Detección de "Cambaceres":** Aunque lo escribas con errores, el buscador de Nivel 2 tomará la palabra más larga ("Cambaceres") y forzará la búsqueda global.
+
+¿Te gustaría que añadiera un botón de **"Ver Próximos Partidos"** para que el sistema te sugiera apuestas automáticamente sin que tengas que pegar nada?
