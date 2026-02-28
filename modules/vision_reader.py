@@ -26,7 +26,6 @@ def is_odd(text: str) -> bool:
     num_part = cleaned.replace('+', '').replace('-', '')
     try:
         val = float(num_part)
-        # Momios típicos: >=100 o negativos grandes, o decimales bajos
         return abs(val) >= 100 or val == 0 or (1.0 < val < 10.0)
     except:
         return False
