@@ -11,6 +11,18 @@ def is_odd(text: str) -> bool:
     except:
         return False
 
+def is_team_name(text: str) -> bool:
+    # Palabras largas, sin números, sin +/−, no fechas ni horas
+    if len(text) < 4:
+        return False
+    if re.search(r'\d', text):
+        return False
+    if is_odd(text):
+        return False
+    if re.match(r'^\d{1,2}(:\d{2})?$', text):
+        return False
+    return True
+
 def analyze_betting_image(uploaded_file):
     content = uploaded_file.getvalue()
     word_list = []
@@ -41,51 +53,46 @@ def analyze_betting_image(uploaded_file):
         st.error("No se extrajo texto.")
         return []
 
-    # Ordenar por Y descendente (arriba a abajo)
-    word_list.sort(key=lambda w: w["y"])
+    # Ordenar por Y (arriba a abajo) y luego por X (izquierda a derecha)
+    word_list.sort(key=lambda w: (w["y"], w["x"]))
 
     matches = []
     debug = []
 
     i = 0
-    while i < len(word_list) - 5:
-        # Buscar patrón: nombre local + momios 3 cercanos en X
+    while i < len(word_list):
         current = word_list[i]
-        if is_odd(current["text"]):
-            i += 1
-            continue
-
-        # Posible local: palabra no-numérica
-        if len(current["text"]) > 3 and not re.match(r'^\d', current["text"]):
-            possible_home = current["text"]
-            # Buscar 3 momios cercanos a la derecha y abajo
+        if is_team_name(current["text"]):
+            home = current["text"]
+            # Buscar los 3 momios más cercanos a la derecha o abajo
             odds = []
-            for j in range(i+1, min(i+20, len(word_list))):
+            j = i + 1
+            while j < len(word_list) and len(odds) < 3:
                 t = word_list[j]["text"]
                 if is_odd(t):
                     odds.append(t)
-                if len(odds) == 3:
-                    break
+                j += 1
 
             if len(odds) == 3:
-                # Intentar encontrar visitante (siguiente texto no-numérico después de momios)
+                # Intentar encontrar visitante (siguiente nombre de equipo después de los momios)
                 away = "Visitante"
-                for k in range(j+1, min(j+20, len(word_list))):
+                for k in range(j, len(word_list)):
                     t = word_list[k]["text"]
-                    if not is_odd(t) and len(t) > 3 and not re.match(r'^\d', t):
+                    if is_team_name(t):
                         away = t
                         break
 
                 matches.append({
-                    "home": possible_home,
+                    "home": home,
                     "away": away,
                     "all_odds": odds,
-                    "context": f"{possible_home} vs {away} → {odds}"
+                    "context": f"{home} vs {away} → {odds}"
                 })
 
-                debug.append(f"{possible_home} vs {away} → {odds}")
+                debug.append(f"{home} vs {away} → {odds}")
 
-                i = j + 1  # salta al siguiente bloque
+                # Salta al siguiente posible nombre (después del visitante)
+                i = k + 1 if 'k' in locals() else j
                 continue
 
         i += 1
@@ -95,7 +102,7 @@ def analyze_betting_image(uploaded_file):
             for d in debug:
                 st.write(d)
         else:
-            st.write("No se detectó patrón de 3 momios + nombre. ¿La imagen tiene columnas claras de 1 X 2?")
+            st.write("No se encontraron nombres de equipo seguidos de 3 momios. ¿La imagen tiene texto claro y columnas visibles?")
 
     return matches
 
