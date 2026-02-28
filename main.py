@@ -1,72 +1,77 @@
 import streamlit as st
 from modules.vision_reader import read_ticket_image, procesar_texto_manual
 from modules.cerebro import validar_y_obtener_stats, obtener_forma_reciente, obtener_mejor_apuesta
-from modules.ev_engine import build_smart_parlay
 
-st.set_page_config(page_title="Analizador Pro", layout="wide")
+st.set_page_config(page_title="Bet Radar Pro", layout="wide")
 
-# CSS personalizado para emular tu interfaz de capturas
+# Estilos CSS para emular la interfaz de tu imagen
 st.markdown("""
     <style>
-    .stTextArea textarea { background-color: #161b22; color: white; border: 1px solid #30363d; }
     .match-card {
         background-color: #0d1117;
-        padding: 20px;
+        padding: 15px;
         border-radius: 12px;
         border: 1px solid #30363d;
         margin-bottom: 15px;
     }
-    .pick-text { color: #4cd964; font-weight: bold; font-size: 1.1em; }
+    .check-icon { color: #4cd964; margin-right: 10px; }
+    .pick-title { font-weight: bold; font-size: 1.1em; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎯 Analizador de Apuestas Pro")
+st.title("🎯 Analizador de Apuestas Inteligente")
 
-col_in, col_res = st.columns([1, 1.5])
+col_left, col_right = st.columns([1, 1.2])
 
-with col_in:
+with col_left:
     st.subheader("📥 Entrada de Datos")
-    manual = st.text_area("Pega los partidos aquí:", placeholder="Ej: PSG vs Le Havre", height=120)
-    archivo = st.file_uploader("O sube tu captura de Caliente", type=['png', 'jpg', 'jpeg'])
+    manual = st.text_area("✍️ Pega tus equipos:", placeholder="Ej: PSG vs Le Havre", height=120)
+    archivo = st.file_uploader("📸 O sube la captura de Caliente", type=['png', 'jpg', 'jpeg'])
 
-games = []
+# Obtener partidos de cualquiera de las fuentes
+partidos_detectados = []
 if manual:
-    games = procesar_texto_manual(manual)
+    partidos_detectados = procesar_texto_manual(manual)
 elif archivo:
-    games = read_ticket_image(archivo)
+    partidos_detectados = read_ticket_image(archivo)
 
-with col_res:
-    st.subheader("🔍 Análisis de Valor")
-    if games:
-        picks_finales = []
-        for g in games:
-            # Buscamos los equipos con el nuevo motor inteligente
-            rh = validar_y_obtener_stats(g['home'])
-            ra = validar_y_obtener_stats(g['away'])
-            
-            if rh['valido'] and ra['valido']:
-                sh = obtener_forma_reciente(rh['id'])
-                sa = obtener_forma_reciente(ra['id'])
-                p = obtener_mejor_apuesta(g, sh, sa)
+with col_right:
+    st.subheader("📋 Selecciones Recomendadas")
+    if partidos_detectados:
+        picks_parlay = []
+        for p in partidos_detectados:
+            with st.spinner(f"Analizando {p['home']}..."):
+                res_h = validar_y_obtener_stats(p['home'])
+                res_a = validar_y_obtener_stats(p['away'])
                 
-                st.markdown(f"""
-                <div class="match-card">
-                    <div style="display: flex; align-items: center; gap: 15px;">
-                        <img src="{rh['logo']}" width="35">
-                        <b>{rh['nombre_real']}</b> vs <b>{ra['nombre_real']}</b>
-                        <img src="{ra['logo']}" width="35">
+                if res_h['valido'] and res_a['valido']:
+                    sh = obtener_forma_reciente(res_h['id'])
+                    sa = obtener_forma_reciente(res_a['id'])
+                    pick = obtener_mejor_apuesta(p, sh, sa)
+                    
+                    # Mostrar tarjeta estilo la imagen que subiste
+                    st.markdown(f"""
+                    <div class="match-card">
+                        <span class="check-icon">✅</span>
+                        <span class="pick-title">{res_h['nombre_real']} vs {res_a['nombre_real']}</span>
+                        <div style="margin-left: 30px; margin-top: 5px;">
+                            <span>{pick['selection']} ({pick['odd']})</span><br>
+                            <small style="color: #8b949e;">Confianza: {round(pick['probability']*100, 1)}%</small>
+                        </div>
                     </div>
-                    <div style="margin-top: 10px;">
-                        <span class="pick-text">✅ Sugerencia: {p['label']}</span><br>
-                        <small style="color: #8b949e;">Probabilidad Real: {round(p['probability']*100, 1)}%</small>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                picks_finales.append(p)
-            else:
-                st.error(f"⚠️ No pude encontrar a: {g['home']} o {g['away']}. Intenta con el nombre de la ciudad.")
-
-        if picks_finales:
-            parlay = build_smart_parlay(picks_finales)
-            st.sidebar.success(f"🚀 Parlay Sugerido: {parlay['total_odd']}x")
-            st.sidebar.info(f"Probabilidad Combinada: {round(parlay['combined_prob']*100, 1)}%")
+                    """, unsafe_allow_html=True)
+                    picks_parlay.append(pick)
+                else:
+                    st.warning(f"⚠️ No se encontró: {p['home']} o {p['away']}. Intenta nombres cortos.")
+        
+        # Resumen del Parlay (Análisis de Valor)
+        if picks_parlay:
+            st.divider()
+            st.markdown("### 📈 Análisis de Valor")
+            prob_total = 1.0
+            for pk in picks_parlay: prob_total *= pk['probability']
+            
+            st.metric("Cuota Final Estimada", f"{round(1.85**len(picks_parlay), 2)}x")
+            st.metric("Probabilidad Combinada", f"{round(prob_total*100, 1)}%")
+    else:
+        st.info("Esperando datos para iniciar el análisis...")
