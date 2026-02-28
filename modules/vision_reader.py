@@ -1,6 +1,7 @@
 import re
 import streamlit as st
 from google.cloud import vision
+from collections import defaultdict
 
 def is_odd(text: str) -> bool:
     cleaned = re.sub(r'\s+', '', text.strip())
@@ -41,19 +42,24 @@ def analyze_betting_image(uploaded_file):
         st.error("No se extrajo texto.")
         return []
 
-    # Ordenar por Y para filas
+    # Ordenar por Y descendente (de arriba a abajo)
     word_list.sort(key=lambda w: w["y"])
 
-    # Agrupar en filas (tolerancia ajustada para filas de momios)
+    # Agrupar por líneas horizontales (tolerancia 50 px)
     rows = []
-    current_row = [word_list[0]]
-    for w in word_list[1:]:
-        if abs(w["y"] - current_row[-1]["y"]) < 60:  # tolerancia baja para filas precisas
+    current_row = []
+    last_y = None
+
+    for w in word_list:
+        if last_y is None or abs(w["y"] - last_y) < 50:
             current_row.append(w)
         else:
-            rows.append(current_row)
+            if current_row:
+                rows.append(current_row)
             current_row = [w]
-    rows.append(current_row)
+        last_y = w["y"]
+    if current_row:
+        rows.append(current_row)
 
     matches = []
     debug = []
@@ -62,24 +68,31 @@ def analyze_betting_image(uploaded_file):
         # Ordenar por X (izquierda a derecha)
         row.sort(key=lambda w: w["x"])
         texts = [w["text"] for w in row]
-
-        # Extraer momios (deben ser 3 consecutivos)
         odds = [t for t in texts if is_odd(t)]
+
         if len(odds) != 3:
-            continue  # fila inválida
+            continue  # Solo filas con exactamente 3 momios
 
-        # Equipos: palabras no-numéricas y no-fecha/hora
-        non_odds = []
+        # Buscar texto no-numérico antes del primer momio (local)
+        non_odds_before = []
         for t in texts:
-            if not is_odd(t) and not re.match(r'^\d{1,2}(:\d{2})?$', t) and len(t) > 2:
-                non_odds.append(t)
+            if is_odd(t):
+                break
+            if len(t) > 2 and not re.match(r'^\d', t):
+                non_odds_before.append(t)
 
-        if len(non_odds) < 1:
-            continue
+        home = " ".join(non_odds_before) if non_odds_before else "Local"
 
-        # Asumir primer non-odd es local, el resto visitante o ruido
-        home = non_odds[0]
-        away = " ".join(non_odds[1:]) if len(non_odds) > 1 else "Visitante"
+        # Visitante: texto después del último momio
+        non_odds_after = []
+        started_after = False
+        for t in texts[::-1]:  # desde el final
+            if is_odd(t):
+                started_after = True
+                continue
+            if started_after and len(t) > 2 and not re.match(r'^\d', t):
+                non_odds_after.append(t)
+        away = " ".join(reversed(non_odds_after)) if non_odds_after else "Visitante"
 
         matches.append({
             "home": home,
@@ -94,7 +107,7 @@ def analyze_betting_image(uploaded_file):
         for d in debug:
             st.write(d)
         if not debug:
-            st.write("Ningún partido válido detectado. Intenta otra captura.")
+            st.write("No se detectaron filas con 3 momios. Intenta otra captura o ajusta tolerancia Y.")
 
     return matches
 
