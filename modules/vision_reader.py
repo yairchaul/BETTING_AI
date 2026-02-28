@@ -14,42 +14,48 @@ try:
         pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
     TESSERACT_AVAILABLE = True
 except Exception:
-    pass  # Silencioso, ya mostramos warning después si hace falta
+    pass  # Silencioso, warning más abajo si hace falta
 
 # =====================================
 # UTILIDADES DE DETECCIÓN
 # =====================================
 def is_odd(text: str) -> bool:
-    """Detecta si el texto es un momio (+100, -150, etc)"""
-    cleaned = re.sub(r'\s+', '', text.strip()).replace('+', '')
+    """Detecta momios americanos (+150, -200, etc)"""
+    cleaned = re.sub(r'\s+', '', text.strip())
+    # Quitamos + y - para probar conversión numérica
+    num_part = cleaned.replace('+', '').replace('-', '')
     try:
-        val = float(cleaned)
+        val = float(num_part)
+        # Momios típicos: >=100 o negativos grandes, o decimales bajos
         return abs(val) >= 100 or val == 0 or (1.0 < val < 10.0)
     except:
         return False
 
 def parse_row_smart(row_words: list) -> dict | None:
+    """
+    Intenta separar local / empate / visitante usando momios y 'X'/'Empate'
+    """
     row_words.sort(key=lambda w: w["x"])
     
+    # Buscamos índices de momios
     odds_indices = [i for i, w in enumerate(row_words) if is_odd(w["text"])]
+    
+    # Buscamos índice aproximado de 'X' o 'Empate'
+    empate_idx = next((i for i, w in enumerate(row_words) if w["text"].upper() in ["X", "EMPATE"]), -1)
     
     if len(odds_indices) < 2:
         return None
 
     try:
-        home_parts = [w["text"] for i, w in enumerate(row_words) 
-                      if i < odds_indices[0] and w["text"].lower() != "empate"]
-        
-        away_parts = []
-        momios_vistos = 0
-        for w in row_words:
-            if is_odd(w["text"]):
-                momios_vistos += 1
-                continue
-            if momios_vistos >= 2:
-                if w["text"].lower() != "empate":
-                    away_parts.append(w["text"])
+        # Local: todo antes del primer momio o antes de 'X'
+        cut_idx = min(odds_indices[0], empate_idx if empate_idx != -1 else len(row_words))
+        home_parts = [w["text"] for i, w in enumerate(row_words) if i < cut_idx and w["text"].lower() not in ["x", "empate"]]
 
+        # Visitante: después del último momio
+        away_start = max(odds_indices) + 1
+        away_parts = [w["text"] for i, w in enumerate(row_words) if i >= away_start]
+
+        # Momios encontrados
         all_odds = [w["text"] for i, w in enumerate(row_words) if i in odds_indices]
 
         return {
@@ -58,7 +64,8 @@ def parse_row_smart(row_words: list) -> dict | None:
             "all_odds": all_odds,
             "context": " ".join([w["text"] for w in row_words])
         }
-    except:
+    except Exception as e:
+        st.warning(f"Error parseando fila: {str(e)}")
         return None
 
 # =====================================
@@ -67,9 +74,9 @@ def parse_row_smart(row_words: list) -> dict | None:
 def analyze_betting_image(uploaded_file):
     content = uploaded_file.getvalue()
     
-    word_list = []  # Siempre existe desde el inicio
+    word_list = []  # Siempre existe
     
-    # Intento principal: Google Vision
+    # Intento principal: Google Cloud Vision
     try:
         client = vision.ImageAnnotatorClient.from_service_account_info(
             dict(st.secrets["google_credentials"])
@@ -96,18 +103,17 @@ def analyze_betting_image(uploaded_file):
     except Exception as e:
         st.error(f"Google Vision falló: {str(e)}")
     
-    # Fallback Tesseract si Vision no dio nada
+    # Fallback: Tesseract si Vision no dio nada
     if not word_list and TESSERACT_AVAILABLE:
-        st.warning("Google Vision no detectó texto → usando Tesseract como fallback")
+        st.warning("Vision no detectó → usando Tesseract")
         try:
             img = Image.open(uploaded_file)
-            # Usamos image_to_data para obtener bounding boxes reales
             data = pytesseract.image_to_data(img, lang='eng+spa', output_type=pytesseract.Output.DICT)
             n_boxes = len(data['level'])
             for i in range(n_boxes):
-                if int(data['conf'][i]) > 40 and data['text'][i].strip():
-                    x = data['left'][i] + data['width'][i]/2
-                    y = data['top'][i] + data['height'][i]/2
+                if int(data['conf'][i]) > 35 and data['text'][i].strip():
+                    x = data['left'][i] + data['width'][i] / 2
+                    y = data['top'][i] + data['height'][i] / 2
                     h = data['height'][i]
                     word_list.append({
                         "text": data['text'][i].strip(),
@@ -116,17 +122,17 @@ def analyze_betting_image(uploaded_file):
                         "height": h
                     })
         except Exception as te:
-            st.error(f"Tesseract también falló: {str(te)}")
+            st.error(f"Tesseract falló: {str(te)}")
     
     if not word_list:
-        st.error("No se pudo extraer ningún texto de la imagen.")
+        st.error("No se extrajo texto alguno de la imagen.")
         return []
 
-    # Agrupar por filas (Eje Y)
+    # Agrupar palabras en filas por coordenada Y
     word_list.sort(key=lambda w: w["y"])
     rows, current_row = [], [word_list[0]]
     for w in word_list[1:]:
-        if abs(w["y"] - current_row[-1]["y"]) < (current_row[-1]["height"] * 1.5):
+        if abs(w["y"] - current_row[-1]["y"]) < (current_row[-1]["height"] * 1.8):  # tolerancia aumentada
             current_row.append(w)
         else:
             rows.append(current_row)
@@ -136,14 +142,19 @@ def analyze_betting_image(uploaded_file):
     matches = []
     debug_rows = []
     for row_words in rows:
+        if len(row_words) < 3:
+            continue  # fila muy corta → ruido
         match = parse_row_smart(row_words)
         if match:
             matches.append(match)
             debug_rows.append(match["context"])
 
-    with st.expander("🔍 DEBUG OCR - Filas Detectadas", expanded=False):
-        for r in debug_rows:
-            st.write(r)
+    with st.expander("🔍 DEBUG OCR - Filas Detectadas", expanded=True):
+        if debug_rows:
+            for r in debug_rows:
+                st.write(r)
+        else:
+            st.write("Ninguna fila parseada correctamente.")
 
     return matches
 
