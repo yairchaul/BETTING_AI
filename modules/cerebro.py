@@ -5,67 +5,33 @@ import unicodedata
 
 SIMULATIONS = 20000
 
-def normalizar_y_limpiar(texto):
-    """Elimina acentos, ruidos de ligas y términos comunes de apuestas."""
-    texto = unicodedata.normalize('NFD', texto)
-    texto = "".join([c for c in texto if unicodedata.category(c) != 'Mn'])
-    texto = texto.lower()
-    
-    # Lista de ruido a eliminar para mejorar la búsqueda
-    ruido = ["fc", "sc", "ii", "youth", "u19", "u23", "atletico", "real", "de", "club", "fk", "idman yurdu"]
-    palabras = texto.split()
-    filtradas = [p for p in palabras if p not in ruido and len(p) > 2]
-    
-    return " ".join(filtradas) if filtradas else texto
-
-def validar_y_obtener_stats(nombre_equipo):
-    """Busca el equipo usando un sistema de 3 niveles de confianza."""
+def buscar_posibles_equipos(nombre_query):
+    """Busca en la API y devuelve una lista de candidatos (nombre e ID)."""
     try:
+        if len(nombre_query) < 3: return []
+        
         api_key = st.secrets["football_api_key"]
         headers = {'x-apisports-key': api_key}
         
-        alias_comunes = {
-            "psg": "Paris Saint Germain",
-            "philadelphia union": "Philadelphia Union",
-            "toronto": "Toronto FC",
-            "cambaceres": "Defensores de Cambaceres",
-            "monchengladbach": "Mgladbach",
-            "le havre": "Le Havre",
-            "bari": "Bari",
-            "pisa": "Pisa"
-        }
-
-        nombre_buscar = normalizar_y_limpiar(nombre_equipo)
+        # Limpieza básica para la búsqueda
+        query = unicodedata.normalize('NFD', nombre_query)
+        query = "".join([c for c in query if unicodedata.category(c) != 'Mn']).lower()
         
-        for clave, valor in alias_comunes.items():
-            if clave in nombre_buscar:
-                nombre_buscar = valor
-                break
-
-        # Intento 1: Búsqueda directa
-        url = f"https://v3.football.api-sports.io/teams?search={nombre_buscar}"
+        url = f"https://v3.football.api-sports.io/teams?search={query}"
         response = requests.get(url, headers=headers).json()
-
-        # Intento 2: Búsqueda por palabra clave principal
-        if response.get('results', 0) == 0:
-            palabras = nombre_buscar.split()
-            if palabras:
-                principal = max(palabras, key=len)
-                url = f"https://v3.football.api-sports.io/teams?search={principal}"
-                response = requests.get(url, headers=headers).json()
-
-        if response.get('results', 0) > 0:
-            team_data = response['response'][0]['team']
-            return {
-                "nombre_real": team_data['name'],
-                "logo": team_data['logo'],
-                "id": team_data['id'],
-                "valido": True
-            }
         
-        return {"valido": False}
+        candidatos = []
+        if response.get('results', 0) > 0:
+            for item in response['response']:
+                candidatos.append({
+                    "display": f"{item['team']['name']} ({item['team']['country']})",
+                    "id": item['team']['id'],
+                    "logo": item['team']['logo'],
+                    "name": item['team']['name']
+                })
+        return candidatos
     except Exception:
-        return {"valido": False}
+        return []
 
 def obtener_forma_reciente(team_id):
     """Extrae potencia de ataque y defensa real de los últimos 5 partidos."""
@@ -87,7 +53,7 @@ def obtener_forma_reciente(team_id):
     except:
         return {"attack": 50, "defense": 50}
 
-def obtener_mejor_apuesta(partido, stats_h, stats_a):
+def obtener_mejor_apuesta(stats_h, stats_a):
     """Simulación Poisson para encontrar probabilidad real."""
     lam_h = 1.35 * (stats_h["attack"]/50) * (50/stats_a["defense"])
     lam_a = 1.10 * (stats_a["attack"]/50) * (50/stats_h["defense"])
@@ -99,6 +65,5 @@ def obtener_mejor_apuesta(partido, stats_h, stats_a):
     
     return {
         "selection": "Local o Empate (1X)",
-        "odd": "-120",
         "probability": prob_1x
     }
