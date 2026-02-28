@@ -14,6 +14,10 @@ except Exception:
     pass
 
 
+# ==============================
+# UTILIDADES
+# ==============================
+
 def is_odd(text: str) -> bool:
     cleaned = text.strip().replace("+", "").replace("-", "")
     try:
@@ -24,12 +28,29 @@ def is_odd(text: str) -> bool:
 
 
 def clean_text(text):
-    # Eliminar fechas, horas y números sueltos
-    text = re.sub(r"\b\d{1,2}:\d{2}\b", "", text)
-    text = re.sub(r"\b\d{1,2}\b", "", text)
-    text = re.sub(r"\bJan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec\b", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"[^A-Za-zÁÉÍÓÚáéíóúÑñ ]", "", text)
-    text = re.sub(r"\s+", " ", text)
+    """
+    Limpieza fuerte para eliminar fechas, horas, números y ruido.
+    """
+
+    # Ignorar números puros (ej: 28)
+    if re.fullmatch(r"\d+", text):
+        return ""
+
+    # Ignorar horas (ej: 14:00)
+    if re.fullmatch(r"\d{1,2}:\d{2}", text):
+        return ""
+
+    # Ignorar meses
+    if re.fullmatch(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", text, re.IGNORECASE):
+        return ""
+
+    # Ignorar palabras muy cortas
+    if len(text) <= 2:
+        return ""
+
+    # Mantener solo letras
+    text = re.sub(r"[^A-Za-zÁÉÍÓÚáéíóúÑñ]", "", text)
+
     return text.strip()
 
 
@@ -44,7 +65,6 @@ def cluster_rows(word_list, tolerance=18):
         placed = False
 
         for row in rows:
-            # Si la diferencia vertical es pequeña → misma fila
             if abs(word["y"] - row[0]["y"]) < tolerance:
                 row.append(word)
                 placed = True
@@ -55,6 +75,10 @@ def cluster_rows(word_list, tolerance=18):
 
     return rows
 
+
+# ==============================
+# MOTOR PRINCIPAL OCR
+# ==============================
 
 def analyze_betting_image(uploaded_file):
 
@@ -107,26 +131,25 @@ def analyze_betting_image(uploaded_file):
         odds = [w["text"] for w in row if is_odd(w["text"])]
 
         if len(odds) < 3:
-            continue  # no es partido válido
+            continue
 
-        # Tomamos solo los primeros 3 momios
         odds = odds[:3]
 
-        words_only = [
-            clean_text(w["text"])
-            for w in row
-            if not is_odd(w["text"])
-        ]
+        # Extraer palabras limpias
+        words_only = []
 
-        words_only = [w for w in words_only if len(w) > 2]
+        for w in row:
+            if not is_odd(w["text"]):
+                cleaned = clean_text(w["text"])
+                if cleaned:
+                    words_only.append(cleaned)
 
         if len(words_only) < 1:
             continue
 
-        # Estrategia:
-        # Primer bloque de texto = local
-        # Último bloque de texto = visitante
-
+        # Estrategia simple y estable:
+        # Primer bloque alfabético = local
+        # Último bloque alfabético = visitante
         home = words_only[0]
         away = words_only[-1] if len(words_only) > 1 else "Visitante"
 
@@ -135,6 +158,10 @@ def analyze_betting_image(uploaded_file):
             "away": away,
             "all_odds": odds
         })
+
+    # ==============================
+    # DEBUG
+    # ==============================
 
     with st.expander("🔍 DEBUG OCR - Partidos Detectados", expanded=True):
         if matches:
