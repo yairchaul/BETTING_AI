@@ -2,107 +2,70 @@ import re
 import streamlit as st
 from google.cloud import vision
 
-def is_odd(text: str) -> bool:
-    cleaned = re.sub(r'\s+', '', text.strip())
-    num_part = cleaned.replace('+', '').replace('-', '')
-    try:
-        val = float(num_part)
-        return abs(val) >= 100 or (1 < val < 10)
-    except:
-        return False
-
-def clean_name(text: str) -> str:
-    # Quita códigos +XX, fechas, horas, números sueltos al inicio/fin
-    text = re.sub(r'^\+\d+\s*', '', text)  # +43 al inicio
-    text = re.sub(r'\s*\d{1,2}\s*Feb\s*\d{2}:\d{2}$', '', text)  # fecha al final
-    text = text.strip()
-    return text if len(text) > 3 else ""
-
 def analyze_betting_image(uploaded_file):
     content = uploaded_file.getvalue()
     word_list = []
 
     try:
+        # Configuración de cliente (asegúrate de que st.secrets esté bien)
         client = vision.ImageAnnotatorClient.from_service_account_info(dict(st.secrets["google_credentials"]))
         image = vision.Image(content=content)
         response = client.document_text_detection(image=image)
-
-        if response.full_text_annotation and response.full_text_annotation.pages:
-            for page in response.full_text_annotation.pages:
-                for block in page.blocks:
-                    for paragraph in block.paragraphs:
-                        for word in paragraph.words:
-                            word_text = ''.join(s.text for s in word.symbols).strip()
-                            if not word_text:
-                                continue
-                            v = word.bounding_box.vertices
-                            x = (v[0].x + v[2].x) / 2
-                            y = (v[0].y + v[2].y) / 2
-                            word_list.append({"text": word_text, "x": x, "y": y})
-
+        
+        # 1. Extraer palabras con sus coordenadas
+        for page in response.full_text_annotation.pages:
+            for block in page.blocks:
+                for paragraph in block.paragraphs:
+                    # Unimos símbolos para formar palabras completas
+                    word_text = "".join([s.text for s in paragraph.words[0].symbols]) 
+                    # Usamos el promedio de Y para situar la línea
+                    vertices = paragraph.bounding_box.vertices
+                    avg_y = sum(v.y for v in vertices) / 4
+                    avg_x = sum(v.x for v in vertices) / 4
+                    word_list.append({"text": " ".join(["".join([s.text for s in w.symbols]) for w in paragraph.words]), "x": avg_x, "y": avg_y})
     except Exception as e:
-        st.error(f"Vision falló: {e}")
+        st.error(f"Error: {e}")
         return []
 
-    if not word_list:
-        st.error("No texto.")
-        return []
-
-    # Ordenar por Y (arriba a abajo)
+    # 2. Agrupar por "Líneas" (Y similares)
+    # Tolerancia de 15-20 píxeles para considerar que están en la misma fila
     word_list.sort(key=lambda w: w["y"])
+    lines = []
+    if word_list:
+        current_line = [word_list[0]]
+        for i in range(1, len(word_list)):
+            if abs(word_list[i]["y"] - current_line[-1]["y"]) < 15:
+                current_line.append(word_list[i])
+            else:
+                current_line.sort(key=lambda w: w["x"]) # Ordenar de izquierda a derecha
+                lines.append(current_line)
+                current_line = [word_list[i]]
+        lines.append(current_line)
 
+    # 3. Filtrar y Estructurar
     matches = []
-    debug = []
-
-    i = 0
-    while i < len(word_list):
-        t = word_list[i]["text"]
-        if is_team_name(t):
-            home_raw = t
-            home = clean_name(home_raw)
-
-            # Buscar 3 momios después
-            odds = []
-            j = i + 1
-            while j < len(word_list) and len(odds) < 3:
-                t_j = word_list[j]["text"]
-                if is_odd(t_j):
-                    odds.append(t_j)
-                j += 1
-
-            if len(odds) == 3:
-                # Buscar visitante después de los momios
-                away = "Visitante"
-                k = j
-                while k < len(word_list):
-                    t_k = word_list[k]["text"]
-                    if is_team_name(t_k):
-                        away = clean_name(t_k)
-                        break
-                    k += 1
-
-                matches.append({
-                    "home": home,
-                    "away": away,
-                    "all_odds": odds
-                })
-
-                debug.append(f"{home} vs {away} → {odds}")
-
-                # Salta al siguiente posible local
-                i = k + 1
-                continue
-
-        i += 1
-
-    with st.expander("🔍 DEBUG OCR - Partidos Detectados", expanded=True):
-        if debug:
-            for d in debug:
-                st.write(d)
-        else:
-            st.write("No se encontró equipo + 3 momios. ¿La imagen es clara y tiene solo un partido?")
+    for line in lines:
+        text_line = " ".join([w["text"] for w in line])
+        
+        # Buscamos momios (números con + o - y 3 dígitos)
+        odds = re.findall(r'[+-]\d{3,}', text_line)
+        
+        if len(odds) >= 3:
+            # Si hay 3 momios, lo que esté a la izquierda suelen ser los equipos
+            # Limpiamos el texto para quitar la fecha y el "+43"
+            clean_text = re.sub(r'\+\s*\d+', '', text_line) # Quita +43
+            clean_text = re.sub(r'\d{1,2}\s*[A-Za-z]{3}\s*\d{2}:\d{2}', '', clean_text) # Quita fecha
+            clean_text = clean_text.replace(odds[0], "").replace(odds[1], "").replace(odds[2], "").strip()
+            
+            # Intentar separar local y visitante (usualmente por saltos de línea o espacios largos)
+            # En esa imagen, los nombres están uno sobre otro o separados
+            parts = [p.strip() for p in clean_text.split("  ") if len(p.strip()) > 2]
+            
+            matches.append({
+                "equipos": clean_text,
+                "home_odd": odds[0],
+                "draw_odd": odds[1],
+                "away_odd": odds[2]
+            })
 
     return matches
-
-def read_ticket_image(uploaded_file):
-    return analyze_betting_image(uploaded_file)
