@@ -1,7 +1,6 @@
 import re
 import streamlit as st
 from google.cloud import vision
-from collections import defaultdict
 
 def is_odd(text: str) -> bool:
     cleaned = re.sub(r'\s+', '', text.strip())
@@ -42,72 +41,61 @@ def analyze_betting_image(uploaded_file):
         st.error("No se extrajo texto.")
         return []
 
-    # Ordenar por Y descendente (de arriba a abajo)
+    # Ordenar por Y descendente (arriba a abajo)
     word_list.sort(key=lambda w: w["y"])
-
-    # Agrupar por líneas horizontales (tolerancia 50 px)
-    rows = []
-    current_row = []
-    last_y = None
-
-    for w in word_list:
-        if last_y is None or abs(w["y"] - last_y) < 50:
-            current_row.append(w)
-        else:
-            if current_row:
-                rows.append(current_row)
-            current_row = [w]
-        last_y = w["y"]
-    if current_row:
-        rows.append(current_row)
 
     matches = []
     debug = []
 
-    for row in rows:
-        # Ordenar por X (izquierda a derecha)
-        row.sort(key=lambda w: w["x"])
-        texts = [w["text"] for w in row]
-        odds = [t for t in texts if is_odd(t)]
+    i = 0
+    while i < len(word_list) - 5:
+        # Buscar patrón: nombre local + momios 3 cercanos en X
+        current = word_list[i]
+        if is_odd(current["text"]):
+            i += 1
+            continue
 
-        if len(odds) != 3:
-            continue  # Solo filas con exactamente 3 momios
+        # Posible local: palabra no-numérica
+        if len(current["text"]) > 3 and not re.match(r'^\d', current["text"]):
+            possible_home = current["text"]
+            # Buscar 3 momios cercanos a la derecha y abajo
+            odds = []
+            for j in range(i+1, min(i+20, len(word_list))):
+                t = word_list[j]["text"]
+                if is_odd(t):
+                    odds.append(t)
+                if len(odds) == 3:
+                    break
 
-        # Buscar texto no-numérico antes del primer momio (local)
-        non_odds_before = []
-        for t in texts:
-            if is_odd(t):
-                break
-            if len(t) > 2 and not re.match(r'^\d', t):
-                non_odds_before.append(t)
+            if len(odds) == 3:
+                # Intentar encontrar visitante (siguiente texto no-numérico después de momios)
+                away = "Visitante"
+                for k in range(j+1, min(j+20, len(word_list))):
+                    t = word_list[k]["text"]
+                    if not is_odd(t) and len(t) > 3 and not re.match(r'^\d', t):
+                        away = t
+                        break
 
-        home = " ".join(non_odds_before) if non_odds_before else "Local"
+                matches.append({
+                    "home": possible_home,
+                    "away": away,
+                    "all_odds": odds,
+                    "context": f"{possible_home} vs {away} → {odds}"
+                })
 
-        # Visitante: texto después del último momio
-        non_odds_after = []
-        started_after = False
-        for t in texts[::-1]:  # desde el final
-            if is_odd(t):
-                started_after = True
+                debug.append(f"{possible_home} vs {away} → {odds}")
+
+                i = j + 1  # salta al siguiente bloque
                 continue
-            if started_after and len(t) > 2 and not re.match(r'^\d', t):
-                non_odds_after.append(t)
-        away = " ".join(reversed(non_odds_after)) if non_odds_after else "Visitante"
 
-        matches.append({
-            "home": home,
-            "away": away,
-            "all_odds": odds,
-            "context": " ".join(texts)
-        })
-
-        debug.append(f"{home} vs {away} → {odds}")
+        i += 1
 
     with st.expander("🔍 DEBUG OCR - Partidos Detectados", expanded=True):
-        for d in debug:
-            st.write(d)
-        if not debug:
-            st.write("No se detectaron filas con 3 momios. Intenta otra captura o ajusta tolerancia Y.")
+        if debug:
+            for d in debug:
+                st.write(d)
+        else:
+            st.write("No se detectó patrón de 3 momios + nombre. ¿La imagen tiene columnas claras de 1 X 2?")
 
     return matches
 
