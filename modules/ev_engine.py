@@ -1,25 +1,20 @@
-import math
-from typing import List, Optional
-
-def build_smart_parlay(picks: List[dict]) -> Optional[dict]:
+def build_smart_parlay(picks):
     if not picks:
         return None
     
-    # Filtramos y ordenamos por EV > 0
-    mejores_picks = sorted(
-        [p for p in picks if p.get("ev", 0) > 0],
-        key=lambda x: x.get("ev", 0),
-        reverse=True
-    )[:5]
-    
-    if not mejores_picks:
+    # Filtrar picks con EV > 0
+    valid_picks = [p for p in picks if p.get("ev", 0) > 0]
+    if not valid_picks:
         return None
-
+    
+    # Ordenar por EV descendente, tomar hasta 5
+    sorted_picks = sorted(valid_picks, key=lambda x: x.get("ev", 0), reverse=True)[:5]
+    
     total_odd = 1.0
     combined_prob = 1.0
     matches_list = []
 
-    for p in mejores_picks:
+    for p in sorted_picks:
         odd = p.get("odd", 0)
         prob = p.get("probability", 0)
         match = p.get("match", "Desconocido")
@@ -35,7 +30,7 @@ def build_smart_parlay(picks: List[dict]) -> Optional[dict]:
     
     if not matches_list:
         return None
-
+    
     total_ev = (combined_prob * total_odd) - 1
     
     return {
