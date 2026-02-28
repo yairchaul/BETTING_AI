@@ -5,49 +5,52 @@ import unicodedata
 
 SIMULATIONS = 20000
 
-def corregir_nombre_equipo(nombre):
-    """Limpia el nombre para que la API de fútbol lo entienda mejor."""
-    # Eliminar acentos y pasar a minúsculas
-    nombre = "".join(c for c in unicodedata.normalize('NFD', nombre) if unicodedata.category(c) != 'Mn')
-    nombre = nombre.lower()
-    
-    # Mapeo de correcciones comunes (puedes añadir más)
-    correcciones = {
-        "psg": "Paris Saint Germain",
-        "ac le havre": "Le Havre",
-        "atletico madrid": "Atletico de Madrid",
-        "monchengladbach": "Mgladbach",
-        "cambaceres": "Defensores de Cambaceres",
-        "argentino de rosario": "Argentino Rosario"
-    }
-    
-    for clave, valor in correcciones.items():
-        if clave in nombre:
-            return valor
-    return nombre
+def normalizar_nombre(texto):
+    """Limpia el texto eliminando ruidos y acentos."""
+    texto = unicodedata.normalize('NFD', texto)
+    texto = "".join([c for c in texto if unicodedata.category(c) != 'Mn'])
+    return texto.lower().strip()
 
 def validar_y_obtener_stats(nombre_equipo):
-    """Busca el equipo en la API con re-intentos inteligentes."""
+    """Busca el equipo con lógica de corrección automática."""
     try:
         api_key = st.secrets["football_api_key"]
         headers = {'x-apisports-key': api_key}
         
-        # 1. Intentar con nombre corregido
-        nombre_query = corregir_nombre_equipo(nombre_equipo)
+        nombre_limpio = normalizar_nombre(nombre_equipo)
         
-        url = f"https://v3.football.api-sports.io/teams?search={nombre_query}"
+        # Diccionario de corrección para errores comunes detectados en tus capturas
+        correcciones = {
+            "psg": "Paris Saint Germain",
+            "ac le havre": "Le Havre",
+            "cambaceres": "Defensores de Cambaceres",
+            "monchengladbach": "Mgladbach",
+            "atletico madrid": "Atletico de Madrid",
+            "oviedo": "Real Oviedo",
+            "bari youth": "Bari U19",
+            "crotone youth": "Crotone U19"
+        }
+        
+        # Aplicar corrección si existe en el diccionario
+        for clave, valor in correcciones.items():
+            if clave in nombre_limpio:
+                nombre_limpio = valor
+                break
+
+        # NIVEL 1: Búsqueda con el nombre (corregido o limpio)
+        url = f"https://v3.football.api-sports.io/teams?search={nombre_limpio}"
         response = requests.get(url, headers=headers).json()
 
-        # 2. Si falla, intentar solo con la palabra más larga (ej. de 'AC Le Havre' buscar 'Havre')
+        # NIVEL 2: Si falla, buscar solo por la palabra más larga y distintiva
         if response.get('results', 0) == 0:
-            palabras = [p for p in nombre_query.split() if len(p) > 3]
+            palabras = [p for p in nombre_limpio.split() if len(p) > 3]
             if palabras:
-                palabra_clave = max(palabras, key=len)
-                url = f"https://v3.football.api-sports.io/teams?search={palabra_clave}"
+                principal = max(palabras, key=len)
+                url = f"https://v3.football.api-sports.io/teams?search={principal}"
                 response = requests.get(url, headers=headers).json()
 
         if response.get('results', 0) > 0:
-            # Filtramos para obtener el equipo más relevante (usualmente el primero)
+            # Retornamos el primer resultado que suele ser el más relevante
             team_data = response['response'][0]['team']
             return {
                 "nombre_real": team_data['name'],
@@ -61,27 +64,27 @@ def validar_y_obtener_stats(nombre_equipo):
         return {"valido": False}
 
 def obtener_forma_reciente(team_id):
-    """Extrae goles reales de la API."""
+    """Obtiene los goles de los últimos 5 partidos para el cálculo de probabilidades."""
     try:
         api_key = st.secrets["football_api_key"]
         url = f"https://v3.football.api-sports.io/fixtures?team={team_id}&last=5"
         headers = {'x-apisports-key': api_key}
         response = requests.get(url, headers=headers).json()
         
-        g_h, g_r = [], []
+        g_anotados, g_recibidos = [], []
         for game in response.get('response', []):
-            is_home = game['teams']['home']['id'] == team_id
-            g_h.append(game['goals']['home'] if is_home else game['goals']['away'])
-            g_r.append(game['goals']['away'] if is_home else game['goals']['home'])
+            es_local = game['teams']['home']['id'] == team_id
+            g_anotados.append(game['goals']['home'] if es_local else game['goals']['away'])
+            g_recibidos.append(game['goals']['away'] if es_local else game['goals']['home'])
             
-        ataque = min(100, (sum(g_h or [0]) / 7.5) * 50 + 20)
-        defensa = min(100, 100 - (sum(g_r or [0]) / 5) * 40)
+        ataque = min(100, (sum(g_anotados or [0]) / 7.5) * 50 + 20)
+        defensa = min(100, 100 - (sum(g_recibidos or [0]) / 5) * 40)
         return {"attack": ataque, "defense": defensa}
     except:
         return {"attack": 50, "defense": 50}
 
 def obtener_mejor_apuesta(partido, stats_h, stats_a):
-    """Simulación Poisson."""
+    """Simulación para determinar el mejor pick (Gana o Doble Oportunidad)."""
     lam_h = 1.35 * (stats_h["attack"]/50) * (50/stats_a["defense"])
     lam_a = 1.10 * (stats_a["attack"]/50) * (50/stats_h["defense"])
     
@@ -92,10 +95,11 @@ def obtener_mejor_apuesta(partido, stats_h, stats_a):
     p_2 = np.mean(a_g > h_g)
     p_1x = np.mean(h_g >= a_g)
     
+    # Elección del pick basado en umbrales de probabilidad
     if p_1 > 0.52:
         res = {"label": f"Gana {partido['home']}", "prob": p_1, "odd": partido['odds'][0]}
     elif p_2 > 0.52:
-        res = {"label": f"Gana Visitante", "prob": p_2, "odd": partido['odds'][2]}
+        res = {"label": "Gana Visitante", "prob": p_2, "odd": partido['odds'][2]}
     else:
         res = {"label": "Local o Empate (1X)", "prob": p_1x, "odd": "-230"}
         
