@@ -1,5 +1,4 @@
 import re
-import os
 import streamlit as st
 from google.cloud import vision
 
@@ -44,9 +43,10 @@ def clean_text(text):
     return text.strip()
 
 
-def cluster_match_blocks(word_list, block_tolerance=75):
+def cluster_match_blocks(word_list, block_tolerance=140):
     """
-    Agrupa palabras en bloques verticales grandes (cada bloque = un partido).
+    Agrupa palabras en bloques verticales completos usando
+    promedio dinámico de coordenadas Y.
     """
 
     if not word_list:
@@ -56,13 +56,16 @@ def cluster_match_blocks(word_list, block_tolerance=75):
 
     blocks = []
     current_block = [word_list[0]]
+    current_avg_y = word_list[0]["y"]
 
     for word in word_list[1:]:
-        if abs(word["y"] - current_block[-1]["y"]) < block_tolerance:
+        if abs(word["y"] - current_avg_y) < block_tolerance:
             current_block.append(word)
+            current_avg_y = sum(w["y"] for w in current_block) / len(current_block)
         else:
             blocks.append(current_block)
             current_block = [word]
+            current_avg_y = word["y"]
 
     blocks.append(current_block)
 
@@ -113,17 +116,15 @@ def analyze_betting_image(uploaded_file):
         st.error("No se extrajo texto.")
         return []
 
-    # 🔥 AGRUPAR POR BLOQUES VERTICALES
-    blocks = cluster_match_blocks(word_list)
+    # 🔥 AGRUPAR POR BLOQUES VERTICALES GRANDES
+    blocks = cluster_match_blocks(word_list, block_tolerance=140)
 
     matches = []
 
     for block in blocks:
 
-        # Ordenar por eje Y para mantener orden visual
         block.sort(key=lambda w: w["y"])
 
-        # Extraer momios
         odds = [w["text"] for w in block if is_odd(w["text"])]
 
         if len(odds) < 3:
@@ -131,7 +132,6 @@ def analyze_betting_image(uploaded_file):
 
         odds = odds[:3]
 
-        # Extraer texto limpio
         words_only = []
 
         for w in block:
@@ -140,7 +140,6 @@ def analyze_betting_image(uploaded_file):
                 if cleaned:
                     words_only.append(cleaned)
 
-        # Necesitamos al menos dos nombres reales
         if len(words_only) < 2:
             continue
 
