@@ -11,11 +11,10 @@ def is_odd(text: str) -> bool:
     except:
         return False
 
-def clean_team_name(text: str) -> str:
-    # Quita códigos +XX, fechas, horas, números sueltos
-    text = re.sub(r'^\+\d+', '', text)  # quita +43 al inicio
-    text = re.sub(r'\d{1,2} Feb \d{2}:\d{2}', '', text)  # quita fecha/hora
-    text = re.sub(r'\s*\d{1,2}\s*', '', text)  # quita números sueltos
+def clean_name(text: str) -> str:
+    # Quita códigos +XX, fechas, horas, números sueltos al inicio/fin
+    text = re.sub(r'^\+\d+\s*', '', text)  # +43 al inicio
+    text = re.sub(r'\s*\d{1,2}\s*Feb\s*\d{2}:\d{2}$', '', text)  # fecha al final
     text = text.strip()
     return text if len(text) > 3 else ""
 
@@ -42,55 +41,56 @@ def analyze_betting_image(uploaded_file):
                             word_list.append({"text": word_text, "x": x, "y": y})
 
     except Exception as e:
-        st.error(f"Google Vision falló: {str(e)}")
+        st.error(f"Vision falló: {e}")
         return []
 
     if not word_list:
-        st.error("No se extrajo texto.")
+        st.error("No texto.")
         return []
 
-    # Ordenar por Y (arriba a abajo), luego X (izquierda a derecha)
-    word_list.sort(key=lambda w: (w["y"], w["x"]))
+    # Ordenar por Y (arriba a abajo)
+    word_list.sort(key=lambda w: w["y"])
 
     matches = []
     debug = []
 
     i = 0
-    while i < len(word_list) - 5:
-        # Buscar nombre de equipo (no-odd, largo)
-        if is_team_name(word_list[i]["text"]):
-            home_raw = word_list[i]["text"]
-            home = clean_team_name(home_raw)
+    while i < len(word_list):
+        t = word_list[i]["text"]
+        if is_team_name(t):
+            home_raw = t
+            home = clean_name(home_raw)
 
-            # Buscar 3 momios en las siguientes palabras
+            # Buscar 3 momios después
             odds = []
             j = i + 1
             while j < len(word_list) and len(odds) < 3:
-                t = word_list[j]["text"]
-                if is_odd(t):
-                    odds.append(t)
+                t_j = word_list[j]["text"]
+                if is_odd(t_j):
+                    odds.append(t_j)
                 j += 1
 
             if len(odds) == 3:
-                # Buscar visitante (siguiente nombre después de momios)
+                # Buscar visitante después de los momios
                 away = "Visitante"
-                for k in range(j, len(word_list)):
-                    t = word_list[k]["text"]
-                    if is_team_name(t):
-                        away = clean_team_name(t)
+                k = j
+                while k < len(word_list):
+                    t_k = word_list[k]["text"]
+                    if is_team_name(t_k):
+                        away = clean_name(t_k)
                         break
+                    k += 1
 
                 matches.append({
                     "home": home,
                     "away": away,
-                    "all_odds": odds,
-                    "context": f"{home} vs {away} → {odds}"
+                    "all_odds": odds
                 })
 
                 debug.append(f"{home} vs {away} → {odds}")
 
-                # Salta al siguiente posible bloque
-                i = k + 1 if 'k' in locals() else j
+                # Salta al siguiente posible local
+                i = k + 1
                 continue
 
         i += 1
@@ -100,7 +100,7 @@ def analyze_betting_image(uploaded_file):
             for d in debug:
                 st.write(d)
         else:
-            st.write("No se detectó equipo + 3 momios. ¿La imagen es clara y tiene solo un partido?")
+            st.write("No se encontró equipo + 3 momios. ¿La imagen es clara y tiene solo un partido?")
 
     return matches
 
