@@ -3,16 +3,20 @@ import streamlit as st
 from google.cloud import vision
 
 def clean_ocr_noise(text):
-    """Elimina fechas, horas y nombres de ligas comunes."""
-    # Elimina: '28 Feb 04:00', '+ 48', 'Europa - Turquía', 'Italia - Primavera'
+    """Elimina ruidos de la interfaz y nombres de ligas."""
+    # Eliminar fechas, horas y marcadores (+43)
     text = re.sub(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\d{2}:\d{2}', '', text)
     text = re.sub(r'\+\s*\d+', '', text)
     
-    # Filtro de ligas (basado en tus imágenes)
-    ligas = ["Europa", "Turquía", "Italia", "Rumania", "TFF League", "Primavera Championship", "Liga 2", "Liga 3"]
-    for liga in ligas:
-        text = text.replace(liga, "")
+    # Lista negra de palabras que NO son equipos para evitar falsos positivos
+    blacklist = [
+        "Europa", "Rumania", "Turquía", "Italia", "Liga 2", "Liga 3", 
+        "TFF League", "Primavera", "Championship", "Resultado", "Final", 
+        "1", "X", "2", "Directo", "Hoy", "Mañana"
+    ]
+    for word in blacklist:
+        text = text.replace(word, "")
     
     return text.strip()
 
@@ -26,13 +30,13 @@ def read_ticket_image(uploaded_file):
         if not response.text_annotations: return []
         full_text = response.text_annotations[0].description
         
-        # Detectar momios reales de la imagen
+        # Extraer momios americanos (+/- 3 o 4 dígitos)
         all_odds = re.findall(r'[+-]\d{3,4}', full_text)
         
         clean_text = clean_ocr_noise(full_text)
         for o in all_odds: clean_text = clean_text.replace(o, "")
         
-        # Filtrar líneas vacías o muy cortas
+        # Filtrar líneas que realmente parezcan equipos
         lines = [l.strip() for l in clean_text.split('\n') if len(l.strip()) > 3]
         
         matches = []
