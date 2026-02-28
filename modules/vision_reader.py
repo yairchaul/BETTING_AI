@@ -4,10 +4,27 @@ import pandas as pd
 import requests
 from google.cloud import vision
 
-def get_official_team(name):
-    """Normaliza el nombre del equipo usando API-Football"""
-    if not name or len(name) < 3: 
-        return name
+def calculate_implied_prob(american_odd):
+    """Convierte momio americano a probabilidad implícita."""
+    try:
+        val = int(american_odd)
+        if val > 0:
+            return 100 / (val + 100)
+        else:
+            return abs(val) / (abs(val) + 100)
+    except:
+        return 0
+
+def get_official_team_name(text):
+    """
+    Usa API-Football para normalizar el nombre del equipo.
+    Limpia prefijos como FC, ACS, etc., para mejorar la búsqueda.
+    """
+    if not text or len(text) < 3:
+        return text
+    
+    # Limpieza rápida antes de la API
+    search_term = re.sub(r'\b(FC|ACS|CS|FK|Club|Strikers|Junior)\b', '', text, flags=re.IGNORECASE).strip()
     
     url = "https://v3.football.api-sports.io/teams"
     headers = {
@@ -16,86 +33,78 @@ def get_official_team(name):
     }
     
     try:
-        # Filtramos un poco el nombre para que la búsqueda sea más limpia
-        search_name = re.sub(r'(FC|CS|ACS|FK|Club|Strikers)', '', name).strip()
-        response = requests.get(url, headers=headers, params={"search": search_name}, timeout=5)
+        response = requests.get(url, headers=headers, params={"search": search_term}, timeout=5)
         data = response.json()
         if data.get('response'):
+            # Retorna el nombre oficial del primer resultado
             return data['response'][0]['team']['name']
     except Exception:
         pass
-    return name
+    return text
 
-def calculate_implied_prob(american_odd):
-    """Calcula la probabilidad implícita de un momio americano"""
-    try:
-        odd = int(american_odd)
-        if odd > 0:
-            return 100 / (odd + 100)
-        else:
-            return abs(odd) / (abs(odd) + 100)
-    except:
-        return 0
-
-def clean_noise(text):
-    """Elimina fechas, horas y contadores como +43"""
-    # Elimina: 28 Feb, 03:00, +43
+def clean_ocr_noise(text):
+    """Elimina fechas, horas y el indicador de mercados (+43)."""
+    # Elimina patrones como "28 Feb", "03:00" y "+43"
     text = re.sub(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\d{2}:\d{2}', '', text)
     text = re.sub(r'\+\s*\d{1,2}', '', text)
     return text.strip()
 
 def read_ticket_image(uploaded_file):
-    """Función principal llamada por main.py"""
+    """
+    Función principal llamada por main.py. 
+    Analiza la imagen, extrae momios y valida equipos con APIs.
+    """
     client = vision.ImageAnnotatorClient.from_service_account_info(dict(st.secrets["google_credentials"]))
     content = uploaded_file.getvalue()
     image = vision.Image(content=content)
     
-    # Document text detection es mejor para párrafos y tablas
+    # Usamos document_text_detection para detectar bloques y párrafos
     response = client.document_text_detection(image=image)
     matches = []
 
     if response.full_text_annotation:
         for page in response.full_text_annotation.pages:
             for block in page.blocks:
-                # Agrupamos el texto del bloque
+                # Agrupamos el texto del bloque manteniendo la estructura
                 block_lines = []
                 for para in block.paragraphs:
-                    line = " ".join(["".join([s.text for s in w.symbols]) for w in para.words])
-                    block_lines.append(line)
+                    line_text = " ".join(["".join([s.text for s in w.symbols]) for w in para.words])
+                    block_lines.append(line_text)
                 
-                full_text = "\n".join(block_lines)
+                full_block_text = "\n".join(block_lines)
                 
-                # Buscamos 3 momios americanos (+XXX o -XXX)
-                odds = re.findall(r'[+-]\d{3,4}', full_text)
+                # Buscamos exactamente 3 momios (formato +XXX o -XXX)
+                odds = re.findall(r'[+-]\d{3,4}', full_block_text)
                 
                 if len(odds) >= 3:
-                    # Limpiamos el bloque de basura y momios para aislar nombres
-                    clean_text = clean_noise(full_text)
+                    # Extraer y limpiar nombres de equipos
+                    clean_text = clean_ocr_noise(full_block_text)
                     for o in odds:
                         clean_text = clean_text.replace(o, "")
                     
-                    names = [n.strip() for n in clean_text.split('\n') if len(n.strip()) > 2]
+                    # Dividimos por líneas para separar Local y Visitante
+                    potential_names = [n.strip() for n in clean_text.split('\n') if len(n.strip()) > 2]
                     
-                    if len(names) >= 2:
-                        # Cálculos de probabilidad y margen
-                        p1 = calculate_implied_prob(odds[0])
-                        px = calculate_implied_prob(odds[1])
-                        p2 = calculate_implied_prob(odds[2])
-                        overround = (p1 + px + p2) - 1
+                    if len(potential_names) >= 2:
+                        # 1. Cálculos de probabilidad e Overround (Margen de la casa)
+                        prob_1 = calculate_implied_prob(odds[0])
+                        prob_x = calculate_implied_prob(odds[1])
+                        prob_2 = calculate_implied_prob(odds[2])
+                        overround = (prob_1 + prob_x + prob_2) - 1
                         
-                        # Validación con API-Football
-                        home_official = get_official_team(names[0])
-                        away_official = get_official_team(names[1])
+                        # 2. Validación con API-Football para corregir el OCR
+                        home_team = get_official_team_name(potential_names[0])
+                        away_team = get_official_team_name(potential_names[1])
                         
                         matches.append({
-                            "Partido": f"{home_official} vs {away_official}",
+                            "Evento": f"{home_team} vs {away_team}",
                             "1": odds[0],
                             "X": odds[1],
                             "2": odds[2],
-                            "Prob. Local": f"{p1:.1%}",
-                            "Overround (Margen)": f"{overround:.1%}",
-                            "Info": "Verificado con API-Football ✅"
+                            "Prob. Victoria": f"{prob_1:.1%}",
+                            "Margen Casa": f"{overround:.1%}",
+                            "Verificación": "API-Football Verified ✅"
                         })
     
     return matches
