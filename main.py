@@ -7,20 +7,20 @@ st.set_page_config(page_title="Detector Pro", layout="wide")
 
 st.title("🎯 Detector de Apuestas")
 
-# --- NUEVA SECCIÓN: ENTRADA MANUAL ---
-st.subheader("📝 Entrada de Partidos")
-col_input, col_img = st.columns(2)
+# --- Sección de Entrada Mixta ---
+st.info("💡 Puedes subir una imagen o simplemente pegar los nombres de los equipos abajo.")
+c_input, c_upload = st.columns(2)
 
-with col_input:
-    texto_manual = st.text_area("Pega aquí los partidos (Ej: Kasimpasa vs Caykur Rizespor)", placeholder="Kasimpasa vs Caykur Rizespor\nEquipo C vs Equipo D")
+with c_input:
+    manual_text = st.text_area("Pegar equipos (Ej: Real Madrid vs Barcelona)", height=100)
 
-with col_img:
-    uploaded = st.file_uploader("O sube tu captura", type=['png', 'jpg', 'jpeg'])
+with c_upload:
+    uploaded = st.file_uploader("O sube la captura de Caliente", type=['png', 'jpg', 'jpeg'])
 
-# Lógica de detección: Manual tiene prioridad si existe texto
+# Prioridad al texto manual si el usuario escribió algo
 games_data = []
-if texto_manual:
-    games_data = procesar_texto_manual(texto_manual)
+if manual_text:
+    games_data = procesar_texto_manual(manual_text)
 elif uploaded:
     games_data = read_ticket_image(uploaded)
 
@@ -29,34 +29,32 @@ if games_data:
     st.divider()
     
     for partido in games_data:
-        # Validación con API (logos y IDs)
-        with st.status(f"Analizando: {partido['home']} vs {partido['away']}...", expanded=False):
-            res_h = validar_y_obtener_stats(partido['home'])
-            res_a = validar_y_obtener_stats(partido['away'])
-            
-            if res_h['valido'] and res_a['valido']:
-                # Extraer goles reales últimos 5 partidos de la API
-                s_h = obtener_forma_reciente(res_h['id'])
-                s_a = obtener_forma_reciente(res_a['id'])
-                
-                pick = obtener_mejor_apuesta(partido, s_h, s_a)
-                
-                if pick:
-                    col1, col2 = st.columns([1, 2])
-                    with col1:
-                        st.image(res_h['logo'], width=40)
-                        st.write(f"**{res_h['nombre_real']}**")
-                        st.image(res_a['logo'], width=40)
-                        st.write(f"**{res_a['nombre_real']}**")
-                    with col2:
-                        st.success(f"Pick: {pick['selection']}")
-                        st.info(f"Probabilidad (Últimos 5 juegos): {round(pick['probability']*100, 1)}%")
-                    final_picks.append(pick)
-            else:
-                st.error(f"❌ La API no encontró a: {partido['home']} o {partido['away']}. Revisa la ortografía.")
+        # Validación visual con logos
+        res_h = validar_y_obtener_stats(partido['home'])
+        res_a = validar_y_obtener_stats(partido['away'])
+        
+        if res_h['valido'] and res_a['valido']:
+            with st.container():
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.image(res_h['logo'], width=40)
+                    st.image(res_a['logo'], width=40)
+                with col2:
+                    st.write(f"**{res_h['nombre_real']} vs {res_a['nombre_real']}**")
+                    
+                    # Análisis real basado en historial
+                    s_h = obtener_forma_reciente(res_h['id'])
+                    s_a = obtener_forma_reciente(res_a['id'])
+                    pick = obtener_mejor_apuesta(partido, s_h, s_a)
+                    
+                    if pick:
+                        st.success(f"Sugerencia: {pick['selection']} ({pick['odd']})")
+                        final_picks.append(pick)
+        else:
+            st.warning(f"⚠️ No pude encontrar a: {partido['home']} o {partido['away']} en la base de datos.")
 
     if final_picks:
         parlay = build_smart_parlay(final_picks)
-        st.sidebar.header("🚀 Parlay Sugerido")
-        st.sidebar.metric("Cuota Total", f"{parlay['total_odd']}x")
+        st.sidebar.title("🚀 Parlay Sugerido")
+        st.sidebar.metric("Cuota", f"{parlay['total_odd']}x")
         st.sidebar.metric("Probabilidad", f"{round(parlay['combined_prob']*100, 1)}%")
