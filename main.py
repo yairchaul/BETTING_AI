@@ -3,84 +3,107 @@ import os
 import sys
 from datetime import datetime
 
-# Inyectar path de modules para evitar ImportError
-sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
+# 1. Configuración de Rutas (Evita ImportError)
+root_path = os.path.dirname(os.path.abspath(__file__))
+if root_path not in sys.path:
+    sys.path.append(root_path)
 
-from modules.vision_reader import read_ticket_image
-from modules.cerebro import obtener_mejor_apuesta
-from modules.ev_engine import build_smart_parlay
-from modules.results_tracker import save_parlay, get_history
+# 2. Importaciones de Módulos
+try:
+    from modules.vision_reader import read_ticket_image
+    from modules.cerebro import obtener_mejor_apuesta
+    from modules.ev_engine import build_smart_parlay
+    from modules.results_tracker import save_parlay, get_history
+except ImportError as e:
+    st.error(f"❌ Error de configuración: {e}")
+    st.info("Asegúrate de que la carpeta 'modules' contenga un archivo '__init__.py' vacío.")
+    st.stop()
 
-st.set_page_config(page_title="BETTING AI EV+ PRO", layout="wide")
+# 3. Configuración de Página
+st.set_page_config(
+    page_title="BETTING AI EV+ PRO", 
+    page_icon="🧠",
+    layout="wide"
+)
+
+# Estilo CSS personalizado para métricas
+st.markdown("""
+    <style>
+    [data-testid="stMetricValue"] { font-size: 24px; color: #00ff00; }
+    .stButton button { width: 100%; border-radius: 10px; }
+    </style>
+    """, unsafe_allow_html=True)
 
 st.title("🧠 BETTING AI — Sharp Money Detector")
+st.caption("Análisis estadístico mediante Simulación Monte Carlo y OCR de Google Vision")
 
 tab_analisis, tab_historial = st.tabs(["📊 Análisis de Imagen", "📜 Historial de Parlays"])
 
 with tab_analisis:
-    uploaded = st.file_uploader("Sube los momios de Caliente", type=["png", "jpg", "jpeg"])
+    uploaded = st.file_uploader("Sube la captura de pantalla (Caliente, Bet365, etc.)", type=["png", "jpg", "jpeg"])
 
     if uploaded:
-        # Limpiar cualquier estado previo (por si Streamlit cachea)
+        # Gestión de Estado de Sesión
         if 'last_uploaded' in st.session_state and st.session_state.last_uploaded != uploaded.name:
             st.session_state.clear()
-
         st.session_state.last_uploaded = uploaded.name
 
-        with st.status("Analizando momios...", expanded=True) as status:
+        with st.status("Analizando momios con AI Vision...", expanded=True) as status:
+            # Llamada al módulo de OCR
             games_data = read_ticket_image(uploaded)
             
             if not games_data:
-                st.error("No se detectaron partidos en la imagen.")
+                st.error("No se detectaron bloques de apuestas válidos en la imagen.")
                 status.update(label="Error en OCR", state="error")
                 st.stop()
                 
             results = []
             for partido in games_data:
-                # Rescate agresivo de nombres del context
-                context = partido.get("context", "").strip()
-                if context:
-                    parts = context.split()
-                    if len(parts) > 1:
-                        # Primeras palabras como local
-                        partido["home"] = " ".join(parts[:2]) if len(parts) > 3 else parts[0]
-                        # Última palabra como visitante si no hay
-                        if "vs Visitante" in partido.get("away", "") or not partido.get("away"):
-                            partido["away"] = parts[-1] if parts else "Equipo Visitante"
+                # --- Rescate de nombres (Lógica de Limpieza) ---
+                # Si el OCR falló en separar Local/Visita, usamos el 'context'
+                if "vs" in partido.get("home", "") or not partido.get("away") or "Visitante" in partido.get("away", ""):
+                    context = partido.get("context", "").replace(" vs ", " ").split()
+                    if len(context) >= 2:
+                        partido["home"] = context[0]
+                        partido["away"] = context[-1]
                 
-                # Fallback final
-                partido["home"] = partido.get("home", "Equipo Local")
-                partido["away"] = partido.get("away", "Equipo Visitante")
-                
+                # --- Procesamiento en Cerebro (Simulaciones) ---
                 mejor_pick = obtener_mejor_apuesta(partido)
                 if mejor_pick:
                     results.append({"pick": mejor_pick})
             
-            status.update(label="Análisis completado", state="complete")
+            status.update(label="Análisis y Simulación completados", state="complete")
 
+        # --- Visualización de Resultados ---
         if results:
             lista_picks = [res["pick"] for res in results]
+            
+            # Construcción del Parlay Sugerido
             parlay = build_smart_parlay(lista_picks)
 
             if parlay:
-                st.subheader("🚀 SUGERENCIA DE INVERSIÓN (PARLAY)")
+                st.subheader("🚀 SUGERENCIA DE INVERSIÓN (PARLAY EV+)")
                 with st.container(border=True):
-                    st.write("### 📝 Combinada recomendada:")
-                    for m in parlay.get("matches", []):
-                        st.write(f"✅ {m}")
+                    c1, c2 = st.columns([2, 1])
+                    
+                    with c1:
+                        st.write("### 📝 Selecciones recomendadas:")
+                        for m in parlay.get("matches", []):
+                            st.write(f"✅ **{m}**")
+                    
+                    with c2:
+                        st.write("### 📈 Análisis de Valor")
+                        st.metric("Cuota Final", f"{parlay.get('total_odd', 1.0):.2f}x")
+                        st.metric("Probabilidad Combinada", f"{round(parlay.get('combined_prob', 0) * 100, 1)}%")
+                        st.metric("Ventaja (EV Total)", f"+{round(parlay.get('total_ev', 0) * 100, 2)}%")
                     
                     st.divider()
                     
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Cuota Final", f"{parlay.get('total_odd', 1.0)}x")
-                    c2.metric("Probabilidad estimada", f"{round(parlay.get('combined_prob', 0) * 100, 1)}%")
-                    c3.metric("Ventaja (EV)", f"{round(parlay.get('total_ev', 0), 2)}")
-                    
-                    monto = st.number_input("Cantidad a apostar ($)", min_value=10.0, value=100.0, step=10.0)
+                    monto = st.number_input("Cantidad a invertir ($)", min_value=10.0, value=100.0, step=10.0)
                     ganancia = monto * parlay.get("total_odd", 1.0)
-                    st.success(f"💰 Ganancia potencial: ${round(ganancia, 2)}")
+                    st.success(f"💰 Retorno potencial: ${round(ganancia, 2)}")
                     
-                    if st.button("📥 Registrar esta apuesta", use_container_width=True):
+                    if st.button("📥 Registrar Apuesta en Historial", use_container_width=True):
                         save_parlay({
                             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                             "matches": parlay.get("matches", []),
@@ -89,31 +112,37 @@ with tab_analisis:
                             "ganancia_potencial": round(ganancia, 2)
                         })
                         st.balloons()
-                        st.toast("Apuesta registrada.")
+                        st.toast("Parlay guardado correctamente.")
             else:
-                st.info("No hay picks con EV positivo suficiente para armar parlay.")
+                st.info("La IA no encontró suficiente ventaja estadística para armar un Parlay hoy.")
 
-            st.divider()
-            with st.expander("🔍 Desglose individual de picks", expanded=False):
+            # --- Desglose Individual ---
+            with st.expander("🔍 Ver desglose de picks individuales (EV por mercado)", expanded=False):
                 for res in results:
                     r = res["pick"]
                     col_a, col_b = st.columns([3, 1])
-                    col_a.write(f"**{r.get('match', 'Desconocido')}** → {r.get('selection', '?')}")
-                    col_b.write(f"EV: {round(r.get('ev', 0) * 100, 1)}% | Momio: {r.get('odd', '?')}")
+                    with col_a:
+                        st.write(f"**{r.get('match')}**")
+                        st.caption(f"Mercado: {r.get('selection')}")
+                    with col_b:
+                        ev_val = r.get('ev', 0) * 100
+                        st.write(f"**EV: {ev_val:.1f}%**")
+                        st.write(f"Momio: {r.get('odd')}")
+                    st.divider()
         else:
-            st.warning("Ningún pick con ventaja estadística (EV+).")
+            st.warning("No se encontraron apuestas con Valor Esperado Positivo (EV+).")
 
 with tab_historial:
-    st.subheader("📋 Registro de Apuestas")
+    st.subheader("📋 Registro Histórico")
     historial = get_history()
     
     if not historial:
-        st.info("Aún no hay parlays registrados.")
-
+        st.info("No hay registros de apuestas previas.")
     else:
+        # Invertir para ver el más reciente primero
         for entry in reversed(historial):
-            with st.expander(f"📅 {entry['fecha']} | Cuota: {entry['cuota']}x"):
-                st.write("**Selecciones:**")
+            with st.expander(f"📅 {entry['fecha']} | Inversión: ${entry['monto']} | {entry['cuota']}x"):
+                st.write("**Partidos:**")
                 for m in entry.get('matches', []):
                     st.write(f"- {m}")
-                st.write(f"**Inversión:** ${entry.get('monto', 0)} | **Premio potencial:** ${entry.get('ganancia_potencial', 0)}")
+                st.write(f"**Resultado potencial:** ${entry.get('ganancia_potencial', 0)}")
