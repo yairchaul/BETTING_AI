@@ -35,64 +35,66 @@ def obtener_mejor_apuesta(partido):
     away = partido.get("away", "Visitante")
     stats = get_team_stats(home, away)
     probs = run_simulations(stats)
-    
+
+    # 1. Intentar odds de API
     odds_from_api = fetch_odds(home, away)
-    
-    if odds_from_api and isinstance(odds_from_api, dict):
+
+    # 2. Decidir qué odds usar (API o fallback imagen)
+    if isinstance(odds_from_api, dict) and odds_from_api:
         odds = odds_from_api
     else:
-        all_odds_raw = partido.get("all_odds", [])
         odds = {}
+        all_odds_raw = partido.get("all_odds", [])
         if isinstance(all_odds_raw, list) and len(all_odds_raw) >= 3:
             try:
-                # Limpieza agresiva
-                cleaned_odds = []
+                cleaned = []
                 for o in all_odds_raw[:3]:
-                    cleaned = str(o).strip().replace(' ', '')
-                    if cleaned.startswith(('+', '-')) or cleaned.isdigit():
-                        cleaned_odds.append(float(cleaned))
+                    cleaned_str = str(o).strip().replace(' ', '')
+                    if cleaned_str:
+                        # Convertir con manejo de + y -
+                        if cleaned_str.startswith('+'):
+                            cleaned.append(float(cleaned_str))
+                        elif cleaned_str.startswith('-'):
+                            cleaned.append(float(cleaned_str))
+                        else:
+                            cleaned.append(float(cleaned_str))
                     else:
-                        cleaned_odds.append(0.0)
-                
-                if all(x != 0.0 for x in cleaned_odds):
-                    odds["Resultado Final (Local)"] = cleaned_odds[0]
-                    odds["Resultado Final (Empate)"] = cleaned_odds[1]
-                    odds["Resultado Final (Visitante)"] = cleaned_odds[2]
-            except Exception as e:
-                st.warning(f"Error convirtiendo momios: {all_odds_raw} → {str(e)}")
-        else:
-            st.info(f"No hay momios válidos para {home} vs {away}")
+                        cleaned.append(0.0)
+                if all(c != 0.0 for c in cleaned):
+                    odds["Resultado Final (Local)"] = cleaned[0]
+                    odds["Resultado Final (Empate)"] = cleaned[1]
+                    odds["Resultado Final (Visitante)"] = cleaned[2]
+            except Exception as conv_err:
+                st.warning(f"Conversión de momios fallida: {all_odds_raw} → {str(conv_err)}")
 
+    # 3. Calcular EV solo si hay odds válidos
     mejores = []
     for mercado, prob in probs.items():
-        odd_raw = odds.get(mercado, 0)
-        if odd_raw == 0:
+        odd_raw = odds.get(mercado)
+        if odd_raw is None or odd_raw == 0:
             continue
-        
+
         try:
             odd = float(odd_raw)
         except (ValueError, TypeError):
             continue
-        
-        if odd == 0:
-            continue
-        
+
         decimal = (odd / 100 + 1) if odd > 0 else (100 / abs(odd) + 1) if odd < 0 else 0
         if decimal <= 1:
             continue
-        
+
         ev = (prob * decimal) - 1
         if ev > 0.05:
             mejores.append({"mercado": mercado, "prob": prob, "odd": odd, "ev": ev})
 
     if mejores:
         mejor = max(mejores, key=lambda x: x["ev"])
-        return PickResult(
-            match=f"{home} vs {away}",
-            selection=mejor["mercado"],
-            odd=mejor["odd"],
-            probability=mejor["prob"],
-            ev=mejor["ev"]
-        )
+        return {
+            "match": f"{home} vs {away}",
+            "selection": mejor["mercado"],
+            "odd": mejor["odd"],
+            "probability": mejor["prob"],
+            "ev": mejor["ev"]
+        }
     
     return None
