@@ -31,6 +31,11 @@ with tab_analisis:
                 
             results = []
             for partido in games_data:
+                # Fallback si home o away vacíos
+                if not partido.get("home"):
+                    partido["home"] = "Local Desconocido"
+                if not partido.get("away"):
+                    partido["away"] = "Visitante Desconocido"
                 mejor_pick = obtener_mejor_apuesta(partido)
                 if mejor_pick:
                     results.append({"pick": mejor_pick})
@@ -38,7 +43,6 @@ with tab_analisis:
             status.update(label="Análisis finalizado con éxito", state="complete")
 
         if results:
-            # --- BLOQUE UNIFICADO DE PARLAY (Sugerencia Principal) ---
             lista_picks = [res["pick"] for res in results]
             parlay = build_smart_parlay(lista_picks)
 
@@ -61,7 +65,6 @@ with tab_analisis:
                     st.success(f"💰 **Ganancia Potencial: ${round(ganancia, 2)}**")
                     
                     if st.button("📥 Registrar Apuesta en Historial", use_container_width=True):
-                        # Guardar en results_tracker.py
                         save_parlay({
                             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                             "matches": parlay.matches,
@@ -72,7 +75,6 @@ with tab_analisis:
                         st.balloons()
                         st.toast("Parlay guardado en el historial.")
 
-            # --- DETALLES TÉCNICOS ---
             st.divider()
             with st.expander("🔍 Ver Desglose y Auditoría Individual"):
                 for res in results:
@@ -89,6 +91,7 @@ with tab_historial:
     
     if not historial:
         st.info("Aún no hay parlays registrados.")
+
     else:
         for entry in reversed(historial): # Mostrar más recientes primero
             with st.expander(f"📅 {entry['fecha']} | Cuota: {entry['cuota']}x"):
