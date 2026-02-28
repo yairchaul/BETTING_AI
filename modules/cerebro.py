@@ -5,18 +5,18 @@ import unicodedata
 
 SIMULATIONS = 20000
 
-def buscar_posibles_equipos(nombre_query):
-    """Busca en la API y devuelve una lista de candidatos (nombre e ID)."""
+def buscar_equipos_v2(nombre_query):
+    """Motor de búsqueda elástico que emula la flexibilidad de Google."""
     try:
         if len(nombre_query) < 3: return []
-        
         api_key = st.secrets["football_api_key"]
         headers = {'x-apisports-key': api_key}
         
-        # Limpieza básica para la búsqueda
+        # Normalización para ignorar acentos y mayúsculas
         query = unicodedata.normalize('NFD', nombre_query)
         query = "".join([c for c in query if unicodedata.category(c) != 'Mn']).lower()
         
+        # Intentar búsqueda general
         url = f"https://v3.football.api-sports.io/teams?search={query}"
         response = requests.get(url, headers=headers).json()
         
@@ -33,37 +33,52 @@ def buscar_posibles_equipos(nombre_query):
     except Exception:
         return []
 
-def obtener_forma_reciente(team_id):
-    """Extrae potencia de ataque y defensa real de los últimos 5 partidos."""
+def extraer_stats_avanzadas(team_id):
+    """Extrae métricas de rendimiento (ataque/defensa) basadas en los últimos juegos."""
     try:
         api_key = st.secrets["football_api_key"]
-        url = f"https://v3.football.api-sports.io/fixtures?team={team_id}&last=5"
         headers = {'x-apisports-key': api_key}
+        # Obtenemos los últimos 10 partidos para mayor precisión estadística
+        url = f"https://v3.football.api-sports.io/fixtures?team={team_id}&last=10"
         response = requests.get(url, headers=headers).json()
         
-        g_hechos, g_recibidos = [], []
+        goles_favor = []
+        goles_contra = []
+        
         for game in response.get('response', []):
-            es_local = game['teams']['home']['id'] == team_id
-            g_hechos.append(game['goals']['home'] if es_local else game['goals']['away'])
-            g_recibidos.append(game['goals']['away'] if es_local else game['goals']['home'])
+            is_home = game['teams']['home']['id'] == team_id
+            goles_favor.append(game['goals']['home'] if is_home else game['goals']['away'])
+            goles_contra.append(game['goals']['away'] if is_home else game['goals']['home'])
             
-        ataque = min(100, (sum(g_hechos or [0]) / 7.5) * 50 + 20)
-        defensa = min(100, 100 - (sum(g_recibidos or [0]) / 5) * 40)
-        return {"attack": ataque, "defense": defensa}
+        # Cálculo de potencia relativa (Similar a los algoritmos de predicción de Google)
+        avg_favor = sum(goles_favor) / len(goles_favor) if goles_favor else 1.0
+        avg_contra = sum(goles_contra) / len(goles_contra) if goles_contra else 1.2
+        
+        return {"attack_power": avg_favor, "defense_weakness": avg_contra}
     except:
-        return {"attack": 50, "defense": 50}
+        return {"attack_power": 1.1, "defense_weakness": 1.1}
 
-def obtener_mejor_apuesta(stats_h, stats_a):
-    """Simulación Poisson para encontrar probabilidad real."""
-    lam_h = 1.35 * (stats_h["attack"]/50) * (50/stats_a["defense"])
-    lam_a = 1.10 * (stats_a["attack"]/50) * (50/stats_h["defense"])
+def simular_probabilidades(stats_h, stats_a):
+    """Simulación de Monte Carlo con Distribución de Poisson."""
+    # Factor de ventaja de localía (10% extra para el local)
+    home_exp = stats_h["attack_power"] * stats_a["defense_weakness"] * 1.1
+    away_exp = stats_a["attack_power"] * stats_h["defense_weakness"]
     
-    h_g = np.random.poisson(lam_h, SIMULATIONS)
-    a_g = np.random.poisson(lam_a, SIMULATIONS)
+    # Generamos 20,000 resultados posibles del partido
+    home_goals = np.random.poisson(home_exp, SIMULATIONS)
+    away_goals = np.random.poisson(away_exp, SIMULATIONS)
     
-    prob_1x = np.mean(h_g >= a_g)
+    # Calculamos probabilidades
+    prob_h = np.mean(home_goals > away_goals)
+    prob_draw = np.mean(home_goals == away_goals)
+    prob_a = np.mean(away_goals > home_goals)
+    
+    # Probabilidad de Doble Oportunidad (1X)
+    prob_1x = prob_h + prob_draw
     
     return {
-        "selection": "Local o Empate (1X)",
-        "probability": prob_1x
+        "local": prob_h,
+        "empate": prob_draw,
+        "visitante": prob_a,
+        "doble_oportunidad": prob_1x
     }
