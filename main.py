@@ -4,7 +4,6 @@ from modules.cerebro import validar_y_obtener_stats, obtener_forma_reciente, obt
 
 st.set_page_config(page_title="Analizador de Apuestas Pro", layout="wide")
 
-# Estilos visuales
 st.markdown("""
     <style>
     .card { background-color: #0d1117; padding: 15px; border-radius: 12px; border: 1px solid #30363d; margin-bottom: 10px; }
@@ -14,7 +13,6 @@ st.markdown("""
 
 st.title("🎯 Analizador de Apuestas Inteligente")
 
-# --- Sección de Entrada ---
 tab_manual, tab_img = st.tabs(["📝 Entrada Manual", "📸 Cargar Imagen"])
 
 with tab_manual:
@@ -23,18 +21,16 @@ with tab_manual:
 with tab_img:
     file = st.file_uploader("Sube tu captura de pantalla", type=['png', 'jpg', 'jpeg'])
 
-# Obtener datos brutos
 raw_games = []
 if input_text:
     raw_games = procesar_texto_manual(input_text)
 elif file:
     raw_games = read_ticket_image(file)
 
-# --- Procesamiento y Resultados ---
 if raw_games:
     st.subheader("📋 Resultados del Análisis")
     for g in raw_games:
-        with st.spinner(f"Buscando datos para {g['home']} vs {g['away']}..."):
+        with st.spinner(f"Analizando {g['home']} vs {g['away']}..."):
             res_h = validar_y_obtener_stats(g['home'])
             res_a = validar_y_obtener_stats(g['away'])
             
@@ -58,12 +54,4 @@ if raw_games:
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                st.error(f"❌ No se encontró coincidencia exacta para: **{g['home']}** o **{g['away']}**. Revisa la ortografía o usa el nombre de la ciudad.")
-
-
-### ¿Por qué esto sí va a funcionar?
-1.  **Detección de "PSG":** Al escribirlo, el diccionario de alias lo cambiará a "Paris Saint Germain" antes de preguntar a la API.
-2.  **Detección de "Philadelphia Union II":** El limpiador de ruido quitará el "II", dejando solo "Philadelphia Union", lo que permitirá a la API encontrarlo de inmediato.
-3.  **Detección de "Cambaceres":** Aunque lo escribas con errores, el buscador de Nivel 2 tomará la palabra más larga ("Cambaceres") y forzará la búsqueda global.
-
-¿Te gustaría que añadiera un botón de **"Ver Próximos Partidos"** para que el sistema te sugiera apuestas automáticamente sin que tengas que pegar nada?
+                st.error(f"❌ No se encontró coincidencia para: **{g['home']}** o **{g['away']}**.")
