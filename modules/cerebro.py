@@ -27,47 +27,72 @@ def run_simulations(stats):
         "Ambos Equipos Anotan": np.mean((goals_home > 0) & (goals_away > 0)),
         "Total Goles Over 2.5": np.mean(total_goals > 2.5),
         "1ra Mitad Total Over 1.5": np.mean(h1_goals > 1.5),
-        # Añade más mercados como "Resultado Final + Over 1.5": np.mean((goals_home > goals_away) & (total_goals > 1.5))
     }
     return probs
 
 def obtener_mejor_apuesta(partido):
-    stats = get_team_stats(partido.get("home", "Local"), partido.get("away", "Visitante"))
+    home = partido.get("home", "Local")
+    away = partido.get("away", "Visitante")
+    stats = get_team_stats(home, away)
     probs = run_simulations(stats)
     
-    odds_from_api = fetch_odds(partido.get("home", "Local"), partido.get("away", "Visitante"))
+    odds_from_api = fetch_odds(home, away)
     
     if odds_from_api and isinstance(odds_from_api, dict):
         odds = odds_from_api
     else:
-        all_odds = partido.get("all_odds", [])
+        all_odds_raw = partido.get("all_odds", [])
         odds = {}
-        if len(all_odds) >= 3:
+        if isinstance(all_odds_raw, list) and len(all_odds_raw) >= 3:
             try:
-                odds["Resultado Final (Local)"] = float(all_odds[0])
-                odds["Resultado Final (Empate)"] = float(all_odds[1])
-                odds["Resultado Final (Visitante)"] = float(all_odds[2])
-            except ValueError:
-                st.warning(f"Momios no numéricos en fila: {all_odds}")
-                odds = {}
+                # Limpieza agresiva
+                cleaned_odds = []
+                for o in all_odds_raw[:3]:
+                    cleaned = str(o).strip().replace(' ', '')
+                    if cleaned.startswith(('+', '-')) or cleaned.isdigit():
+                        cleaned_odds.append(float(cleaned))
+                    else:
+                        cleaned_odds.append(0.0)
+                
+                if all(x != 0.0 for x in cleaned_odds):
+                    odds["Resultado Final (Local)"] = cleaned_odds[0]
+                    odds["Resultado Final (Empate)"] = cleaned_odds[1]
+                    odds["Resultado Final (Visitante)"] = cleaned_odds[2]
+            except Exception as e:
+                st.warning(f"Error convirtiendo momios: {all_odds_raw} → {str(e)}")
         else:
-            st.warning(f"Solo {len(all_odds)} momios detectados para {partido.get('home', 'Desconocido')} vs {partido.get('away', 'Desconocido')}")
+            st.info(f"No hay momios válidos para {home} vs {away}")
 
     mejores = []
     for mercado, prob in probs.items():
-        odd = odds.get(mercado, 0)
+        odd_raw = odds.get(mercado, 0)
+        if odd_raw == 0:
+            continue
+        
+        try:
+            odd = float(odd_raw)
+        except (ValueError, TypeError):
+            continue
+        
         if odd == 0:
             continue
-        try:
-            odd = float(odd)
-        except ValueError:
+        
+        decimal = (odd / 100 + 1) if odd > 0 else (100 / abs(odd) + 1) if odd < 0 else 0
+        if decimal <= 1:
             continue
-        decimal = (odd / 100 + 1) if odd > 0 else (100 / abs(odd) + 1)
+        
         ev = (prob * decimal) - 1
         if ev > 0.05:
             mejores.append({"mercado": mercado, "prob": prob, "odd": odd, "ev": ev})
 
     if mejores:
         mejor = max(mejores, key=lambda x: x["ev"])
-        return PickResult(match=f"{partido.get('home', 'Local')} vs {partido.get('away', 'Visitante')}", selection=mejor["mercado"], odd=mejor["odd"], probability=mejor["prob"], ev=mejor["ev"])
+        return PickResult(
+            match=f"{home} vs {away}",
+            selection=mejor["mercado"],
+            odd=mejor["odd"],
+            probability=mejor["prob"],
+            ev=mejor["ev"]
+        )
+    
     return None
