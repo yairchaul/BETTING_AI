@@ -96,3 +96,4 @@ def obtener_mejor_apuesta(partido, stats_h, stats_a):
         "probability": mejor["prob"],
         "ev": (mejor["prob"] * 1.9) - 1 # Simplificado
     }
+    
