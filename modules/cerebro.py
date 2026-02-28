@@ -7,7 +7,6 @@ SIMULATIONS = 20000
 
 def normalizar_y_limpiar(texto):
     """Elimina acentos, ruidos de ligas y términos comunes de apuestas."""
-    # Quitar acentos
     texto = unicodedata.normalize('NFD', texto)
     texto = "".join([c for c in texto if unicodedata.category(c) != 'Mn'])
     texto = texto.lower()
@@ -25,7 +24,6 @@ def validar_y_obtener_stats(nombre_equipo):
         api_key = st.secrets["football_api_key"]
         headers = {'x-apisports-key': api_key}
         
-        # Diccionario de Alias (Equipos que siempre dan problemas)
         alias_comunes = {
             "psg": "Paris Saint Germain",
             "philadelphia union": "Philadelphia Union",
@@ -39,17 +37,16 @@ def validar_y_obtener_stats(nombre_equipo):
 
         nombre_buscar = normalizar_y_limpiar(nombre_equipo)
         
-        # Verificar si está en el mapa de alias
         for clave, valor in alias_comunes.items():
             if clave in nombre_buscar:
                 nombre_buscar = valor
                 break
 
-        # Intento 1: Búsqueda con el nombre procesado
+        # Intento 1: Búsqueda directa
         url = f"https://v3.football.api-sports.io/teams?search={nombre_buscar}"
         response = requests.get(url, headers=headers).json()
 
-        # Intento 2: Si falla, buscar solo la palabra más larga y distintiva
+        # Intento 2: Búsqueda por palabra clave principal
         if response.get('results', 0) == 0:
             palabras = nombre_buscar.split()
             if palabras:
@@ -71,7 +68,7 @@ def validar_y_obtener_stats(nombre_equipo):
         return {"valido": False}
 
 def obtener_forma_reciente(team_id):
-    """Extrae la potencia de ataque y defensa real de los últimos 5 partidos."""
+    """Extrae potencia de ataque y defensa real de los últimos 5 partidos."""
     try:
         api_key = st.secrets["football_api_key"]
         url = f"https://v3.football.api-sports.io/fixtures?team={team_id}&last=5"
@@ -84,7 +81,6 @@ def obtener_forma_reciente(team_id):
             g_hechos.append(game['goals']['home'] if es_local else game['goals']['away'])
             g_recibidos.append(game['goals']['away'] if es_local else game['goals']['home'])
             
-        # Normalización de fuerza (0-100)
         ataque = min(100, (sum(g_hechos or [0]) / 7.5) * 50 + 20)
         defensa = min(100, 100 - (sum(g_recibidos or [0]) / 5) * 40)
         return {"attack": ataque, "defense": defensa}
@@ -92,7 +88,7 @@ def obtener_forma_reciente(team_id):
         return {"attack": 50, "defense": 50}
 
 def obtener_mejor_apuesta(partido, stats_h, stats_a):
-    """Simulación de Monte Carlo para encontrar el mercado más probable."""
+    """Simulación Poisson para encontrar probabilidad real."""
     lam_h = 1.35 * (stats_h["attack"]/50) * (50/stats_a["defense"])
     lam_a = 1.10 * (stats_a["attack"]/50) * (50/stats_h["defense"])
     
