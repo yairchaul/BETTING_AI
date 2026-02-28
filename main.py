@@ -3,7 +3,6 @@ import os
 import sys
 from datetime import datetime
 
-# Inyectar path de modules
 sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
 
 from modules.vision_reader import read_ticket_image
@@ -25,23 +24,27 @@ with tab_analisis:
             games_data = read_ticket_image(uploaded)
             
             if not games_data:
-                st.error("No se detectaron partidos en la imagen.")
+                st.error("No se detectaron partidos.")
                 status.update(label="Error en OCR", state="error")
                 st.stop()
                 
             results = []
             for partido in games_data:
-                # Rescatar nombres si están vacíos o genéricos
-                if not partido.get("home") or partido["home"] in ["Local", "Local Desconocido"]:
-                    context = partido.get("context", "")
-                    words = context.split()
-                    if words and len(words) > 1:
-                        partido["home"] = " ".join(words[:-1])  # todo menos última palabra (quizá visitante)
-                    else:
-                        partido["home"] = "Equipo Local"
-
-                if not partido.get("away") or partido["away"] in ["Visitante", "Desconocido"]:
-                    partido["away"] = partido.get("context", "").split()[-1] or "Equipo Visitante"
+                # Rescate agresivo de nombres
+                context = partido.get("context", "").strip()
+                if context:
+                    parts = context.split()
+                    if len(parts) > 1:
+                        # Primera palabra o primeras dos como local
+                        partido["home"] = " ".join(parts[:2]) if len(parts) > 2 else parts[0]
+                        # Última palabra como visitante si no hay
+                        if "vs Visitante" in partido.get("away", ""):
+                            partido["away"] = parts[-1]
+                
+                if not partido.get("home"):
+                    partido["home"] = "Equipo Local"
+                if not partido.get("away"):
+                    partido["away"] = "Equipo Visitante"
                 
                 mejor_pick = obtener_mejor_apuesta(partido)
                 if mejor_pick:
@@ -50,60 +53,56 @@ with tab_analisis:
             status.update(label="Análisis completado", state="complete")
 
         if results:
-            lista_picks = [res["pick"] for res in results]
+            lista_picks = [res["pick"] for res in results if res.get("pick")]
             parlay = build_smart_parlay(lista_picks)
 
             if parlay:
                 st.subheader("🚀 SUGERENCIA DE INVERSIÓN (PARLAY)")
                 with st.container(border=True):
                     st.write("### 📝 Combinada recomendada:")
-                    for m in parlay["matches"]:
+                    for m in parlay.get("matches", []):
                         st.write(f"✅ {m}")
                     
                     st.divider()
                     
                     c1, c2, c3 = st.columns(3)
-                    c1.metric("Cuota Final", f"{parlay['total_odd']}x")
-                    c2.metric("Probabilidad estimada", f"{round(parlay['combined_prob'] * 100, 1)}%")
-                    c3.metric("Ventaja (EV)", f"{round(parlay['total_ev'], 2)}")
+                    c1.metric("Cuota Final", f"{parlay.get('total_odd', 1.0)}x")
+                    c2.metric("Probabilidad estimada", f"{round(parlay.get('combined_prob', 0) * 100, 1)}%")
+                    c3.metric("Ventaja (EV)", f"{round(parlay.get('total_ev', 0), 2)}")
                     
                     monto = st.number_input("Cantidad a apostar ($)", min_value=10.0, value=100.0, step=10.0)
-                    ganancia = monto * parlay["total_odd"]
+                    ganancia = monto * parlay.get("total_odd", 1.0)
                     st.success(f"💰 Ganancia potencial: ${round(ganancia, 2)}")
                     
-                    if st.button("📥 Registrar esta apuesta", use_container_width=True):
+                    if st.button("📥 Registrar apuesta", use_container_width=True):
                         save_parlay({
                             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            "matches": parlay["matches"],
-                            "cuota": parlay["total_odd"],
+                            "matches": parlay.get("matches", []),
+                            "cuota": parlay.get("total_odd", 1.0),
                             "monto": monto,
                             "ganancia_potencial": round(ganancia, 2)
                         })
                         st.balloons()
-                        st.toast("Apuesta registrada.")
+                        st.toast("Registrada.")
             else:
-                st.info("No hay picks con EV positivo suficiente para armar parlay.")
+                st.info("No hay picks con EV positivo para parlay.")
 
             st.divider()
-            with st.expander("🔍 Desglose individual de picks", expanded=False):
+            with st.expander("🔍 Picks individuales"):
                 for res in results:
                     r = res["pick"]
-                    col_a, col_b = st.columns([3, 1])
-                    col_a.write(f"**{r['match']}** → {r['selection']}")
-                    col_b.write(f"EV: {round(r['ev'] * 100, 1)}% | Momio: {r['odd']}")
+                    st.write(f"**{r.get('match', 'Desconocido')}** → {r.get('selection', '?')} | EV: {round(r.get('ev', 0) * 100, 1)}% | Momio: {r.get('odd', '?')}")
         else:
-            st.warning("No se encontraron picks con ventaja estadística (EV+). Prueba otra imagen o ajusta el umbral.")
+            st.warning("Ningún pick con ventaja estadística.")
 
 with tab_historial:
-    st.subheader("📋 Historial de Apuestas")
+    st.subheader("📋 Historial")
     historial = get_history()
-    
     if not historial:
-        st.info("Aún no hay apuestas registradas.")
+        st.info("Sin apuestas aún.")
     else:
         for entry in reversed(historial):
-            with st.expander(f"📅 {entry['fecha']} | Cuota: {entry['cuota']}x"):
-                st.write("**Selecciones:**")
-                for m in entry['matches']:
+            with st.expander(f"{entry['fecha']} | {entry['cuota']}x"):
+                for m in entry.get('matches', []):
                     st.write(f"- {m}")
-                st.write(f"**Apostado:** ${entry['monto']} | **Posible ganancia:** ${entry['ganancia_potencial']}")
+                st.write(f"Apostado: ${entry['monto']} | Posible: ${entry['ganancia_potencial']}")
