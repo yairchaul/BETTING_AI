@@ -26,51 +26,51 @@ class ProAnalyzerUltimate:
             }
         }
         
-        # BASE DE DATOS COMPLETA DE LIGAS (TODAS LAS QUE MENCIONASTE)
+        # BASE DE DATOS COMPLETA DE LIGAS
         self.leagues_db = self._build_complete_leagues_database()
         
-        # Reglas de inferencia profesional (universales)
+        # Reglas de inferencia profesional
         self.rules = self._build_universal_rules()
     
     def _build_complete_leagues_database(self):
         """Base de datos completa con TODAS las ligas del mundo"""
         return {
             # ============================================================================
-            # MÉXICO Y CENTROAMÉRICA
+            # MEXICO Y CENTROAMERICA
             # ============================================================================
             'Mexico Liga MX': {
-                'pais': 'México',
+                'pais': 'Mexico',
                 'nivel': 'ALTO',
                 'goles_promedio': 2.7,
                 'local_ventaja': 58,
                 'btts_pct': 54,
                 'tarjetas_promedio': 5.2,
-                'top_equipos': ['América', 'Chivas', 'Tigres', 'Monterrey', 'Cruz Azul', 'Pumas', 'Santos', 'Pachuca', 'Toluca', 'Leon'],
+                'top_equipos': ['America', 'Chivas', 'Tigres', 'Monterrey', 'Cruz Azul', 'Pumas', 'Santos', 'Pachuca', 'Toluca', 'Leon'],
                 'descripcion': 'Liga muy competitiva, local fuerte, partidos abiertos',
                 'under_2_5_prob': 48,
                 'over_2_5_prob': 52,
                 'estilo': 'OFENSIVO'
             },
-            'Mexico Liga de Expansión MX': {
-                'pais': 'México',
+            'Mexico Liga de Expansion MX': {
+                'pais': 'Mexico',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.4,
                 'local_ventaja': 55,
                 'btts_pct': 48,
-                'top_equipos': ['Atlético La Paz', 'Cancún', 'Tepatitlán', 'Venados', 'Correcaminos', 'Alebrijes', 'Cimarrones', 'Dorados', 'Mineros', 'Tapatío'],
-                'descripcion': 'Segunda división mexicana, menos goles que Liga MX',
+                'top_equipos': ['Atletico La Paz', 'Cancun', 'Tepatitlan', 'Venados', 'Correcaminos', 'Alebrijes', 'Cimarrones', 'Dorados', 'Mineros', 'Tapatio'],
+                'descripcion': 'Segunda division mexicana, menos goles que Liga MX',
                 'under_2_5_prob': 55,
                 'over_2_5_prob': 45,
                 'estilo': 'EQUILIBRADO'
             },
             'Mexico Segunda Division': {
-                'pais': 'México',
+                'pais': 'Mexico',
                 'nivel': 'BAJO',
                 'goles_promedio': 2.2,
                 'local_ventaja': 52,
                 'btts_pct': 44,
                 'top_equipos': [],
-                'descripcion': 'Tercera división mexicana, pocos datos, partidos cerrados',
+                'descripcion': 'Tercera division mexicana, pocos datos, partidos cerrados',
                 'under_2_5_prob': 60,
                 'over_2_5_prob': 40,
                 'estilo': 'DEFENSIVO'
@@ -105,7 +105,7 @@ class ProAnalyzerUltimate:
             },
             
             # ============================================================================
-            # BRASIL (COMPLETO)
+            # BRASIL
             # ============================================================================
             'Brazil Serie A': {
                 'pais': 'Brasil',
@@ -126,86 +126,14 @@ class ProAnalyzerUltimate:
                 'local_ventaja': 62,
                 'btts_pct': 44,
                 'top_equipos': ['Sport', 'Ceara', 'Goias', 'Vitoria', 'Guarani', 'Ponte Preta', 'Novorizontino', 'Mirassol', 'Avai', 'Chapecoense'],
-                'descripcion': 'Segunda división brasileña, local muy fuerte',
+                'descripcion': 'Segunda division brasileña, local muy fuerte',
                 'under_2_5_prob': 60,
                 'over_2_5_prob': 40,
                 'estilo': 'LOCALISTA'
-            },
-            'Brazil Copa do Brasil': {
-                'pais': 'Brasil',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 58,
-                'btts_pct': 52,
-                'top_equipos': [],
-                'descripcion': 'Copa brasileña, partidos de eliminación directa',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'ELIMINATORIO'
-            },
-            'Brazil Campeonato Carioca': {
-                'pais': 'Brasil',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 60,
-                'btts_pct': 46,
-                'top_equipos': ['Flamengo', 'Fluminense', 'Vasco', 'Botafogo'],
-                'descripcion': 'Campeonato estatal de Río, clásicos calientes',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'LOCALISTA'
-            },
-            'Brazil Campeonato Gaucho': {
-                'pais': 'Brasil',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.2,
-                'local_ventaja': 62,
-                'btts_pct': 44,
-                'top_equipos': ['Gremio', 'Internacional', 'Juventude'],
-                'descripcion': 'Campeonato estatal de Rio Grande do Sul',
-                'under_2_5_prob': 60,
-                'over_2_5_prob': 40,
-                'estilo': 'LOCALISTA'
-            },
-            'Brazil Campeonato Piauiense': {
-                'pais': 'Brasil',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.0,
-                'local_ventaja': 58,
-                'btts_pct': 40,
-                'top_equipos': ['Altos', 'Parnahyba', 'River-PI'],
-                'descripcion': 'Campeonato estatal de Piauí, nivel bajo',
-                'under_2_5_prob': 65,
-                'over_2_5_prob': 35,
-                'estilo': 'DEFENSIVO'
-            },
-            'Brazil Alagoano Cup': {
-                'pais': 'Brasil',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.1,
-                'local_ventaja': 60,
-                'btts_pct': 42,
-                'top_equipos': ['CRB', 'CSA', 'ASA'],
-                'descripcion': 'Campeonato estatal de Alagoas',
-                'under_2_5_prob': 62,
-                'over_2_5_prob': 38,
-                'estilo': 'DEFENSIVO'
-            },
-            'Brazil U20': {
-                'pais': 'Brasil',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 50,
-                'btts_pct': 60,
-                'top_equipos': [],
-                'descripcion': 'Fútbol juvenil, muchos goles, defensas débiles',
-                'under_2_5_prob': 40,
-                'over_2_5_prob': 60,
-                'estilo': 'OFENSIVO'
             },
             
             # ============================================================================
-            # ARGENTINA (COMPLETO)
+            # ARGENTINA
             # ============================================================================
             'Argentina Liga Profesional': {
                 'pais': 'Argentina',
@@ -227,52 +155,16 @@ class ProAnalyzerUltimate:
                 'local_ventaja': 60,
                 'btts_pct': 40,
                 'top_equipos': ['Nueva Chicago', 'Quilmes', 'San Martin', 'Gimnasia Jujuy', 'Almirante Brown', 'Atlanta', 'Temperley', 'Estudiantes BA', 'Ferro', 'Almagro'],
-                'descripcion': 'Segunda división argentina, muy defensivo',
+                'descripcion': 'Segunda division argentina, muy defensivo',
                 'under_2_5_prob': 70,
                 'over_2_5_prob': 30,
                 'estilo': 'DEFENSIVO'
-            },
-            'Argentina Primera C': {
-                'pais': 'Argentina',
-                'nivel': 'BAJO',
-                'goles_promedio': 1.9,
-                'local_ventaja': 58,
-                'btts_pct': 38,
-                'top_equipos': ['Dock Sud', 'Midland', 'General Lamadrid', 'Lujan', 'Berazategui', 'Central Cordoba'],
-                'descripcion': 'Cuarta división argentina, nivel bajo',
-                'under_2_5_prob': 72,
-                'over_2_5_prob': 28,
-                'estilo': 'DEFENSIVO'
-            },
-            'Argentina Primera B Metropolitana': {
-                'pais': 'Argentina',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.0,
-                'local_ventaja': 59,
-                'btts_pct': 39,
-                'top_equipos': ['Colegiales', 'Acassuso', 'Cañuelas', 'Deportivo Merlo', 'Flandria', 'Los Andes'],
-                'descripcion': 'Tercera división argentina',
-                'under_2_5_prob': 69,
-                'over_2_5_prob': 31,
-                'estilo': 'DEFENSIVO'
-            },
-            'Argentina Primera Division Reserves': {
-                'pais': 'Argentina',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 52,
-                'btts_pct': 50,
-                'top_equipos': [],
-                'descripcion': 'Liga de reserva, juveniles, más goles',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'EQUILIBRADO'
             },
             
             # ============================================================================
             # CHILE
             # ============================================================================
-            'Chile Primera División': {
+            'Chile Primera Division': {
                 'pais': 'Chile',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.5,
@@ -283,18 +175,6 @@ class ProAnalyzerUltimate:
                 'under_2_5_prob': 52,
                 'over_2_5_prob': 48,
                 'estilo': 'EQUILIBRADO'
-            },
-            'Chile Primera B': {
-                'pais': 'Chile',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 55,
-                'btts_pct': 46,
-                'top_equipos': ['Deportes La Serena', 'Deportes Antofagasta', 'Rangers', 'Magallanes', 'San Luis', 'Union San Felipe'],
-                'descripcion': 'Segunda división chilena',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'DEFENSIVO'
             },
             
             # ============================================================================
@@ -312,24 +192,12 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 40,
                 'estilo': 'LOCALISTA'
             },
-            'Colombia Primera B': {
-                'pais': 'Colombia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.1,
-                'local_ventaja': 58,
-                'btts_pct': 42,
-                'top_equipos': ['Real Cartagena', 'Leones', 'Cucuta', 'Bogota', 'Llaneros', 'Orsomarso'],
-                'descripcion': 'Segunda división colombiana',
-                'under_2_5_prob': 65,
-                'over_2_5_prob': 35,
-                'estilo': 'DEFENSIVO'
-            },
             
             # ============================================================================
-            # PERÚ
+            # PERU
             # ============================================================================
-            'Perú Primera División': {
-                'pais': 'Perú',
+            'Peru Primera Division': {
+                'pais': 'Peru',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.4,
                 'local_ventaja': 62,
@@ -360,14 +228,14 @@ class ProAnalyzerUltimate:
             # ============================================================================
             # URUGUAY
             # ============================================================================
-            'Uruguay Primera División': {
+            'Uruguay Primera Division': {
                 'pais': 'Uruguay',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.5,
                 'local_ventaja': 58,
                 'btts_pct': 50,
                 'top_equipos': ['Penarol', 'Nacional', 'Defensor', 'Danubio', 'Liverpool', 'Montevideo Wanderers', 'River Plate', 'Boston River'],
-                'descripcion': 'Liga competitiva, clásicos calientes',
+                'descripcion': 'Liga competitiva, clasicos calientes',
                 'under_2_5_prob': 52,
                 'over_2_5_prob': 48,
                 'estilo': 'EQUILIBRADO'
@@ -376,13 +244,13 @@ class ProAnalyzerUltimate:
             # ============================================================================
             # PARAGUAY
             # ============================================================================
-            'Paraguay Primera División': {
+            'Paraguay Primera Division': {
                 'pais': 'Paraguay',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.3,
                 'local_ventaja': 60,
                 'btts_pct': 46,
-                'top_equipos': ['Olimpia', 'Cerro Porteño', 'Libertad', 'Guarani', 'Nacional', 'Sportivo Luqueño'],
+                'top_equipos': ['Olimpia', 'Cerro Porteno', 'Libertad', 'Guarani', 'Nacional', 'Sportivo Luqueno'],
                 'descripcion': 'Local fuerte, pocos goles',
                 'under_2_5_prob': 60,
                 'over_2_5_prob': 40,
@@ -392,7 +260,7 @@ class ProAnalyzerUltimate:
             # ============================================================================
             # BOLIVIA
             # ============================================================================
-            'Bolivia Primera División': {
+            'Bolivia Primera Division': {
                 'pais': 'Bolivia',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.8,
@@ -406,151 +274,31 @@ class ProAnalyzerUltimate:
             },
             
             # ============================================================================
-            # VENEZUELA
-            # ============================================================================
-            'Venezuela Primera División': {
-                'pais': 'Venezuela',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': ['Caracas', 'Deportivo Tachira', 'Monagas', 'Zamora', 'Portuguesa', 'Academia Puerto Cabello'],
-                'descripcion': 'Liga en desarrollo',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'EQUILIBRADO'
-            },
-            
-            # ============================================================================
-            # COSTA RICA
-            # ============================================================================
-            'Costa Rica Primera División': {
-                'pais': 'Costa Rica',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': ['Saprissa', 'Alajuelense', 'Herediano', 'Cartagines', 'Perez Zeledon', 'Guanacasteca'],
-                'descripcion': 'Liga centroamericana',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'EQUILIBRADO'
-            },
-            'Costa Rica Liga de Ascenso': {
-                'pais': 'Costa Rica',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.2,
-                'local_ventaja': 55,
-                'btts_pct': 44,
-                'top_equipos': [],
-                'descripcion': 'Segunda división costarricense',
-                'under_2_5_prob': 60,
-                'over_2_5_prob': 40,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # GUATEMALA
-            # ============================================================================
-            'Guatemala Liga Nacional': {
-                'pais': 'Guatemala',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 60,
-                'btts_pct': 46,
-                'top_equipos': ['Municipal', 'Comunicaciones', 'Antigua', 'Xelaju', 'Mixco', 'Coban Imperial'],
-                'descripcion': 'Liga guatemalteca',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # HONDURAS
-            # ============================================================================
-            'Honduras Liga Nacional': {
-                'pais': 'Honduras',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': ['Olimpia', 'Motagua', 'Real Espana', 'Marathon', 'Vida', 'Victoria'],
-                'descripcion': 'Liga hondureña',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'EQUILIBRADO'
-            },
-            
-            # ============================================================================
-            # PANAMÁ
-            # ============================================================================
-            'Panama Liga Panamena': {
-                'pais': 'Panamá',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 56,
-                'btts_pct': 46,
-                'top_equipos': ['Plaza Amador', 'Tauro', 'San Francisco', 'Sporting San Miguelito', 'Alianza', 'Costa del Este'],
-                'descripcion': 'Liga panameña',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # JAMAICA
-            # ============================================================================
-            'Jamaica Premier League': {
-                'pais': 'Jamaica',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 55,
-                'btts_pct': 46,
-                'top_equipos': ['Portmore', 'Waterhouse', 'Mount Pleasant', 'Harbour View', 'Tivoli', 'Arnett Gardens'],
-                'descripcion': 'Liga jamaiquina',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # ESPAÑA
+            # ESPANA
             # ============================================================================
             'Spain LaLiga': {
-                'pais': 'España',
+                'pais': 'Espana',
                 'nivel': 'ALTO',
                 'goles_promedio': 2.5,
                 'local_ventaja': 54,
                 'btts_pct': 48,
                 'top_equipos': ['Real Madrid', 'Barcelona', 'Atletico Madrid', 'Real Sociedad', 'Athletic Bilbao', 'Betis', 'Villarreal', 'Sevilla', 'Valencia', 'Girona'],
-                'descripcion': 'Táctica, menos goles que Premier',
+                'descripcion': 'Tactica, menos goles que Premier',
                 'under_2_5_prob': 52,
                 'over_2_5_prob': 48,
                 'estilo': 'TACTICO'
             },
             'Spain Segunda': {
-                'pais': 'España',
+                'pais': 'Espana',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.2,
                 'local_ventaja': 56,
                 'btts_pct': 44,
                 'top_equipos': ['Espanyol', 'Levante', 'Sporting Gijon', 'Zaragoza', 'Oviedo', 'Racing', 'Eibar', 'Eldense', 'Cartagena', 'Albacete'],
-                'descripcion': 'Segunda división española, pocos goles',
+                'descripcion': 'Segunda division española, pocos goles',
                 'under_2_5_prob': 60,
                 'over_2_5_prob': 40,
                 'estilo': 'DEFENSIVO'
-            },
-            'Spain Copa Del Rey': {
-                'pais': 'España',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 52,
-                'btts_pct': 52,
-                'top_equipos': [],
-                'descripcion': 'Copa del Rey, sorpresas posibles',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'ELIMINATORIO'
             },
             
             # ============================================================================
@@ -563,7 +311,7 @@ class ProAnalyzerUltimate:
                 'local_ventaja': 52,
                 'btts_pct': 58,
                 'top_equipos': ['Manchester City', 'Liverpool', 'Arsenal', 'Chelsea', 'Manchester United', 'Tottenham', 'Newcastle', 'Aston Villa', 'West Ham', 'Brighton'],
-                'descripcion': 'Liga más competitiva, cualquiera gana',
+                'descripcion': 'Liga mas competitiva, cualquiera gana',
                 'under_2_5_prob': 42,
                 'over_2_5_prob': 58,
                 'estilo': 'OFENSIVO'
@@ -575,230 +323,10 @@ class ProAnalyzerUltimate:
                 'local_ventaja': 54,
                 'btts_pct': 54,
                 'top_equipos': ['Leeds', 'Leicester', 'Southampton', 'West Brom', 'Norwich', 'Watford', 'Middlesbrough', 'Coventry', 'Hull', 'Sunderland'],
-                'descripcion': 'Segunda inglesa, muy física, muchos goles',
+                'descripcion': 'Segunda inglesa, muy fisica, muchos goles',
                 'under_2_5_prob': 45,
                 'over_2_5_prob': 55,
                 'estilo': 'FISICO'
-            },
-            'England League One': {
-                'pais': 'Inglaterra',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 55,
-                'btts_pct': 52,
-                'top_equipos': ['Derby', 'Bolton', 'Portsmouth', 'Barnsley', 'Charlton', 'Oxford', 'Blackpool', 'Peterborough', 'Wycombe', 'Lincoln'],
-                'descripcion': 'Tercera inglesa, mucha intensidad',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'FISICO'
-            },
-            'England League Two': {
-                'pais': 'Inglaterra',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 56,
-                'btts_pct': 50,
-                'top_equipos': ['Stockport', 'Mansfield', 'Wrexham', 'Notts County', 'Bradford', 'Gillingham', 'Walsall', 'Harrogate', 'Sutton', 'Crewe'],
-                'descripcion': 'Cuarta inglesa',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
-            'England National League': {
-                'pais': 'Inglaterra',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 54,
-                'btts_pct': 52,
-                'top_equipos': ['Chesterfield', 'Barnet', 'Bromley', 'Altrincham', 'Solihull', 'Halifax', 'Gateshead', 'Oldham', 'York', 'Dagenham'],
-                'descripcion': 'Quinta inglesa, fútbol directo',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'FISICO'
-            },
-            'England National League North': {
-                'pais': 'Inglaterra',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 55,
-                'btts_pct': 50,
-                'top_equipos': [],
-                'descripcion': 'Sexta inglesa norte',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
-            'England National League South': {
-                'pais': 'Inglaterra',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 55,
-                'btts_pct': 50,
-                'top_equipos': [],
-                'descripcion': 'Sexta inglesa sur',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
-            'England EFL Cup': {
-                'pais': 'Inglaterra',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 52,
-                'btts_pct': 54,
-                'top_equipos': [],
-                'descripcion': 'Copa de la Liga, equipos rotan',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'COPA'
-            },
-            'England FA Cup': {
-                'pais': 'Inglaterra',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 52,
-                'btts_pct': 56,
-                'top_equipos': [],
-                'descripcion': 'FA Cup, sorpresas frecuentes',
-                'under_2_5_prob': 44,
-                'over_2_5_prob': 56,
-                'estilo': 'COPA'
-            },
-            'England EFL Trophy': {
-                'pais': 'Inglaterra',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 53,
-                'btts_pct': 52,
-                'top_equipos': [],
-                'descripcion': 'Trofeo EFL, equipos de League One y Two',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'COPA'
-            },
-            'England Southern League Division One Central': {
-                'pais': 'Inglaterra',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 54,
-                'btts_pct': 50,
-                'top_equipos': [],
-                'descripcion': 'Liga regional inglesa',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
-            
-            # ============================================================================
-            # ESCOCIA
-            # ============================================================================
-            'Scotland Premiership': {
-                'pais': 'Escocia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 56,
-                'btts_pct': 56,
-                'top_equipos': ['Celtic', 'Rangers', 'Aberdeen', 'Hearts', 'Hibs', 'Kilmarnock', 'St Mirren', 'Motherwell', 'Dundee', 'Ross County'],
-                'descripcion': 'Dominio de Celtic y Rangers',
-                'under_2_5_prob': 44,
-                'over_2_5_prob': 56,
-                'estilo': 'OFENSIVO'
-            },
-            'Scotland Championship': {
-                'pais': 'Escocia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 54,
-                'btts_pct': 52,
-                'top_equipos': ['Dundee United', 'Partick', 'Ayr', 'Raith', 'Inverness', 'Queen Park', 'Arbroath', 'Dunfermline', 'Morton', 'Airdrie'],
-                'descripcion': 'Segunda escocesa',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'EQUILIBRADO'
-            },
-            'Scotland FA Cup': {
-                'pais': 'Escocia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 54,
-                'btts_pct': 54,
-                'top_equipos': [],
-                'descripcion': 'Copa escocesa',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # IRLANDA
-            # ============================================================================
-            'Ireland Premier Division': {
-                'pais': 'Irlanda',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 56,
-                'btts_pct': 50,
-                'top_equipos': ['Shamrock Rovers', 'Derry City', 'Dundalk', 'St Patricks', 'Sligo', 'Bohemians', 'Shelbourne', 'Drogheda', 'Cork', 'Galway'],
-                'descripcion': 'Liga irlandesa',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
-            'Ireland First Division': {
-                'pais': 'Irlanda',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 55,
-                'btts_pct': 48,
-                'top_equipos': ['Cobh', 'Wexford', 'Longford', 'Athlone', 'Bray', 'Finn Harps', 'Kerry', 'Treaty United'],
-                'descripcion': 'Segunda irlandesa',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # IRLANDA DEL NORTE
-            # ============================================================================
-            'Northern Ireland Premiership': {
-                'pais': 'Irlanda del Norte',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 55,
-                'btts_pct': 52,
-                'top_equipos': ['Larne', 'Linfield', 'Crusaders', 'Glentoran', 'Cliftonville', 'Coleraine', 'Carrick', 'Ballymena', 'Dungannon', 'Glenavon'],
-                'descripcion': 'Liga norirlandesa',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'EQUILIBRADO'
-            },
-            'Northern Ireland NIFL Development League': {
-                'pais': 'Irlanda del Norte',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 53,
-                'btts_pct': 48,
-                'top_equipos': [],
-                'descripcion': 'Liga de desarrollo',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # GALES
-            # ============================================================================
-            'Wales Premier League': {
-                'pais': 'Gales',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 54,
-                'btts_pct': 54,
-                'top_equipos': ['The New Saints', 'Connah Quay', 'Bala', 'Newtown', 'Cardiff MU', 'Barry', 'Caernarfon', 'Aberystwyth', 'Haverfordwest', 'Penybont'],
-                'descripcion': 'Liga galesa',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'OFENSIVO'
             },
             
             # ============================================================================
@@ -811,46 +339,10 @@ class ProAnalyzerUltimate:
                 'local_ventaja': 52,
                 'btts_pct': 52,
                 'top_equipos': ['Inter', 'Milan', 'Juventus', 'Napoli', 'Roma', 'Lazio', 'Atalanta', 'Fiorentina', 'Bologna', 'Torino'],
-                'descripcion': 'Táctica, algo lenta',
+                'descripcion': 'Tactica, algo lenta',
                 'under_2_5_prob': 48,
                 'over_2_5_prob': 52,
                 'estilo': 'TACTICO'
-            },
-            'Italy Serie B': {
-                'pais': 'Italia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 54,
-                'btts_pct': 46,
-                'top_equipos': ['Cremonese', 'Parma', 'Palermo', 'Venezia', 'Como', 'Catanzaro', 'Modena', 'Reggiana', 'Spezia', 'Bari'],
-                'descripcion': 'Segunda italiana, pocos goles',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'DEFENSIVO'
-            },
-            'Italy Serie C': {
-                'pais': 'Italia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.2,
-                'local_ventaja': 55,
-                'btts_pct': 44,
-                'top_equipos': [],
-                'descripcion': 'Tercera italiana',
-                'under_2_5_prob': 60,
-                'over_2_5_prob': 40,
-                'estilo': 'DEFENSIVO'
-            },
-            'Italy Coppa Italia': {
-                'pais': 'Italia',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 52,
-                'btts_pct': 54,
-                'top_equipos': [],
-                'descripcion': 'Copa italiana',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'COPA'
             },
             
             # ============================================================================
@@ -868,30 +360,6 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 55,
                 'estilo': 'OFENSIVO'
             },
-            'France Ligue 2': {
-                'pais': 'Francia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 56,
-                'btts_pct': 46,
-                'top_equipos': ['Bordeaux', 'Saint Etienne', 'Metz', 'Caen', 'Amiens', 'Grenoble', 'Paris FC', 'Sochaux', 'Quevilly', 'Valenciennes'],
-                'descripcion': 'Segunda francesa, pocos goles',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'DEFENSIVO'
-            },
-            'France Coupe de France': {
-                'pais': 'Francia',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.9,
-                'local_ventaja': 53,
-                'btts_pct': 58,
-                'top_equipos': [],
-                'descripcion': 'Copa francesa, sorpresas',
-                'under_2_5_prob': 42,
-                'over_2_5_prob': 58,
-                'estilo': 'COPA'
-            },
             
             # ============================================================================
             # ALEMANIA
@@ -908,42 +376,6 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 65,
                 'estilo': 'OFENSIVO'
             },
-            'Germany Bundesliga 2': {
-                'pais': 'Alemania',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.9,
-                'local_ventaja': 53,
-                'btts_pct': 58,
-                'top_equipos': ['Hamburg', 'Schalke', 'Hertha', 'Fortuna', 'Hannover', 'Kaiserslautern', 'Nurnberg', 'Magdeburg', 'Karlsruhe', 'Paderborn'],
-                'descripcion': 'Segunda alemana, muchos goles',
-                'under_2_5_prob': 40,
-                'over_2_5_prob': 60,
-                'estilo': 'OFENSIVO'
-            },
-            'Germany Bundesliga 3': {
-                'pais': 'Alemania',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 54,
-                'btts_pct': 56,
-                'top_equipos': ['Dynamo Dresden', '1860 Munich', 'Essen', 'Verl', 'Sandhausen', 'Ulm', 'Freiburg II', 'Saarbrucken', 'Aue', 'Ingolstadt'],
-                'descripcion': 'Tercera alemana',
-                'under_2_5_prob': 44,
-                'over_2_5_prob': 56,
-                'estilo': 'OFENSIVO'
-            },
-            'Germany Regionalliga': {
-                'pais': 'Alemania',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.9,
-                'local_ventaja': 55,
-                'btts_pct': 58,
-                'top_equipos': [],
-                'descripcion': 'Ligas regionales alemanas',
-                'under_2_5_prob': 42,
-                'over_2_5_prob': 58,
-                'estilo': 'OFENSIVO'
-            },
             
             # ============================================================================
             # HOLANDA
@@ -955,34 +387,10 @@ class ProAnalyzerUltimate:
                 'local_ventaja': 56,
                 'btts_pct': 62,
                 'top_equipos': ['Ajax', 'PSV', 'Feyenoord', 'AZ', 'Twente', 'Utrecht', 'Sparta', 'NEC', 'Heerenveen', 'Go Ahead Eagles'],
-                'descripcion': 'Muchísimos goles, defensas débiles',
+                'descripcion': 'Muchisimos goles, defensas debiles',
                 'under_2_5_prob': 30,
                 'over_2_5_prob': 70,
                 'estilo': 'OFENSIVO'
-            },
-            'Netherlands Eerste Divisie': {
-                'pais': 'Holanda',
-                'nivel': 'BAJO',
-                'goles_promedio': 3.1,
-                'local_ventaja': 54,
-                'btts_pct': 60,
-                'top_equipos': ['Willem II', 'Groningen', 'Roda', 'Den Bosch', 'Cambuur', 'De Graafschap', 'NAC', 'Dordrecht', 'Emmen', 'Telstar'],
-                'descripcion': 'Segunda holandesa, muchos goles',
-                'under_2_5_prob': 35,
-                'over_2_5_prob': 65,
-                'estilo': 'OFENSIVO'
-            },
-            'Netherlands KNVB Cup': {
-                'pais': 'Holanda',
-                'nivel': 'MEDIO',
-                'goles_promedio': 3.2,
-                'local_ventaja': 52,
-                'btts_pct': 62,
-                'top_equipos': [],
-                'descripcion': 'Copa holandesa',
-                'under_2_5_prob': 33,
-                'over_2_5_prob': 67,
-                'estilo': 'COPA'
             },
             
             # ============================================================================
@@ -1000,48 +408,12 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 52,
                 'estilo': 'LOCALISTA'
             },
-            'Portugal Segunda Liga': {
-                'pais': 'Portugal',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': ['AVS', 'Santa Clara', 'Maritimo', 'Nacional', 'Tondela', 'Belenenses', 'Leixoes', 'Feirense', 'Penafiel', 'Torreense'],
-                'descripcion': 'Segunda portuguesa',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
-            },
-            'Portugal Championship U23': {
-                'pais': 'Portugal',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 52,
-                'btts_pct': 58,
-                'top_equipos': [],
-                'descripcion': 'Sub-23 portuguesa, muchos goles',
-                'under_2_5_prob': 40,
-                'over_2_5_prob': 60,
-                'estilo': 'OFENSIVO'
-            },
-            'Portugal Taça de Portugal': {
-                'pais': 'Portugal',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 55,
-                'btts_pct': 54,
-                'top_equipos': [],
-                'descripcion': 'Copa portuguesa',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'COPA'
-            },
             
             # ============================================================================
-            # BÉLGICA
+            # BELGICA
             # ============================================================================
             'Belgium First Division A': {
-                'pais': 'Bélgica',
+                'pais': 'Belgica',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.8,
                 'local_ventaja': 56,
@@ -1052,24 +424,12 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 56,
                 'estilo': 'OFENSIVO'
             },
-            'Belgium First Division B': {
-                'pais': 'Bélgica',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 54,
-                'btts_pct': 50,
-                'top_equipos': ['Beveren', 'Deinze', 'Lommel', 'Oostende', 'Patro Eisden', 'RFC Liege', 'Seraing', 'Francs Borains', 'Jong Genk', 'Zulte Waregem'],
-                'descripcion': 'Segunda belga',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
             
             # ============================================================================
-            # TURQUÍA
+            # TURQUIA
             # ============================================================================
             'Turkey Super Lig': {
-                'pais': 'Turquía',
+                'pais': 'Turquia',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.8,
                 'local_ventaja': 60,
@@ -1080,429 +440,61 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 56,
                 'estilo': 'LOCALISTA'
             },
-            'Turkey Cup': {
-                'pais': 'Turquía',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 55,
-                'btts_pct': 54,
-                'top_equipos': [],
-                'descripcion': 'Copa turca',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'COPA'
-            },
             
             # ============================================================================
-            # AUSTRIA
+            # COMPETICIONES UEFA
             # ============================================================================
-            'Austria Bundesliga': {
-                'pais': 'Austria',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 58,
-                'btts_pct': 56,
-                'top_equipos': ['Salzburg', 'Sturm Graz', 'LASK', 'Rapid Wien', 'Austria Wien', 'Wolfsberger', 'Hartberg', 'Altach', 'BW Linz', 'Tirol'],
-                'descripcion': 'Salzburg dominante',
-                'under_2_5_prob': 44,
-                'over_2_5_prob': 56,
-                'estilo': 'OFENSIVO'
-            },
-            'Austria 2 Liga': {
-                'pais': 'Austria',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 55,
-                'btts_pct': 52,
-                'top_equipos': ['Admira', 'Horn', 'St Polten', 'Floridsdorf', 'Kapfenberg', 'Leoben', 'Liefering', 'Amstetten', 'First Vienna', 'Dornbirn'],
-                'descripcion': 'Segunda austriaca',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'EQUILIBRADO'
-            },
-            'Austria OFB Cup': {
-                'pais': 'Austria',
-                'nivel': 'MEDIO',
+            'UEFA Champions League': {
+                'pais': 'Europa',
+                'nivel': 'ALTO',
                 'goles_promedio': 2.9,
                 'local_ventaja': 54,
-                'btts_pct': 58,
-                'top_equipos': [],
-                'descripcion': 'Copa austriaca',
-                'under_2_5_prob': 42,
-                'over_2_5_prob': 58,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # SUIZA
-            # ============================================================================
-            'Switzerland Super League': {
-                'pais': 'Suiza',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.9,
-                'local_ventaja': 58,
-                'btts_pct': 58,
-                'top_equipos': ['Young Boys', 'Servette', 'Lugano', 'Luzern', 'Zurich', 'Basel', 'St Gallen', 'Winterthur', 'Grasshopper', 'Lausanne', 'Yverdon'],
-                'descripcion': 'Liga suiza',
-                'under_2_5_prob': 42,
-                'over_2_5_prob': 58,
-                'estilo': 'OFENSIVO'
-            },
-            
-            # ============================================================================
-            # GRECIA
-            # ============================================================================
-            'Greece Super League': {
-                'pais': 'Grecia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 60,
-                'btts_pct': 46,
-                'top_equipos': ['Olympiacos', 'PAOK', 'AEK', 'Panathinaikos', 'Aris', 'Atromitos', 'OFI', 'Panserraikos', 'Volos', 'Lamia', 'Kifisia', 'Kallithea'],
-                'descripcion': 'Local fuerte, pocos goles',
-                'under_2_5_prob': 60,
-                'over_2_5_prob': 40,
-                'estilo': 'DEFENSIVO'
-            },
-            'Greece Cup': {
-                'pais': 'Grecia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': [],
-                'descripcion': 'Copa griega',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # CROACIA
-            # ============================================================================
-            'Croatia HNL': {
-                'pais': 'Croacia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 60,
-                'btts_pct': 50,
-                'top_equipos': ['Dinamo Zagreb', 'Hajduk Split', 'Osijek', 'Rijeka', 'Gorica', 'Varazdin', 'Slaven', 'Lokomotiva', 'Istra', 'Rudes'],
-                'descripcion': 'Dinamo dominante',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'LOCALISTA'
-            },
-            'Croatia Cup': {
-                'pais': 'Croacia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 55,
-                'btts_pct': 52,
-                'top_equipos': [],
-                'descripcion': 'Copa croata',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # SERBIA
-            # ============================================================================
-            'Serbia Super Liga': {
-                'pais': 'Serbia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': ['Estrella Roja', 'Partizan', 'TSC', 'Vojvodina', 'Cukaricki', 'Radnicki', 'Novi Pazar', 'Napredak', 'Spartak', 'Mladost', 'IMT', 'Zeleznicar'],
-                'descripcion': 'Dominio de Estrella Roja y Partizan',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # REPÚBLICA CHECA
-            # ============================================================================
-            'Czech Republic First League': {
-                'pais': 'República Checa',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 58,
-                'btts_pct': 52,
-                'top_equipos': ['Sparta Prague', 'Slavia Prague', 'Viktoria Plzen', 'Banik Ostrava', 'Slovacko', 'Mlada Boleslav', 'Teplice', 'Jablonec', 'Hradec Kralove', 'Karvina', 'Bohemians', 'Pardubice'],
-                'descripcion': 'Liga checa',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'EQUILIBRADO'
-            },
-            'Czech Republic Cup': {
-                'pais': 'República Checa',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 55,
-                'btts_pct': 54,
-                'top_equipos': [],
-                'descripcion': 'Copa checa',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # POLONIA
-            # ============================================================================
-            'Poland Ekstraklasa': {
-                'pais': 'Polonia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': ['Legia', 'Lech', 'Rakow', 'Pogon', 'Widzew', 'Gornik', 'Zaglebie', 'Cracovia', 'Piast', 'Radomiak', 'Stal', 'Korona', 'LKS', 'Puszcza'],
-                'descripcion': 'Liga polaca',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
-            },
-            'Poland Cup': {
-                'pais': 'Polonia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 55,
-                'btts_pct': 50,
-                'top_equipos': [],
-                'descripcion': 'Copa polaca',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # HUNGRÍA
-            # ============================================================================
-            'Hungary NB1': {
-                'pais': 'Hungría',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 58,
-                'btts_pct': 54,
-                'top_equipos': ['Ferencvaros', 'Paks', 'Kecskemet', 'Debrecen', 'Kisvarda', 'Zalaegerszeg', 'Ujpest', 'MTK', 'Diosgyor', 'Mezokovesd', 'Puskas', 'Honved'],
-                'descripcion': 'Ferencvaros dominante',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'EQUILIBRADO'
-            },
-            
-            # ============================================================================
-            # RUMANÍA
-            # ============================================================================
-            'Romania Liga 1': {
-                'pais': 'Rumanía',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 60,
-                'btts_pct': 46,
-                'top_equipos': ['FCSB', 'CFR Cluj', 'Universitatea Craiova', 'Farul', 'Sepsi', 'Rapid', 'Petrolul', 'Voluntari', 'UTA', 'Botosani', 'Hermannstadt', 'Otelul', 'Politehnica Iasi', 'Dinamo'],
-                'descripcion': 'Liga rumana',
-                'under_2_5_prob': 60,
-                'over_2_5_prob': 40,
-                'estilo': 'DEFENSIVO'
-            },
-            'Romania Cupa Romaniei': {
-                'pais': 'Rumanía',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': [],
-                'descripcion': 'Copa rumana',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # BULGARIA
-            # ============================================================================
-            'Bulgaria First League': {
-                'pais': 'Bulgaria',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.2,
-                'local_ventaja': 60,
-                'btts_pct': 44,
-                'top_equipos': ['Ludogorets', 'CSKA Sofia', 'Levski', 'Lokomotiv Plovdiv', 'Botev Plovdiv', 'Cherno More', 'Arda', 'Krumovgrad', 'Slavia', 'Beroe', 'Pirin', 'Hebar', 'Etar', 'Lokomotiv Sofia'],
-                'descripcion': 'Ludogorets dominante',
-                'under_2_5_prob': 62,
-                'over_2_5_prob': 38,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # ESLOVAQUIA
-            # ============================================================================
-            'Slovakia Super Liga': {
-                'pais': 'Eslovaquia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 58,
-                'btts_pct': 50,
-                'top_equipos': ['Slovan Bratislava', 'Spartak Trnava', 'Zilina', 'DAC', 'Ruzomberok', 'Trencin', 'Podbrezova', 'Zemplin', 'Skalica', 'Kosice', 'Banska Bystrica', 'Komarno'],
-                'descripcion': 'Liga eslovaca',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
-            
-            # ============================================================================
-            # ESLOVENIA
-            # ============================================================================
-            'Slovenia Prva Liga': {
-                'pais': 'Eslovenia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 58,
-                'btts_pct': 48,
-                'top_equipos': ['Celje', 'Maribor', 'Olimpija', 'Domzale', 'Koper', 'Mura', 'Bravo', 'Radomlje', 'Aluminij', 'Rogaska'],
-                'descripcion': 'Liga eslovena',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # DINAMARCA
-            # ============================================================================
-            'Denmark Superliga': {
-                'pais': 'Dinamarca',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 58,
-                'btts_pct': 52,
-                'top_equipos': ['FC Copenhagen', 'Midtjylland', 'Brondby', 'AGF', 'Nordsjaelland', 'Silkeborg', 'Randers', 'Viborg', 'Lyngby', 'Odense', 'Vejle', 'Hvidovre'],
-                'descripcion': 'Liga danesa',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'EQUILIBRADO'
-            },
-            'Denmark Division 1': {
-                'pais': 'Dinamarca',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 56,
-                'btts_pct': 50,
-                'top_equipos': ['Sonderjyske', 'Aalborg', 'Horsens', 'Fredericia', 'Koge', 'Helsingor', 'Naestved', 'B93', 'Hillerod', 'Kolding', 'Roskilde', 'FA 2000'],
-                'descripcion': 'Segunda danesa',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
-            'Denmark DBU Pokalen': {
-                'pais': 'Dinamarca',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 55,
-                'btts_pct': 54,
-                'top_equipos': [],
-                'descripcion': 'Copa danesa',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # SUECIA
-            # ============================================================================
-            'Sweden Allsvenskan': {
-                'pais': 'Suecia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.6,
-                'local_ventaja': 58,
-                'btts_pct': 52,
-                'top_equipos': ['Malmo', 'Djurgarden', 'Hammarby', 'AIK', 'Elfsborg', 'Hacken', 'Kalmar', 'Norrkoping', 'Sirius', 'Varnamo', 'Mjallby', 'GAIS', 'Brommapojkarna', 'Halmstad', 'Goteborg', 'Vasteras'],
-                'descripcion': 'Liga sueca',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'EQUILIBRADO'
-            },
-            
-            # ============================================================================
-            # NORUEGA
-            # ============================================================================
-            'Norway Eliteserien': {
-                'pais': 'Noruega',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 60,
                 'btts_pct': 56,
-                'top_equipos': ['Bodo/Glimt', 'Molde', 'Brann', 'Viking', 'Lillestrom', 'Rosenborg', 'Odd', 'HamKam', 'Sarpsborg', 'Stromsgodset', 'Kristiansund', 'Tromso', 'Haugesund', 'Fredrikstad', 'KFUM', 'Sandefjord'],
-                'descripcion': 'Liga noruega',
+                'top_equipos': ['Real Madrid', 'Manchester City', 'Bayern', 'PSG', 'Liverpool', 'Inter', 'Barcelona', 'Arsenal', 'Dortmund', 'Atletico', 'Milan', 'Juventus'],
+                'descripcion': 'Maxima competicion europea',
+                'under_2_5_prob': 42,
+                'over_2_5_prob': 58,
+                'estilo': 'ELITE'
+            },
+            'UEFA Europa League': {
+                'pais': 'Europa',
+                'nivel': 'ALTO',
+                'goles_promedio': 2.8,
+                'local_ventaja': 53,
+                'btts_pct': 55,
+                'top_equipos': ['Roma', 'Leverkusen', 'Liverpool', 'Villarreal', 'Marseille', 'Benfica', 'Sporting', 'Rangers', 'Ajax', 'Freiburg', 'Rennes', 'Betis'],
+                'descripcion': 'Segunda competicion europea',
                 'under_2_5_prob': 44,
                 'over_2_5_prob': 56,
-                'estilo': 'OFENSIVO'
+                'estilo': 'ELITE'
             },
             
             # ============================================================================
-            # FINLANDIA
+            # CONMEBOL
             # ============================================================================
-            'Finland Veikkausliiga': {
-                'pais': 'Finlandia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 58,
-                'btts_pct': 50,
-                'top_equipos': ['HJK', 'KuPS', 'SJK', 'Ilves', 'VPS', 'Haka', 'Inter Turku', 'Lahti', 'Mariehamn', 'Gnistan', 'Ekenas', 'AC Oulu'],
-                'descripcion': 'Liga finlandesa',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
+            'CONMEBOL Copa Libertadores': {
+                'pais': 'Sudamerica',
+                'nivel': 'ALTO',
+                'goles_promedio': 2.3,
+                'local_ventaja': 65,
+                'btts_pct': 46,
+                'top_equipos': ['Flamengo', 'Palmeiras', 'River', 'Boca', 'Nacional', 'Penarol', 'Colo Colo', 'Olimpia', 'Cerro', 'Racing', 'Independiente', 'Atletico MG'],
+                'descripcion': 'Maxima competicion sudamericana',
+                'under_2_5_prob': 58,
+                'over_2_5_prob': 42,
+                'estilo': 'INTERNACIONAL'
             },
-            
-            # ============================================================================
-            # ISLANDIA
-            # ============================================================================
-            'Iceland League Cup': {
-                'pais': 'Islandia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 55,
-                'btts_pct': 54,
-                'top_equipos': ['Vikingur', 'Breiðablik', 'Valur', 'KA', 'Stjarnan', 'Fram', 'FH', 'KR', 'Vestri', 'IA', 'Leiknir', 'Fylkir'],
-                'descripcion': 'Copa islandesa',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'COPA'
-            },
-            
-            # ============================================================================
-            # UCRANIA
-            # ============================================================================
-            'Ukraine Premier League': {
-                'pais': 'Ucrania',
+            'CONMEBOL Copa Sudamericana': {
+                'pais': 'Sudamerica',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.4,
-                'local_ventaja': 58,
+                'local_ventaja': 62,
                 'btts_pct': 48,
-                'top_equipos': ['Shakhtar', 'Dynamo Kyiv', 'Dnipro', 'Kryvbas', 'Polissya', 'Rukh', 'Vorskla', 'Kolos', 'LNZ', 'Olexandriya', 'Zorya', 'Obolon', 'Veres', 'Karpaty', 'Ingulets', 'Chornomorets'],
-                'descripcion': 'Liga ucraniana',
+                'top_equipos': ['LDU', 'Defensa', 'Corinthians', 'Botafogo', 'Estudiantes', 'San Lorenzo', 'Universidad Catolica', 'Guarani', 'Sportivo', 'Nacional', 'Racing', 'Independiente'],
+                'descripcion': 'Segunda competicion sudamericana',
                 'under_2_5_prob': 55,
                 'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
-            },
-            
-            # ============================================================================
-            # RUSIA
-            # ============================================================================
-            'Russia Premier League': {
-                'pais': 'Rusia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 60,
-                'btts_pct': 48,
-                'top_equipos': ['Zenit', 'Krasnodar', 'Dinamo Moscow', 'CSKA', 'Lokomotiv', 'Spartak', 'Rostov', 'Rubin', 'Krylia', 'Akhmat', 'Fakel', 'Orenburg', 'Pari NN', 'Ural', 'KhIMKI', 'Baltika'],
-                'descripcion': 'Liga rusa',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
+                'estilo': 'INTERNACIONAL'
             },
             
             # ============================================================================
@@ -1515,25 +507,13 @@ class ProAnalyzerUltimate:
                 'local_ventaja': 58,
                 'btts_pct': 52,
                 'top_equipos': ['Al Hilal', 'Urawa', 'Jeonbuk', 'Pohang', 'Yokohama', 'Bangkok', 'Kawasaki', 'Shandong', 'Wuhan', 'Ventforet', 'Johor', 'BG Pathum'],
-                'descripcion': 'Champions asiática',
+                'descripcion': 'Champions asiatica',
                 'under_2_5_prob': 48,
                 'over_2_5_prob': 52,
                 'estilo': 'INTERNACIONAL'
             },
-            'China Super League': {
-                'pais': 'China',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 58,
-                'btts_pct': 50,
-                'top_equipos': ['Shanghai Port', 'Shandong', 'Beijing', 'Chengdu', 'Zhejiang', 'Wuhan', 'Tianjin', 'Henan', 'Changchun', 'Meizhou', 'Qingdao', 'Nantong', 'Shenzhen', 'Cangzhou'],
-                'descripcion': 'Superliga china',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
-            },
             'Japan J League': {
-                'pais': 'Japón',
+                'pais': 'Japon',
                 'nivel': 'MEDIO',
                 'goles_promedio': 2.4,
                 'local_ventaja': 56,
@@ -1556,117 +536,21 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 42,
                 'estilo': 'DEFENSIVO'
             },
-            'South Korea K League 2': {
-                'pais': 'Corea del Sur',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.2,
-                'local_ventaja': 56,
-                'btts_pct': 44,
-                'top_equipos': ['Anyang', 'Bucheon', 'Chungnam', 'Seoul E', 'Busan', 'Cheonan', 'Gyeongnam', 'Jeonnam', 'Seongnam', 'Suwon', 'Ansan', 'Cheongju', 'Gimpo', 'Hwaseong'],
-                'descripcion': 'Segunda coreana',
-                'under_2_5_prob': 60,
-                'over_2_5_prob': 40,
-                'estilo': 'DEFENSIVO'
-            },
             'Saudi Pro League': {
-                'pais': 'Arabia Saudí',
+                'pais': 'Arabia Saudi',
                 'nivel': 'ALTO',
                 'goles_promedio': 2.8,
                 'local_ventaja': 58,
                 'btts_pct': 56,
                 'top_equipos': ['Al Hilal', 'Al Nassr', 'Al Ittihad', 'Al Ahli', 'Al Taawoun', 'Al Fateh', 'Al Shabab', 'Al Raed', 'Al Khaleej', 'Al Riyadh', 'Al Akhdoud', 'Al Hazem', 'Al Taee', 'Damac', 'Abha', 'Al Wehda'],
-                'descripcion': 'Liga saudí',
+                'descripcion': 'Liga saudi',
                 'under_2_5_prob': 44,
                 'over_2_5_prob': 56,
                 'estilo': 'OFENSIVO'
-            },
-            'Saudi Division 1': {
-                'pais': 'Arabia Saudí',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 56,
-                'btts_pct': 48,
-                'top_equipos': ['Al Qadisiyah', 'Al Orubah', 'Al Kholood', 'Al Arabi', 'Al Jabalain', 'Al Batin', 'Al Faisaly', 'Al Jandal', 'Al Najma', 'Al Taraji', 'Al Zulfi', 'Ohod', 'Al Adalah', 'Al Bukayriyah'],
-                'descripcion': 'Segunda saudí',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'DEFENSIVO'
-            },
-            'Qatar Stars League': {
-                'pais': 'Qatar',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 56,
-                'btts_pct': 54,
-                'top_equipos': ['Al Sadd', 'Al Duhail', 'Al Arabi', 'Al Wakrah', 'Al Gharafa', 'Umm Salal', 'Al Rayyan', 'Qatar SC', 'Al Shamal', 'Al Ahli', 'Al Markhiya', 'Muaither'],
-                'descripcion': 'Liga catarí',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'OFENSIVO'
-            },
-            'UAE Pro League': {
-                'pais': 'Emiratos Árabes',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 56,
-                'btts_pct': 56,
-                'top_equipos': ['Al Ain', 'Al Wahda', 'Al Nasr', 'Sharjah', 'Shabab Al Ahli', 'Al Jazira', 'Al Bataeh', 'Ajman', 'Al Ittihad', 'Baniyas', 'Kalba', 'Emirates', 'Hatta', 'Khor Fakkan'],
-                'descripcion': 'Liga emiratí',
-                'under_2_5_prob': 44,
-                'over_2_5_prob': 56,
-                'estilo': 'OFENSIVO'
-            },
-            'Iran Pro League': {
-                'pais': 'Irán',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.0,
-                'local_ventaja': 62,
-                'btts_pct': 38,
-                'top_equipos': ['Persepolis', 'Esteghlal', 'Sepahan', 'Tractor', 'Gol Gohar', 'Foolad', 'Malavan', 'Zob Ahan', 'Aluminium', 'Havadar', 'Shams Azar', 'Sanat Naft', 'Nassaji', 'Paykan', 'Esteghlal Khuzestan', 'Fajr Sepasi'],
-                'descripcion': 'Liga iraní, muy defensiva',
-                'under_2_5_prob': 70,
-                'over_2_5_prob': 30,
-                'estilo': 'DEFENSIVO'
-            },
-            'Iraq Stars League': {
-                'pais': 'Irak',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.2,
-                'local_ventaja': 58,
-                'btts_pct': 44,
-                'top_equipos': ['Al Quwa', 'Al Shorta', 'Al Zawraa', 'Al Talaba', 'Naft', 'Erbil', 'Duhok', 'Al Karkh', 'Al Naft', 'Al Hudood', 'Al Kahrabaa', 'Al Minaa'],
-                'descripcion': 'Liga iraquí',
-                'under_2_5_prob': 60,
-                'over_2_5_prob': 40,
-                'estilo': 'DEFENSIVO'
-            },
-            'Jordan Pro League': {
-                'pais': 'Jordania',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 58,
-                'btts_pct': 46,
-                'top_equipos': ['Al Wehdat', 'Al Faisaly', 'Al Hussein', 'Al Salt', 'Ma'an', 'Al Ramtha', 'Sahab', 'Al Ahli', 'Al Jazeera', 'Shabab Al Ordon', 'Moghayer Al Sarhan', 'Al Aqaba'],
-                'descripcion': 'Liga jordana',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'DEFENSIVO'
-            },
-            'Indonesia Liga 1': {
-                'pais': 'Indonesia',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 60,
-                'btts_pct': 50,
-                'top_equipos': ['Bali United', 'Persib', 'PSM', 'Borneo', 'Persija', 'Madura', 'Dewa United', 'RANS', 'Arema', 'Persis', 'Barito', 'Persebaya', 'PSIS', 'Persita', 'PSS', 'Persikabo'],
-                'descripcion': 'Liga indonesia',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'EQUILIBRADO'
             },
             
             # ============================================================================
-            # ÁFRICA
+            # AFRICA
             # ============================================================================
             'Egypt Premier League': {
                 'pais': 'Egipto',
@@ -1680,21 +564,9 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 35,
                 'estilo': 'DEFENSIVO'
             },
-            'South Africa Premier League': {
-                'pais': 'Sudáfrica',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.2,
-                'local_ventaja': 58,
-                'btts_pct': 44,
-                'top_equipos': ['Mamelodi Sundowns', 'Orlando Pirates', 'Kaizer Chiefs', 'Stellenbosch', 'SuperSport', 'Sekhukhune', 'Cape Town', 'Richards Bay', 'AmaZulu', 'Royal AM', 'Chippa', 'Polokwane', 'Moroka', 'Golden Arrows', 'TS Galaxy', 'Cape Town Spurs'],
-                'descripcion': 'Liga sudafricana',
-                'under_2_5_prob': 60,
-                'over_2_5_prob': 40,
-                'estilo': 'DEFENSIVO'
-            },
             
             # ============================================================================
-            # OCEANÍA
+            # OCEANIA
             # ============================================================================
             'Australia A League': {
                 'pais': 'Australia',
@@ -1707,82 +579,6 @@ class ProAnalyzerUltimate:
                 'under_2_5_prob': 42,
                 'over_2_5_prob': 58,
                 'estilo': 'OFENSIVO'
-            },
-            
-            # ============================================================================
-            # COMPETICIONES INTERNACIONALES
-            # ============================================================================
-            'UEFA Champions League': {
-                'pais': 'Europa',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.9,
-                'local_ventaja': 54,
-                'btts_pct': 56,
-                'top_equipos': ['Real Madrid', 'Manchester City', 'Bayern', 'PSG', 'Liverpool', 'Inter', 'Barcelona', 'Arsenal', 'Dortmund', 'Atletico', 'Milan', 'Juventus'],
-                'descripcion': 'Máxima competición europea',
-                'under_2_5_prob': 42,
-                'over_2_5_prob': 58,
-                'estilo': 'ELITE'
-            },
-            'UEFA Europa League': {
-                'pais': 'Europa',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 53,
-                'btts_pct': 55,
-                'top_equipos': ['Roma', 'Leverkusen', 'Liverpool', 'Villarreal', 'Marseille', 'Benfica', 'Sporting', 'Rangers', 'Ajax', 'Freiburg', 'Rennes', 'Betis'],
-                'descripcion': 'Segunda competición europea',
-                'under_2_5_prob': 44,
-                'over_2_5_prob': 56,
-                'estilo': 'ELITE'
-            },
-            'UEFA Europa Conference League': {
-                'pais': 'Europa',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 54,
-                'btts_pct': 54,
-                'top_equipos': ['Fiorentina', 'Club Brugge', 'Aston Villa', 'Fenerbahce', 'PAOK', 'Lille', 'Maccabi', 'Gent', 'Molde', 'Bodo/Glimt', 'Legia', 'Eintracht'],
-                'descripcion': 'Tercera competición europea',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'ELITE'
-            },
-            'CONMEBOL Copa Libertadores': {
-                'pais': 'Sudamérica',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.3,
-                'local_ventaja': 65,
-                'btts_pct': 46,
-                'top_equipos': ['Flamengo', 'Palmeiras', 'River', 'Boca', 'Nacional', 'Penarol', 'Colo Colo', 'Olimpia', 'Cerro', 'Racing', 'Independiente', 'Atletico MG'],
-                'descripcion': 'Máxima competición sudamericana',
-                'under_2_5_prob': 58,
-                'over_2_5_prob': 42,
-                'estilo': 'INTERNACIONAL'
-            },
-            'CONMEBOL Copa Sudamericana': {
-                'pais': 'Sudamérica',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 62,
-                'btts_pct': 48,
-                'top_equipos': ['LDU', 'Defensa', 'Corinthians', 'Botafogo', 'Estudiantes', 'San Lorenzo', 'Universidad Catolica', 'Guaraní', 'Sportivo', 'Nacional', 'Racing', 'Independiente'],
-                'descripcion': 'Segunda competición sudamericana',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'INTERNACIONAL'
-            },
-            'CONMEBOL/UEFA Cup of Champions Finalissima': {
-                'pais': 'Internacional',
-                'nivel': 'ALTO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 50,
-                'btts_pct': 50,
-                'top_equipos': [],
-                'descripcion': 'Final entre campeones de Europa y Sudamérica',
-                'under_2_5_prob': 50,
-                'over_2_5_prob': 50,
-                'estilo': 'FINAL'
             },
             
             # ============================================================================
@@ -1800,89 +596,9 @@ class ProAnalyzerUltimate:
                 'over_2_5_prob': 52,
                 'estilo': 'MUNDIAL'
             },
-            'World Cup 2026 Qualification Europe': {
-                'pais': 'Europa',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 55,
-                'btts_pct': 54,
-                'top_equipos': [],
-                'descripcion': 'Clasificatorios europeos',
-                'under_2_5_prob': 46,
-                'over_2_5_prob': 54,
-                'estilo': 'CLASIFICATORIO'
-            },
-            'World Cup 2026 Int Conf Playoff': {
-                'pais': 'Internacional',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.4,
-                'local_ventaja': 52,
-                'btts_pct': 48,
-                'top_equipos': [],
-                'descripcion': 'Playoff intercontinental',
-                'under_2_5_prob': 55,
-                'over_2_5_prob': 45,
-                'estilo': 'ELIMINATORIO'
-            },
             
             # ============================================================================
-            # FÚTBOL FEMENINO
-            # ============================================================================
-            'Women International AFC Asian Cup': {
-                'pais': 'Asia',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 52,
-                'btts_pct': 58,
-                'top_equipos': [],
-                'descripcion': 'Copa Asiática femenina',
-                'under_2_5_prob': 42,
-                'over_2_5_prob': 58,
-                'estilo': 'FEMENINO'
-            },
-            'Women International Friendly': {
-                'pais': 'Internacional',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.5,
-                'local_ventaja': 50,
-                'btts_pct': 52,
-                'top_equipos': [],
-                'descripcion': 'Amistosos femeninos',
-                'under_2_5_prob': 48,
-                'over_2_5_prob': 52,
-                'estilo': 'FEMENINO'
-            },
-            'Women World Cup Qualification': {
-                'pais': 'Internacional',
-                'nivel': 'MEDIO',
-                'goles_promedio': 2.7,
-                'local_ventaja': 52,
-                'btts_pct': 55,
-                'top_equipos': [],
-                'descripcion': 'Clasificación Mundial femenino',
-                'under_2_5_prob': 45,
-                'over_2_5_prob': 55,
-                'estilo': 'FEMENINO'
-            },
-            
-            # ============================================================================
-            # LIGAS RESERVA Y JUVENILES
-            # ============================================================================
-            'Reserve League Generic': {
-                'pais': 'Varios',
-                'nivel': 'BAJO',
-                'goles_promedio': 2.8,
-                'local_ventaja': 52,
-                'btts_pct': 60,
-                'top_equipos': [],
-                'descripcion': 'Ligas de reserva, muchos goles',
-                'under_2_5_prob': 40,
-                'over_2_5_prob': 60,
-                'estilo': 'JUVENIL'
-            },
-            
-            # ============================================================================
-            # DEFAULT (cuando no se puede identificar)
+            # DEFAULT
             # ============================================================================
             'default': {
                 'pais': 'Desconocido',
@@ -1891,7 +607,7 @@ class ProAnalyzerUltimate:
                 'local_ventaja': 55,
                 'btts_pct': 50,
                 'top_equipos': [],
-                'descripcion': 'Liga sin datos específicos',
+                'descripcion': 'Liga sin datos especificos',
                 'under_2_5_prob': 50,
                 'over_2_5_prob': 50,
                 'estilo': 'DESCONOCIDO'
@@ -1906,21 +622,14 @@ class ProAnalyzerUltimate:
                 'condition': lambda liga, local, visit: liga in ['Argentina Liga Profesional', 'Argentina Primera Nacional', 'Argentina Primera C', 'Argentina Primera B Metropolitana'],
                 'action': 'under_2_5',
                 'base_prob': 68,
-                'reason': 'La Liga Argentina tiene pocos goles históricamente'
-            },
-            {
-                'name': 'GOLES_BAJOS_IRAN',
-                'condition': lambda liga, local, visit: liga == 'Iran Pro League',
-                'action': 'under_2_5',
-                'base_prob': 70,
-                'reason': 'La liga iraní es extremadamente defensiva'
+                'reason': 'La Liga Argentina tiene pocos goles historicamente'
             },
             {
                 'name': 'GOLES_ALTOS_HOLANDA',
                 'condition': lambda liga, local, visit: liga in ['Netherlands Eredivisie', 'Netherlands Eerste Divisie'],
                 'action': 'over_2_5',
                 'base_prob': 68,
-                'reason': 'La liga holandesa tiene muchísimos goles'
+                'reason': 'La liga holandesa tiene muchisimos goles'
             },
             {
                 'name': 'GOLES_ALTOS_BUNDESLIGA',
@@ -1955,7 +664,7 @@ class ProAnalyzerUltimate:
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('btts_pct', 50) > 55,
                 'action': 'btts',
                 'base_prob': 60,
-                'reason': f'En {liga} es común que ambos anoten'
+                'reason': f'En {liga} es comun que ambos anoten'
             },
             {
                 'name': 'LOCAL_MUY_FUERTE',
@@ -1969,26 +678,19 @@ class ProAnalyzerUltimate:
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('goles_promedio', 2.5) < 2.3,
                 'action': 'under_2_5',
                 'base_prob': 65,
-                'reason': f'{liga} tiene pocos goles históricamente'
+                'reason': f'{liga} tiene pocos goles historicamente'
             },
             {
                 'name': 'LIGA_MUCHOS_GOLES',
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('goles_promedio', 2.5) > 2.8,
                 'action': 'over_2_5',
                 'base_prob': 62,
-                'reason': f'{liga} tiene muchos goles históricamente'
-            },
-            {
-                'name': 'TOP_CASA_VS_DEBIL',
-                'condition': lambda liga, local, visit: self._is_top_team(local, liga) and self._is_bottom_team(visit, liga),
-                'action': 'local_gana_y_over',
-                'base_prob': 60,
-                'reason': f'{local} suele golear en casa a los débiles'
+                'reason': f'{liga} tiene muchos goles historicamente'
             }
         ]
     
     def identify_league(self, home_team, away_team):
-        """Identifica la liga usando múltiples métodos"""
+        """Identifica la liga usando multiples metodos"""
         
         # Buscar en la base de conocimiento
         for liga, data in self.leagues_db.items():
@@ -2033,12 +735,12 @@ class ProAnalyzerUltimate:
         return False
     
     def _is_bottom_team(self, team, liga):
-        """Determina si un equipo es débil (por ahora, inversa de top)"""
+        """Determina si un equipo es debil"""
         return not self._is_top_team(team, liga)
     
     def analyze_match(self, home_team, away_team, odds_data=None):
         """
-        Análisis profesional completo
+        Analisis profesional completo
         """
         # Identificar liga
         liga_nombre, liga_data = self.identify_league(home_team, away_team)
@@ -2075,7 +777,7 @@ class ProAnalyzerUltimate:
                 'market': 'Over 1.5 goles',
                 'probability': 0.70,
                 'confidence': 'BAJA',
-                'reason': 'Sin datos específicos, apuesta conservadora'
+                'reason': 'Sin datos especificos, apuesta conservadora'
             }
         
         from collections import Counter
@@ -2088,7 +790,7 @@ class ProAnalyzerUltimate:
             key=lambda x: x.get('base_prob', 50)
         )
         
-        # Ajustar según liga
+        # Ajustar segun liga
         prob_ajustada = mejor_regla['base_prob']
         if mas_comun == 'over_2_5':
             prob_ajustada = liga_data.get('over_2_5_prob', prob_ajustada)
