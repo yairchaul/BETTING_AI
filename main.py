@@ -10,6 +10,13 @@ from PIL import Image
 import easyocr
 import io
 import json
+from modules.cerebro import (
+    buscar_equipos_v2,
+    extraer_stats_avanzadas,
+    simular_probabilidades,
+    obtener_mejor_apuesta,
+    obtener_forma_reciente
+)
 
 # Configuración de la página
 st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
