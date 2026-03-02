@@ -15,7 +15,7 @@ class ImageParser:
             self.client = None
 
     def process_image(self, image_bytes):
-        """Procesa la imagen y extrae pares de equipos con múltiples estrategias"""
+        """Procesa la imagen y extrae pares de equipos"""
         if not self.client:
             return []
         
@@ -30,204 +30,142 @@ class ImageParser:
             full_text = texts[0].description
             
             # ============================================================================
-            # VALIDADOR: Mostrar texto completo para depuración
+            # ORGANIZAR EN 6 COLUMNAS
             # ============================================================================
-            st.info("📄 **Texto completo detectado por OCR:**")
-            st.code(full_text)
-            
-            # Intentar múltiples estrategias de parsing
-            matches = []
-            
-            # ESTRATEGIA 1: Patrón de 6 elementos en líneas separadas
-            matches = self.parse_six_line_pattern(full_text)
-            
-            # ESTRATEGIA 2: Patrón de línea completa
-            if not matches:
-                matches = self.parse_single_line_pattern(full_text)
-            
-            # ESTRATEGIA 3: Patrón de tabla con separadores
-            if not matches:
-                matches = self.parse_table_pattern(full_text)
-            
-            # ESTRATEGIA 4: Extracción manual (último recurso)
-            if not matches:
-                matches = self.parse_manual_extraction(full_text)
-            
-            return matches
+            return self.organize_six_columns(full_text)
             
         except Exception as e:
             st.error(f"Error procesando imagen: {e}")
             return []
 
-    def parse_six_line_pattern(self, text):
+    def organize_six_columns(self, text):
         """
-        ESTRATEGIA 1: Busca el patrón de 6 líneas consecutivas:
-        Línea 1: Equipo Local
-        Línea 2: Cuota Local (+/-)
-        Línea 3: "Empate"
-        Línea 4: Cuota Empate
-        Línea 5: Equipo Visitante
-        Línea 6: Cuota Visitante
+        Organiza el texto en 6 columnas:
+        Col1: Equipo Local
+        Col2: Cuota Local
+        Col3: "Empate"
+        Col4: Cuota Empate
+        Col5: Equipo Visitante
+        Col6: Cuota Visitante
         """
         lines = [line.strip() for line in text.split('\n') if line.strip()]
-        matches = []
+        
+        # ============================================================================
+        # PASO 1: Identificar todos los elementos
+        # ============================================================================
+        elementos = []
+        for line in lines:
+            # Si la línea contiene espacios, podría tener múltiples elementos
+            if ' ' in line and len(line.split()) > 1:
+                partes = line.split()
+                for parte in partes:
+                    if parte:  # Evitar vacíos
+                        elementos.append(parte)
+            else:
+                elementos.append(line)
+        
+        # ============================================================================
+        # PASO 2: Clasificar cada elemento
+        # ============================================================================
+        col1 = []  # Equipos Locales
+        col2 = []  # Cuotas Locales
+        col3 = []  # "Empate"
+        col4 = []  # Cuotas Empate
+        col5 = []  # Equipos Visitantes
+        col6 = []  # Cuotas Visitantes
         
         i = 0
-        while i < len(lines) - 5:
-            # Verificar las 6 líneas
-            posibles = lines[i:i+6]
+        while i < len(elementos):
+            elemento = elementos[i]
             
-            # Validar cada línea
-            if (self.is_team_name(posibles[0]) and
-                self.is_odds(posibles[1]) and
-                posibles[2] == "Empate" and
-                self.is_odds(posibles[3]) and
-                self.is_team_name(posibles[4]) and
-                self.is_odds(posibles[5])):
-                
-                matches.append({
-                    "home": posibles[0],
-                    "away": posibles[4],
-                    "all_odds": [posibles[1], posibles[3], posibles[5]]
-                })
-                i += 6
-            else:
-                i += 1
+            # Detectar si es una odds
+            if re.match(r'^[+-]\d{3,4}$', elemento):
+                # Determinar qué columna de odds es según el contexto
+                if len(col2) <= len(col1):  # Si faltan cuotas locales
+                    col2.append(elemento)
+                elif len(col4) < len(col2):  # Si faltan cuotas de empate
+                    col4.append(elemento)
+                else:  # Si no, es cuota visitante
+                    col6.append(elemento)
+            
+            # Detectar si es "Empate"
+            elif "Empate" in elemento or "empaté" in elemento.lower():
+                col3.append("Empate")
+            
+            # Si no es odds ni "Empate", es nombre de equipo
+            elif len(elemento) > 2 and re.search(r'[A-Za-z]', elemento):
+                # Determinar si es local o visitante
+                if len(col1) <= len(col5):  # Si hay menos locales que visitantes
+                    col1.append(elemento)
+                else:
+                    col5.append(elemento)
+            
+            i += 1
         
-        return matches
-
-    def parse_single_line_pattern(self, text):
-        """
-        ESTRATEGIA 2: Busca patrones en una sola línea
-        Formato: "Real Madrid -278 Empate +340 Getafe +900"
-        """
-        lines = text.split('\n')
+        # ============================================================================
+        # PASO 3: Mostrar la estructura en forma de tabla para debug
+        # ============================================================================
+        st.write("### 📊 Estructura de 6 columnas detectada:")
+        
+        # Crear tabla HTML
+        html_table = "<table style='width:100%; border-collapse: collapse;'>"
+        html_table += "<tr style='background-color: #4CAF50; color: white;'>"
+        html_table += "<th style='padding: 8px; border: 1px solid #ddd;'>Local</th>"
+        html_table += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota L</th>"
+        html_table += "<th style='padding: 8px; border: 1px solid #ddd;'>Empate</th>"
+        html_table += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota E</th>"
+        html_table += "<th style='padding: 8px; border: 1px solid #ddd;'>Visitante</th>"
+        html_table += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota V</th>"
+        html_table += "</tr>"
+        
+        max_rows = max(len(col1), len(col2), len(col3), len(col4), len(col5), len(col6))
+        for j in range(max_rows):
+            html_table += "<tr>"
+            
+            # Columna 1: Local
+            val1 = col1[j] if j < len(col1) else ""
+            html_table += f"<td style='padding: 8px; border: 1px solid #ddd;'>{val1}</td>"
+            
+            # Columna 2: Cuota Local
+            val2 = col2[j] if j < len(col2) else ""
+            html_table += f"<td style='padding: 8px; border: 1px solid #ddd;'>{val2}</td>"
+            
+            # Columna 3: Empate
+            val3 = col3[j] if j < len(col3) else ""
+            html_table += f"<td style='padding: 8px; border: 1px solid #ddd;'>{val3}</td>"
+            
+            # Columna 4: Cuota Empate
+            val4 = col4[j] if j < len(col4) else ""
+            html_table += f"<td style='padding: 8px; border: 1px solid #ddd;'>{val4}</td>"
+            
+            # Columna 5: Visitante
+            val5 = col5[j] if j < len(col5) else ""
+            html_table += f"<td style='padding: 8px; border: 1px solid #ddd;'>{val5}</td>"
+            
+            # Columna 6: Cuota Visitante
+            val6 = col6[j] if j < len(col6) else ""
+            html_table += f"<td style='padding: 8px; border: 1px solid #ddd;'>{val6}</td>"
+            
+            html_table += "</tr>"
+        
+        html_table += "</table>"
+        st.markdown(html_table, unsafe_allow_html=True)
+        
+        # ============================================================================
+        # PASO 4: Construir matches con la estructura correcta
+        # ============================================================================
         matches = []
-        
-        # Patrón mejorado
-        pattern = r'([A-Za-z\s]+?)\s+([+-]\d{3,4})\s+Empate\s+([+-]\d{3,4})\s+([A-Za-z\s]+?)\s+([+-]\d{3,4})'
-        
-        for line in lines:
-            encontrado = re.search(pattern, line)
-            if encontrado:
+        for j in range(min(len(col1), len(col5))):  # Usar el mínimo entre locales y visitantes
+            if (j < len(col2) and j < len(col4) and j < len(col6)):
                 matches.append({
-                    "home": encontrado.group(1).strip(),
-                    "away": encontrado.group(4).strip(),
+                    "home": col1[j],
+                    "away": col5[j],
                     "all_odds": [
-                        encontrado.group(2),
-                        encontrado.group(3),
-                        encontrado.group(5)
+                        col2[j],
+                        col4[j],
+                        col6[j]
                     ]
                 })
-        
-        return matches
-
-    def parse_table_pattern(self, text):
-        """
-        ESTRATEGIA 3: Interpreta como tabla de 2 columnas
-        Primero todos los locales, luego todos los visitantes
-        """
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        
-        # Separar en dos grupos: antes y después de los números
-        equipos_locales = []
-        cuotas_locales = []
-        cuotas_empate = []
-        equipos_visitantes = []
-        cuotas_visitantes = []
-        
-        i = 0
-        # Buscar los primeros 5 equipos (locales)
-        while i < len(lines) and len(equipos_locales) < 5:
-            if self.is_team_name(lines[i]) and "Empate" not in lines[i]:
-                equipos_locales.append(lines[i])
-                i += 1
-                if i < len(lines) and self.is_odds(lines[i]):
-                    cuotas_locales.append(lines[i])
-                    i += 1
-                    if i < len(lines) and lines[i] == "Empate":
-                        i += 1
-                        if i < len(lines) and self.is_odds(lines[i]):
-                            cuotas_empate.append(lines[i])
-                            i += 1
-            else:
-                i += 1
-        
-        # Buscar los 5 equipos visitantes
-        while i < len(lines) and len(equipos_visitantes) < 5:
-            if self.is_team_name(lines[i]) and "Empate" not in lines[i]:
-                equipos_visitantes.append(lines[i])
-                i += 1
-                if i < len(lines) and self.is_odds(lines[i]):
-                    cuotas_visitantes.append(lines[i])
-                    i += 1
-            else:
-                i += 1
-        
-        # Construir matches
-        matches = []
-        for j in range(min(len(equipos_locales), len(equipos_visitantes))):
-            if (j < len(cuotas_locales) and 
-                j < len(cuotas_empate) and 
-                j < len(cuotas_visitantes)):
-                matches.append({
-                    "home": equipos_locales[j],
-                    "away": equipos_visitantes[j],
-                    "all_odds": [
-                        cuotas_locales[j],
-                        cuotas_empate[j],
-                        cuotas_visitantes[j]
-                    ]
-                })
-        
-        return matches
-
-    def parse_manual_extraction(self, text):
-        """
-        ESTRATEGIA 4: Extracción manual basada en posiciones conocidas
-        Para cuando las otras estrategias fallan
-        """
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        
-        # Lista de equipos conocidos en LaLiga
-        equipos_conocidos = [
-            "Real Madrid", "Barcelona", "Atletico Madrid", "Sevilla", 
-            "Real Betis", "Real Sociedad", "Athletic Bilbao", "Valencia",
-            "Villarreal", "Osasuna", "Celta de Vigo", "Rayo Vallecano",
-            "Getafe", "RCD Mallorca", "Girona", "Almeria",
-            "Real Valladolid", "Espanyol", "Cadiz", "Elche",
-            "Real Oviedo", "Levante", "Granada", "Las Palmas"
-        ]
-        
-        # Extraer todos los equipos detectados
-        equipos_detectados = []
-        for line in lines:
-            for equipo in equipos_conocidos:
-                if equipo in line and line not in equipos_detectados:
-                    equipos_detectados.append(line)
-                    break
-        
-        # Extraer todas las odds
-        odds_detectadas = [line for line in lines if self.is_odds(line)]
-        
-        # Si tenemos suficientes datos, construir matches manualmente
-        matches = []
-        if len(equipos_detectados) >= 10 and len(odds_detectadas) >= 15:
-            locales = equipos_detectados[:5]
-            visitantes = equipos_detectados[5:10]
-            
-            for j in range(5):
-                idx_odds = j * 3
-                if idx_odds + 2 < len(odds_detectadas):
-                    matches.append({
-                        "home": locales[j],
-                        "away": visitantes[j],
-                        "all_odds": [
-                            odds_detectadas[idx_odds],
-                            odds_detectadas[idx_odds + 1],
-                            odds_detectadas[idx_odds + 2]
-                        ]
-                    })
         
         return matches
 
@@ -235,34 +173,17 @@ class ImageParser:
         """Determina si un texto es probable nombre de equipo"""
         if not text or len(text) < 2:
             return False
-        
-        # No debe ser una odds
         if re.match(r'^[+-]\d{3,4}$', text):
             return False
-        
-        # No debe ser "Empate"
-        if text == "Empate":
+        if text == "Empate" or "empate" in text.lower():
             return False
-        
-        # Debe contener letras
         if not re.search(r'[A-Za-z]', text):
             return False
-        
-        # No debe ser una fecha u hora
-        if re.match(r'\d{1,2}\s+[A-Za-z]{3}', text) or re.match(r'\d{2}:\d{2}', text):
-            return False
-        
         return True
 
     def is_odds(self, text):
         """Determina si un texto es una odds"""
         return bool(re.match(r'^[+-]\d{3,4}$', text))
-
-    def clean_team_name(self, name):
-        """Limpia el nombre del equipo"""
-        name = re.sub(r'[0-9+\-]', '', name)
-        name = re.sub(r'\s+', ' ', name).strip()
-        return name
 
 
 # Función de respaldo para entrada manual
