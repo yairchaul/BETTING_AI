@@ -7,3 +7,5 @@ google-cloud-vision==3.7.2
 google-api-python-client==2.160.0
 google-auth==2.38.0
 protobuf==5.29.4
+pytesseract==0.3.10
+google-generativeai==0.8.4
