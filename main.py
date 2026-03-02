@@ -131,7 +131,7 @@ def main():
                     st.warning(f"Nota: No se pudo obtener texto raw: {e}")
         
         # ============================================================================
-        # MOSTRAR DEBUG MEJORADO (CON TU CÓDIGO)
+        # DEBUG MEJORADO CON TABLA HTML (TU CÓDIGO)
         # ============================================================================
         if debug_mode:
             with st.expander("🔧 Debug OCR - Información de detección", expanded=True):
@@ -139,18 +139,37 @@ def main():
                 
                 if matches:
                     st.write("**Detalle de detecciones:**")
+                    
+                    # Crear tabla HTML para los partidos detectados
+                    html_matches = "<table style='width:100%; border-collapse: collapse;'>"
+                    html_matches += "<tr style='background-color: #2196F3; color: white;'>"
+                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>#</th>"
+                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Local</th>"
+                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota L</th>"
+                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Empate</th>"
+                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota E</th>"
+                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Visitante</th>"
+                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota V</th>"
+                    html_matches += "</tr>"
+                    
                     for i, m in enumerate(matches):
                         odds = m.get('all_odds', ['N/A', 'N/A', 'N/A'])
-                        # ============================================================================
-                        # TU CÓDIGO DE DEBUG MEJORADO
-                        # ============================================================================
-                        st.write(f"{i+1}. 🏠 {m['home']} vs 🚀 {m['away']}")
-                        st.write(f"   📊 Odds: Local {odds[0]}, Empate {odds[1]}, Visitante {odds[2]}")
-                        st.write("---")
+                        html_matches += "<tr>"
+                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{i+1}</td>"
+                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{m['home']}</td>"
+                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{odds[0]}</td>"
+                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>Empate</td>"
+                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{odds[1]}</td>"
+                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{m['away']}</td>"
+                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{odds[2]}</td>"
+                        html_matches += "</tr>"
+                    
+                    html_matches += "</table>"
+                    st.markdown(html_matches, unsafe_allow_html=True)
                 
                 if raw_text:
                     st.write("**Texto raw detectado (primeros 500 caracteres):**")
-                    st.code(raw_text)  # Cambiado a st.code para mejor formato
+                    st.code(raw_text)
         
         if matches:
             with col2:
