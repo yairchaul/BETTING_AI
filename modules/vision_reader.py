@@ -21,130 +21,131 @@ class ImageParser:
         
         try:
             image = vision.Image(content=image_bytes)
-            response = self.client.text_detection(image=image)
+            response = self.client.document_text_detection(image=image)
             texts = response.text_annotations
 
             if not texts:
                 return []
 
             full_text = texts[0].description
-            return self.parse_table_structure(full_text)
+            
+            # Mostrar el texto raw para debug
+            st.text("Texto raw detectado:")
+            st.code(full_text)
+            
+            return self.parse_six_column_table(full_text)
+            
         except Exception as e:
             st.error(f"Error procesando imagen: {e}")
             return []
 
-    def parse_table_structure(self, text):
+    def parse_six_column_table(self, text):
         """
-        Interpreta la estructura de tabla de 2 partes:
-        PARTE 1: Equipos Locales + Cuotas Locales + "Empate" + Cuotas Empate
-        PARTE 2: Equipos Visitantes + Cuotas Visitantes
+        Interpreta una tabla de 6 columnas:
+        Col1: Equipo Local
+        Col2: Cuota Local
+        Col3: Palabra "Empate"
+        Col4: Cuota Empate
+        Col5: Equipo Visitante
+        Col6: Cuota Visitante
         """
         lines = text.split('\n')
         lines = [line.strip() for line in lines if line.strip()]
         
-        # ============================================================================
-        # 1. DETECTAR EQUIPOS LOCALES Y SUS CUOTAS (Primera parte)
-        # ============================================================================
-        equipos_locales = []
-        cuotas_locales = []
-        cuotas_empate = []
+        matches = []
         
+        # ============================================================================
+        # PROCESAR LÍNEA POR LÍNEA BUSCANDO EL PATRÓN DE 6 ELEMENTOS
+        # ============================================================================
         i = 0
-        # Los primeros 5 equipos son los locales
-        while i < len(lines) and len(equipos_locales) < 5:
-            line = lines[i]
-            
-            # Si la línea parece un equipo (contiene letras, no es número)
-            if re.search(r'[A-Za-z]', line) and "Empate" not in line:
-                equipos_locales.append(line)
-                i += 1
+        while i < len(lines):
+            # Buscar una línea que contenga un equipo local (con letras)
+            if i + 5 < len(lines):  # Necesitamos 6 elementos consecutivos
                 
-                # La siguiente línea debería ser la cuota local
-                if i < len(lines) and re.match(r'[+-]\d{3,4}', lines[i]):
-                    cuotas_locales.append(lines[i])
-                    i += 1
+                # Verificar si tenemos el patrón completo
+                posible_local = lines[i]
+                posible_cuota_local = lines[i+1]
+                posible_empate = lines[i+2]
+                posible_cuota_empate = lines[i+3]
+                posible_visitante = lines[i+4]
+                posible_cuota_visitante = lines[i+5]
+                
+                # Validar el patrón
+                if (self.is_team_name(posible_local) and
+                    self.is_odds(posible_cuota_local) and
+                    "Empate" in posible_empate and
+                    self.is_odds(posible_cuota_empate) and
+                    self.is_team_name(posible_visitante) and
+                    self.is_odds(posible_cuota_visitante)):
                     
-                    # La siguiente línea debería ser "Empate"
-                    if i < len(lines) and "Empate" in lines[i]:
-                        i += 1
-                        
-                        # La siguiente línea debería ser la cuota de empate
-                        if i < len(lines) and re.match(r'[+-]\d{3,4}', lines[i]):
-                            cuotas_empate.append(lines[i])
-                            i += 1
-            else:
-                i += 1
-        
-        # ============================================================================
-        # 2. DETECTAR EQUIPOS VISITANTES Y SUS CUOTAS (Segunda parte)
-        # ============================================================================
-        equipos_visitantes = []
-        cuotas_visitantes = []
-        
-        # Continuar desde donde quedamos
-        while i < len(lines) and len(equipos_visitantes) < 5:
-            line = lines[i]
-            
-            # Buscar equipos visitantes
-            if re.search(r'[A-Za-z]', line) and "Empate" not in line:
-                equipos_visitantes.append(line)
-                i += 1
-                
-                # La siguiente línea debería ser la cuota visitante
-                if i < len(lines) and re.match(r'[+-]\d{3,4}', lines[i]):
-                    cuotas_visitantes.append(lines[i])
-                    i += 1
-            else:
-                i += 1
-        
-        # ============================================================================
-        # 3. CONSTRUIR MATCHES
-        # ============================================================================
-        matches = []
-        for j in range(min(len(equipos_locales), len(equipos_visitantes))):
-            if (j < len(cuotas_locales) and 
-                j < len(cuotas_empate) and 
-                j < len(cuotas_visitantes)):
-                
-                matches.append({
-                    "home": equipos_locales[j],
-                    "away": equipos_visitantes[j],
-                    "all_odds": [
-                        cuotas_locales[j],
-                        cuotas_empate[j],
-                        cuotas_visitantes[j]
-                    ]
-                })
-        
-        return matches
-
-    def parse_alternative(self, text):
-        """
-        Método alternativo si el principal falla
-        """
-        lines = text.split('\n')
-        lines = [line.strip() for line in lines if line.strip()]
-        
-        # Buscar patrones de 4 líneas consecutivas: Equipo, Cuota, "Empate", Cuota
-        matches = []
-        i = 0
-        while i < len(lines) - 3:
-            if (re.search(r'[A-Za-z]', lines[i]) and 
-                re.match(r'[+-]\d{3,4}', lines[i+1]) and 
-                "Empate" in lines[i+2] and 
-                re.match(r'[+-]\d{3,4}', lines[i+3])):
-                
-                # Este es un local, buscar su visitante después
-                local = lines[i]
-                cuota_local = lines[i+1]
-                cuota_empate = lines[i+3]
-                
-                # Buscar visitante (debe ser después de todos los locales)
-                i += 4
+                    matches.append({
+                        "home": self.clean_team_name(posible_local),
+                        "away": self.clean_team_name(posible_visitante),
+                        "all_odds": [
+                            posible_cuota_local,
+                            posible_cuota_empate,
+                            posible_cuota_visitante
+                        ]
+                    })
+                    
+                    # Saltamos las 6 líneas procesadas
+                    i += 6
+                    continue
             
             i += 1
         
+        # ============================================================================
+        # SI NO ENCONTRÓ CON EL MÉTODO ANTERIOR, INTENTAR CON EXPRESIONES REGULARES
+        # ============================================================================
+        if not matches:
+            # Buscar patrón en una sola línea
+            for line in lines:
+                # Patrón: Equipo, odds, "Empate", odds, Equipo, odds
+                pattern = r'([A-Za-z\s]+)\s+([+-]\d{3,4})\s+Empate\s+([+-]\d{3,4})\s+([A-Za-z\s]+)\s+([+-]\d{3,4})'
+                encontrado = re.search(pattern, line)
+                
+                if encontrado:
+                    matches.append({
+                        "home": encontrado.group(1).strip(),
+                        "away": encontrado.group(4).strip(),
+                        "all_odds": [
+                            encontrado.group(2),
+                            encontrado.group(3),
+                            encontrado.group(5)
+                        ]
+                    })
+        
         return matches
+
+    def is_team_name(self, text):
+        """Determina si un texto es probable nombre de equipo"""
+        if not text or len(text) < 2:
+            return False
+        
+        # No debe ser una odds
+        if re.match(r'^[+-]\d{3,4}$', text):
+            return False
+        
+        # No debe ser "Empate"
+        if "Empate" in text:
+            return False
+        
+        # Debe contener letras
+        if not re.search(r'[A-Za-z]', text):
+            return False
+        
+        return True
+
+    def is_odds(self, text):
+        """Determina si un texto es una odds"""
+        return bool(re.match(r'^[+-]\d{3,4}$', text))
+
+    def clean_team_name(self, name):
+        """Limpia el nombre del equipo"""
+        # Eliminar números y caracteres especiales
+        name = re.sub(r'[0-9+\-]', '', name)
+        name = re.sub(r'\s+', ' ', name).strip()
+        return name
 
 
 # Función de respaldo para entrada manual
