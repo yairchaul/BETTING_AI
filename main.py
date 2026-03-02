@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 from modules.vision_reader import ImageParser
+from modules.groq_vision import GroqVisionParser
 from modules.analyzer import MatchAnalyzer
 from modules.parlay_builder import show_parlay_options
 from modules.betting_tracker import BettingTracker
@@ -15,6 +16,7 @@ def init_components():
     """Inicializa componentes con cache para mejorar rendimiento"""
     return {
         'vision': ImageParser(),
+        'groq_vision': GroqVisionParser() if st.secrets.get("GROQ_API_KEY") else None,
         'analyzer': MatchAnalyzer(st.secrets.get("FOOTBALL_API_KEY", "")),
         'tracker': BettingTracker(),
         'matcher': TeamMatcher(st.secrets.get("FOOTBALL_API_KEY", ""))
@@ -82,10 +84,19 @@ def main():
         
         st.divider()
         
-        if st.secrets.get("FOOTBALL_API_KEY"):
-            st.success("✅ API conectada")
-        else:
-            st.warning("⚠️ Modo simulación")
+        # Estado de las APIs
+        col_api1, col_api2 = st.columns(2)
+        with col_api1:
+            if st.secrets.get("FOOTBALL_API_KEY"):
+                st.success("⚽ API")
+            else:
+                st.warning("⚽ No API")
+        
+        with col_api2:
+            if st.secrets.get("GROQ_API_KEY"):
+                st.success("🤖 Groq")
+            else:
+                st.warning("🤖 No Groq")
         
         debug_mode = st.checkbox("🔧 Mostrar debug OCR", value=True)
         components['tracker'].show_tracker_ui()
@@ -108,33 +119,46 @@ def main():
     
     if uploaded_file:
         # ============================================================================
-        # PROCESAMIENTO DE IMAGEN
+        # PROCESAMIENTO DE IMAGEN CON GROQ (SI ESTÁ DISPONIBLE)
         # ============================================================================
-        with st.spinner("🔍 Procesando imagen con Google Vision..."):
+        with st.spinner("🔍 Procesando imagen con IA..."):
             img_bytes = uploaded_file.getvalue()
-            matches = components['vision'].process_image(img_bytes)
-            
-            # Obtener texto raw para debug
+            matches = []
+            metodo_usado = "Ninguno"
             raw_text = ""
-            try:
-                from google.cloud import vision
-                image = vision.Image(content=img_bytes)
-                response = components['vision'].client.text_detection(image=image)
-                if response.text_annotations:
-                    raw_text = response.text_annotations[0].description
-                    
-                    # Detección de partido en vivo
-                    if re.search(r"\d{1,2}['′]", raw_text) or re.search(r"\d+\s*-\s*\d+", raw_text):
-                        st.info("🏟️ **Partido en tiempo real detectado** - Analizando con condiciones actuales")
-            except Exception as e:
-                if debug_mode:
-                    st.warning(f"Nota: No se pudo obtener texto raw: {e}")
+            
+            # INTENTO 1: Usar Groq Vision (si está disponible)
+            if components['groq_vision']:
+                try:
+                    matches = components['groq_vision'].extract_matches_with_vision(img_bytes)
+                    metodo_usado = "Groq Vision AI"
+                    st.success(f"✅ Usando {metodo_usado}")
+                except Exception as e:
+                    st.warning(f"⚠️ Groq falló, usando OCR tradicional: {e}")
+                    matches = components['vision'].process_image(img_bytes)
+                    metodo_usado = "OCR Tradicional (fallback)"
+            else:
+                # INTENTO 2: Usar OCR tradicional
+                matches = components['vision'].process_image(img_bytes)
+                metodo_usado = "OCR Tradicional"
+            
+            # Obtener texto raw para debug (solo si no tenemos matches)
+            if not matches:
+                try:
+                    from google.cloud import vision
+                    image = vision.Image(content=img_bytes)
+                    response = components['vision'].client.text_detection(image=image)
+                    if response.text_annotations:
+                        raw_text = response.text_annotations[0].description
+                except:
+                    pass
         
         # ============================================================================
-        # DEBUG MEJORADO CON TABLA HTML (TU CÓDIGO)
+        # DEBUG MEJORADO CON TABLA HTML
         # ============================================================================
         if debug_mode:
             with st.expander("🔧 Debug OCR - Información de detección", expanded=True):
+                st.write(f"**Método utilizado:** {metodo_usado}")
                 st.write(f"**Partidos detectados:** {len(matches)}")
                 
                 if matches:
@@ -169,7 +193,7 @@ def main():
                 
                 if raw_text:
                     st.write("**Texto raw detectado (primeros 500 caracteres):**")
-                    st.code(raw_text)
+                    st.code(raw_text[:500])
         
         if matches:
             with col2:
@@ -372,8 +396,8 @@ Celta de Vigo +330 Empate +290 Real Madrid -132
             ### 🎯 Flujo de análisis:
             
             1. **Subes una captura** de cualquier casa de apuestas
-            2. **Google Vision OCR** detecta palabras con coordenadas
-            3. **Algoritmo inteligente** busca patrón: EQUIPO + 3 ODDS + EQUIPO
+            2. **Groq Vision AI** (si está disponible) o **Google Vision OCR** detectan los datos
+            3. **Algoritmo inteligente** estructura la información en 6 columnas
             4. **Buscamos los equipos** en API-Sports
             5. **Simulación Monte Carlo** (20,000 iteraciones)
             6. **Analizamos 20+ mercados** por partido
