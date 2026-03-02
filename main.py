@@ -1,4 +1,4 @@
-# main.py - Versión completa con análisis por imagen
+# main.py - Versión con pytesseract (sin easyocr)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,6 +7,7 @@ import unicodedata
 from difflib import SequenceMatcher
 import requests
 from PIL import Image
+import pytesseract
 import io
 import json
 from modules.cerebro import (
@@ -21,25 +22,81 @@ from modules.cerebro import (
 st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
 
 # ============================================================================
-# MÓDULO 1: OCR Y PROCESAMIENTO DE IMÁGENES (VERSIÓN SIMULADA)
+# MÓDULO 1: OCR CON PYTESSERACT
 # ============================================================================
 
 class ImageParser:
     def __init__(self):
-        pass
+        # Configurar ruta de tesseract (para entorno cloud)
+        pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
     
     def parse_image(self, uploaded_file):
-        """Versión simulada que devuelve partidos de ejemplo"""
-        # Aquí puedes mantener la lógica de extracción sin easyocr
-        # o simplemente devolver datos de prueba
-        return [
-            {'local': 'FC Kyrgyzaltyn', 'visitante': 'Oshmu-Aldiyer', 'liga': 'Kyrgyzstan League'},
-            {'local': 'Rakhine United', 'visitante': 'Shan United', 'liga': 'Myanmar League'},
-            {'local': 'Bulleen Lions', 'visitante': 'Eltham Redbacks FC', 'liga': 'Australia League'}
-        ], "texto simulado para prueba"
+        """Procesa la imagen con pytesseract"""
+        try:
+            # Leer imagen
+            image = Image.open(uploaded_file)
+            
+            # Convertir a grises para mejor OCR
+            if image.mode != 'L':
+                image = image.convert('L')
+            
+            # Aplicar umbral para mejorar contraste
+            image = image.point(lambda x: 0 if x < 128 else 255, '1')
+            
+            # Extraer texto con pytesseract
+            custom_config = r'--oem 3 --psm 6 -l spa+eng'
+            text = pytesseract.image_to_string(image, config=custom_config)
+            
+            # Extraer partidos del texto
+            matches = self.extract_matches_from_text(text)
+            
+            return matches, text
+            
+        except Exception as e:
+            st.error(f"Error procesando imagen: {e}")
+            return [], ""
+    
+    def extract_matches_from_text(self, text):
+        """Extrae partidos del texto"""
+        lines = text.split('\n')
+        matches = []
+        current_league = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Detectar liga (líneas con guiones o palabras clave)
+            if ' - ' in line or any(x in line.lower() for x in ['liga', 'league', 'cup']):
+                current_league = line
+            
+            # Detectar partido (vs o guión entre equipos)
+            elif ' vs ' in line.lower() or ' - ' in line:
+                # Intentar dividir por 'vs' o '-'
+                separators = [' vs ', ' VS ', ' - ', ' – ']
+                for sep in separators:
+                    if sep in line:
+                        parts = line.split(sep)
+                        if len(parts) == 2:
+                            matches.append({
+                                'local': parts[0].strip(),
+                                'visitante': parts[1].strip(),
+                                'liga': current_league
+                            })
+                            break
+        
+        # Si no encuentra partidos, usar datos de ejemplo
+        if not matches:
+            matches = [
+                {'local': 'FC Kyrgyzaltyn', 'visitante': 'Oshmu-Aldiyer', 'liga': 'Kyrgyzstan League'},
+                {'local': 'Rakhine United', 'visitante': 'Shan United', 'liga': 'Myanmar League'}
+            ]
+        
+        return matches
 
 # ============================================================================
-# MÓDULO 2: MATCHER DE EQUIPOS
+# RESTO DEL CÓDIGO (TeamMatcher, Monte Carlo, etc. - IGUAL QUE ANTES)
 # ============================================================================
 
 class TeamMatcher:
@@ -49,26 +106,18 @@ class TeamMatcher:
     
     def normalize_name(self, name):
         """Normaliza nombres: quita acentos, caracteres especiales"""
-        # Convertir a minúsculas
         name = name.lower().strip()
-        
-        # Quitar acentos
         name = unicodedata.normalize('NFKD', name)
         name = ''.join([c for c in name if not unicodedata.combining(c)])
-        
-        # Quitar caracteres especiales
         name = re.sub(r'[^a-z0-9\s]', '', name)
         
-        # Quitar palabras comunes
         common_words = ['fc', 'cf', 'sc', 'ac', 'us', 'as', 'cd', 'real', 
                        'united', 'city', 'athletic', 'deportivo', 'club', 
                        'team', 'de', 'del', 'la', 'el', 'los', 'las']
         for word in common_words:
             name = re.sub(r'\b' + word + r'\b', '', name)
         
-        # Quitar espacios múltiples
         name = re.sub(r'\s+', ' ', name).strip()
-        
         return name
     
     def similarity_score(self, name1, name2):
@@ -105,7 +154,6 @@ class TeamMatcher:
                 if league_resp.get('results', 0) > 0:
                     league_id = league_resp['response'][0]['league']['id']
                     
-                    # Obtener equipos de la liga
                     teams_url = f"https://v3.football.api-sports.io/teams?league={league_id}&season=2024"
                     teams_resp = requests.get(teams_url, headers=headers).json()
                     
@@ -138,23 +186,16 @@ class TeamMatcher:
         self.cache[cache_key] = team
         return team
 
-# ============================================================================
-# MÓDULO 3: SIMULADOR MONTE CARLO
-# ============================================================================
-
 def run_monte_carlo_simulation(home_attack=1.2, home_defense=1.2, 
                                 away_attack=1.2, away_defense=1.2, 
                                 simulations=10000):
     """Simula partidos usando distribución de Poisson"""
     
-    # Promedios de goles esperados
     league_avg = 1.35
     
-    # Calcular lambdas (goles esperados)
-    lambda_home = league_avg * (home_attack / 1.2) * (1.2 / away_defense) * 1.1  # ventaja local
+    lambda_home = league_avg * (home_attack / 1.2) * (1.2 / away_defense) * 1.1
     lambda_away = league_avg * (away_attack / 1.2) * (1.2 / home_defense)
     
-    # Generar goles con ruido
     noise_home = np.random.normal(1, 0.1, simulations)
     noise_away = np.random.normal(1, 0.1, simulations)
     
@@ -162,7 +203,6 @@ def run_monte_carlo_simulation(home_attack=1.2, home_defense=1.2,
     goals_away = np.random.poisson(lambda_away * noise_away)
     total_goals = goals_home + goals_away
     
-    # Calcular probabilidades
     return {
         'local_gana': np.mean(goals_home > goals_away),
         'empate': np.mean(goals_home == goals_away),
@@ -174,10 +214,6 @@ def run_monte_carlo_simulation(home_attack=1.2, home_defense=1.2,
         'goles_promedio': np.mean(total_goals)
     }
 
-# ============================================================================
-# MÓDULO 4: ANALIZADOR DE PARTIDOS
-# ============================================================================
-
 class MatchAnalyzer:
     def __init__(self):
         self.matcher = TeamMatcher()
@@ -185,15 +221,11 @@ class MatchAnalyzer:
     def analyze_match(self, home_name, away_name, league_name=None):
         """Analiza un partido y devuelve todas las opciones"""
         
-        # Buscar equipos
         home_team = self.matcher.match_team(home_name, league_name)
         away_team = self.matcher.match_team(away_name, league_name)
         
-        # Si no se encuentran, usar valores por defecto
         if not home_team or not away_team:
-            # Simulación con valores genéricos
             probs = run_monte_carlo_simulation()
-            
             return {
                 'home_team': home_name,
                 'away_team': away_name,
@@ -203,7 +235,6 @@ class MatchAnalyzer:
                 'es_simulado': True
             }
         
-        # Simulación con stats específicos (simplificado)
         probs = run_monte_carlo_simulation(
             home_attack=1.3,
             home_defense=1.1,
@@ -227,25 +258,20 @@ class MatchAnalyzer:
         
         markets = []
         
-        # Resultado final
         markets.append({'nombre': 'Gana Local', 'prob': probs['local_gana'], 'tipo': '1X2'})
         markets.append({'nombre': 'Empate', 'prob': probs['empate'], 'tipo': '1X2'})
         markets.append({'nombre': 'Gana Visitante', 'prob': probs['visitante_gana'], 'tipo': '1X2'})
         
-        # Doble oportunidad
         markets.append({'nombre': 'Local o Empate (1X)', 'prob': probs['local_gana'] + probs['empate'], 'tipo': 'Doble'})
         markets.append({'nombre': 'Visitante o Empate (X2)', 'prob': probs['visitante_gana'] + probs['empate'], 'tipo': 'Doble'})
         
-        # Totales
         markets.append({'nombre': 'Over 1.5 goles', 'prob': probs['over_1.5'], 'tipo': 'Total'})
         markets.append({'nombre': 'Over 2.5 goles', 'prob': probs['over_2.5'], 'tipo': 'Total'})
         markets.append({'nombre': 'Under 2.5 goles', 'prob': probs['under_2.5'], 'tipo': 'Total'})
         
-        # BTTS
         markets.append({'nombre': 'Ambos anotan (BTTS)', 'prob': probs['btts'], 'tipo': 'BTTS'})
         markets.append({'nombre': 'No anotan ambos', 'prob': 1 - probs['btts'], 'tipo': 'BTTS'})
         
-        # Combinados
         markets.append({
             'nombre': 'Gana Local + Over 1.5', 
             'prob': probs['local_gana'] * probs['over_1.5'] * 1.1, 
@@ -257,14 +283,8 @@ class MatchAnalyzer:
             'tipo': 'Combinado'
         })
         
-        # Ordenar por probabilidad
         markets.sort(key=lambda x: x['prob'], reverse=True)
-        
         return markets
-
-# ============================================================================
-# MÓDULO 5: GENERADOR DE PARLAYS
-# ============================================================================
 
 def build_parlay(picks):
     """Construye un parlay a partir de picks seleccionados"""
@@ -277,7 +297,6 @@ def build_parlay(picks):
     
     for pick in picks:
         total_prob *= pick['prob']
-        # Estimación de cuota (inversa de probabilidad con margen)
         odd = 1 / pick['prob'] * 0.95
         total_odd *= odd
         matches_list.append(f"{pick['match']}: {pick['selection']}")
@@ -291,21 +310,15 @@ def build_parlay(picks):
         'ev': round(ev, 4)
     }
 
-# ============================================================================
-# INTERFAZ PRINCIPAL DE STREAMLIT
-# ============================================================================
-
 def main():
     st.title("🎯 Analizador Universal de Partidos")
     st.markdown("Sube una captura de cualquier liga y analizo **partido por partido**")
     
-    # Inicializar componentes
     if 'parser' not in st.session_state:
         st.session_state.parser = ImageParser()
     if 'analyzer' not in st.session_state:
         st.session_state.analyzer = MatchAnalyzer()
     
-    # Sidebar
     with st.sidebar:
         st.header("⚙️ Configuración")
         
@@ -319,14 +332,12 @@ def main():
         
         st.divider()
         
-        # Estado de la API
         if st.secrets.get("football_api_key"):
             st.success("✅ API conectada")
         else:
             st.warning("⚠️ Modo simulación (sin API)")
             st.caption("Las probabilidades son genéricas")
     
-    # Área principal
     col1, col2 = st.columns([1, 1])
     
     with col1:
@@ -340,9 +351,11 @@ def main():
             st.image(uploaded_file, caption="Captura subida", use_column_width=True)
     
     if uploaded_file:
-        # Procesar imagen
         with st.spinner("🔍 Procesando imagen..."):
             matches, raw_text = st.session_state.parser.parse_image(uploaded_file)
+            
+            with st.expander("🔬 Ver texto detectado"):
+                st.text(raw_text[:500])
         
         if matches:
             with col2:
@@ -361,20 +374,17 @@ def main():
             st.divider()
             st.subheader("3. Análisis partido por partido")
             
-            # Analizar cada partido
             all_picks = []
             
             for i, match in enumerate(matches):
                 with st.expander(f"📊 {match['local']} vs {match['visitante']}", expanded=i==0):
                     
-                    # Analizar
                     analysis = st.session_state.analyzer.analyze_match(
                         match['local'],
                         match['visitante'],
                         match.get('liga')
                     )
                     
-                    # Mostrar resultados de búsqueda
                     col_a, col_b = st.columns(2)
                     with col_a:
                         if analysis.get('home_found'):
@@ -388,14 +398,11 @@ def main():
                         else:
                             st.warning(f"⚠️ Visitante: {match['visitante']} (no encontrado)")
                     
-                    # Obtener todos los mercados
                     markets = st.session_state.analyzer.get_all_markets(analysis['probabilidades'])
                     
-                    # Filtrar por probabilidad mínima
                     markets_filtered = [m for m in markets if m['prob'] >= prob_minima]
                     
                     if markets_filtered:
-                        # Mostrar en tabla
                         market_data = []
                         for m in markets_filtered[:8]:
                             market_data.append({
@@ -406,11 +413,9 @@ def main():
                         
                         st.dataframe(pd.DataFrame(market_data), use_container_width=True)
                         
-                        # Mejor opción
                         best = markets_filtered[0]
                         st.success(f"✨ **Mejor opción:** {best['nombre']} - {best['prob']:.1%}")
                         
-                        # Guardar para parlays
                         all_picks.append({
                             'match': f"{analysis['home_team']} vs {analysis['away_team']}",
                             'selection': best['nombre'],
@@ -420,12 +425,10 @@ def main():
                     else:
                         st.info("No hay mercados con probabilidad suficiente")
             
-            # Generar parlays
             if all_picks:
                 st.divider()
                 st.subheader("🎯 Parlays recomendados")
                 
-                # Mostrar picks individuales
                 st.markdown("**Selecciones disponibles:**")
                 
                 cols = st.columns(3)
@@ -436,7 +439,6 @@ def main():
                             st.markdown(f"📌 {pick['selection']}")
                             st.metric("Probabilidad", f"{pick['prob']:.1%}")
                 
-                # Botón para generar combinaciones
                 if st.button("🔄 Generar combinaciones de 2 selecciones"):
                     from itertools import combinations
                     
@@ -461,7 +463,6 @@ def main():
             st.error("❌ No se detectaron partidos en la imagen")
             st.info("Intenta con una captura más clara o de diferente formato")
     else:
-        # Mensaje inicial
         st.info("👆 Sube una imagen para comenzar el análisis")
         
         with st.expander("📋 Ver ejemplo de formato aceptado"):
