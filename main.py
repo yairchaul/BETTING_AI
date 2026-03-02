@@ -85,38 +85,59 @@ def main():
             st.image(uploaded_file, caption="Imagen subida", use_container_width=True)
     
     if uploaded_file:
-        # --- NUEVA LÓGICA DE PROCESAMIENTO COMPATIBLE ---
+        # --- CORRECCIÓN: PROCESAMIENTO DE IMAGEN ---
         with st.spinner("🔍 Procesando imagen con Google Vision..."):
+            # Guardar la posición actual del puntero
+            uploaded_file.seek(0)
             img_bytes = uploaded_file.read()
-            # Llamamos al nuevo método process_image de tu vision_reader.py
+            
+            # Llamar al método process_image de vision_reader.py
             matches = components['vision'].process_image(img_bytes)
             
-            # Detección opcional de "En Vivo" (basado en el texto raw)
-            # Intentamos obtener el texto crudo para ver si hay marcadores (1-0) o minutos (45')
+            # Obtener texto raw para debug
             raw_text = ""
             try:
-                # Esto asume que tu vision_reader guarda el último resultado o permite acceso al cliente
-                response = components['vision'].client.text_detection(image={'content': img_bytes})
-                raw_text = response.text_annotations[0].description
-                if re.search(r"\d+'", raw_text) or re.search(r"\d\s*-\s*\d", raw_text):
-                    st.info("🏟️ **Partido en tiempo real detectado.** Analizando bajo condiciones de juego.")
-            except:
-                pass
+                # Resetear el puntero para leer de nuevo si es necesario
+                uploaded_file.seek(0)
+                img_bytes_debug = uploaded_file.read()
+                response = components['vision'].client.text_detection(image={'content': img_bytes_debug})
+                if response.text_annotations:
+                    raw_text = response.text_annotations[0].description
+                    
+                    # Detección de partido en vivo
+                    if re.search(r"\d{1,2}['′]", raw_text) or re.search(r"\d+\s*-\s*\d+", raw_text):
+                        st.info("🏟️ **Partido en tiempo real detectado** - Analizando con condiciones actuales")
+            except Exception as e:
+                if debug_mode:
+                    st.warning(f"Nota: No se pudo obtener texto raw: {e}")
         
         # --- MOSTRAR DEBUG ---
         if debug_mode:
-            with st.expander("🔧 Debug OCR"):
-                st.write(f"Partidos detectados: {len(matches)}")
-                if raw_text: st.text(raw_text[:500])
+            with st.expander("🔧 Debug OCR - Información de detección", expanded=True):
+                st.write(f"**Partidos detectados:** {len(matches)}")
+                
+                if matches:
+                    st.write("**Detalle de detecciones:**")
+                    for i, m in enumerate(matches):
+                        odds_str = ", ".join(m.get('all_odds', ['N/A', 'N/A', 'N/A']))
+                        st.write(f"{i+1}. {m['home']} vs {m['away']} → Odds: {odds_str}")
+                
+                if raw_text:
+                    st.write("**Texto raw detectado (primeros 500 caracteres):**")
+                    st.text(raw_text[:500])
         
         if matches:
             with col2:
                 st.subheader(f"2. Partidos detectados ({len(matches)})")
                 df_data = []
                 for m in matches:
+                    odds = m.get('all_odds', ['N/A', 'N/A', 'N/A'])
                     df_data.append({
                         'Local': m['home'],
-                        'Visitante': m['away']
+                        'Visitante': m['away'],
+                        'Cuota L': odds[0] if len(odds) > 0 else 'N/A',
+                        'Cuota E': odds[1] if len(odds) > 1 else 'N/A',
+                        'Cuota V': odds[2] if len(odds) > 2 else 'N/A'
                     })
                 st.dataframe(pd.DataFrame(df_data), use_container_width=True)
             
@@ -127,14 +148,29 @@ def main():
             for i, match in enumerate(matches):
                 home = match['home']
                 away = match['away']
+                odds = match.get('all_odds', ['N/A', 'N/A', 'N/A'])
                 
                 with st.expander(f"📊 {home} vs {away}", expanded=i==0):
+                    # Mostrar cuotas si están disponibles
+                    if odds and odds[0] != 'N/A':
+                        st.caption(f"🎲 **Cuotas:** Local {odds[0]} | Empate {odds[1]} | Visitante {odds[2]}")
+                    
+                    # Analizar el partido
                     analysis = components['analyzer'].analyze_match(home, away, "")
                     
                     # Mostrar resultados de búsqueda
                     col_a, col_b = st.columns(2)
-                    col_a.write(f"🏠 {analysis['home_team']} " + ("✅" if analysis.get('home_found') else "❓"))
-                    col_b.write(f"🚀 {analysis['away_team']} " + ("✅" if analysis.get('away_found') else "❓"))
+                    with col_a:
+                        if analysis.get('home_found'):
+                            st.success(f"✅ Local encontrado: {analysis['home_team']}")
+                        else:
+                            st.warning(f"⚠️ Local: {home} (no encontrado en API)")
+                    
+                    with col_b:
+                        if analysis.get('away_found'):
+                            st.success(f"✅ Visitante encontrado: {analysis['away_team']}")
+                        else:
+                            st.warning(f"⚠️ Visitante: {away} (no encontrado en API)")
                     
                     # Filtrar mercados
                     markets_filtered = [
@@ -142,11 +178,17 @@ def main():
                         if m['prob'] >= prob_minima and m['category'] in categorias
                     ]
                     
+                    # Resaltar mercados especiales
+                    if show_high_scoring:
+                        for m in markets_filtered:
+                            if 'Over 4.5' in m['name'] or 'Over 5.5' in m['name']:
+                                m['highlight'] = True
+                    
                     if markets_filtered:
-                        st.caption(f"📊 Goles promedio: {analysis['probabilidades']['goles_promedio']:.2f}")
+                        st.caption(f"📊 Goles promedio esperados: {analysis['probabilidades']['goles_promedio']:.2f}")
                         
                         market_df = pd.DataFrame([{
-                            'Mercado': m['name'],
+                            'Mercado': ("🔴 " if m.get('highlight') else "") + m['name'],
                             'Probabilidad': f"{m['prob']:.1%}",
                             'Categoría': m['category']
                         } for m in markets_filtered[:10]])
@@ -154,19 +196,58 @@ def main():
                         st.dataframe(market_df, use_container_width=True, hide_index=True)
                         
                         best = markets_filtered[0]
-                        st.success(f"✨ **Mejor opción:** {best['name']} - {best['prob']:.1%}")
+                        best_emoji = "🔴" if best.get('highlight') else "✨"
+                        st.success(f"{best_emoji} **Mejor opción:** {best['name']} - {best['prob']:.1%}")
                         
                         all_picks.append({
-                            'match': f"{home} vs {away}",
+                            'match': f"{analysis['home_team']} vs {analysis['away_team']}",
                             'selection': best['name'],
                             'prob': best['prob'],
                             'category': best['category']
                         })
+                    else:
+                        st.info("📭 No hay mercados con los filtros seleccionados")
             
             if all_picks:
                 show_parlay_options(all_picks, components['tracker'])
+            else:
+                st.info("ℹ️ No hay suficientes picks para generar parlays")
         else:
-            st.error("❌ No se detectaron partidos. Intenta con una imagen más clara.")
+            st.error("❌ No se detectaron partidos en la imagen")
+            st.info("""
+            **Sugerencias para mejorar la detección:**
+            - Asegúrate que la imagen tenga buena resolución
+            - Los nombres de equipos deben ser legibles
+            - La imagen debe contener cuotas en formato americano (+120, -150)
+            - Activa el debug para ver qué texto detectó el OCR
+            """)
+    
+    else:
+        st.info("👆 Sube una imagen para comenzar el análisis")
+        
+        with st.expander("📋 Formato esperado (ejemplo)"):
+            st.code("""
+[Equipo Local] [Cuota Local] [Empate] [Cuota Empate] [Equipo Visitante] [Cuota Visitante]
+
+Ejemplos:
+Real Madrid -278 Empate +340 Getafe +900
+Rayo Vallecano -145 Empate +265 Real Oviedo +410
+Celta de Vigo +330 Empate +290 Real Madrid -132
+            """)
+        
+        with st.expander("ℹ️ Cómo funciona"):
+            st.markdown("""
+            ### 🎯 Flujo de análisis:
+            
+            1. **Subes una captura** de cualquier casa de apuestas
+            2. **Google Vision OCR** detecta palabras con coordenadas
+            3. **Algoritmo inteligente** busca patrón: EQUIPO + 3 ODDS + EQUIPO
+            4. **Buscamos los equipos** en API-Sports
+            5. **Simulación Monte Carlo** (20,000 iteraciones)
+            6. **Analizamos 20+ mercados** por partido
+            7. **Generamos parlays** con valor esperado positivo
+            8. **Registramos apuestas** y tracking de resultados
+            """)
 
 if __name__ == "__main__":
     main()
