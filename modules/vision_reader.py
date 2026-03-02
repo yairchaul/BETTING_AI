@@ -28,122 +28,123 @@ class ImageParser:
                 return []
 
             full_text = texts[0].description
-            return self.smart_parse(full_text)
+            return self.parse_table_structure(full_text)
         except Exception as e:
             st.error(f"Error procesando imagen: {e}")
             return []
 
-    def smart_parse(self, text):
+    def parse_table_structure(self, text):
         """
-        Interpreta la estructura de tabla de 3 columnas:
-        Col1: Equipos Locales
-        Col2: Cuotas Locales
-        Col3: Palabra "Empate"
-        Col4: Cuotas Empate
-        Col5: Equipos Visitantes
-        Col6: Cuotas Visitantes
+        Interpreta la estructura de tabla de 2 partes:
+        PARTE 1: Equipos Locales + Cuotas Locales + "Empate" + Cuotas Empate
+        PARTE 2: Equipos Visitantes + Cuotas Visitantes
         """
         lines = text.split('\n')
+        lines = [line.strip() for line in lines if line.strip()]
         
-        # Clasificar líneas por su contenido
+        # ============================================================================
+        # 1. DETECTAR EQUIPOS LOCALES Y SUS CUOTAS (Primera parte)
+        # ============================================================================
         equipos_locales = []
         cuotas_locales = []
-        empates = []
         cuotas_empate = []
+        
+        i = 0
+        # Los primeros 5 equipos son los locales
+        while i < len(lines) and len(equipos_locales) < 5:
+            line = lines[i]
+            
+            # Si la línea parece un equipo (contiene letras, no es número)
+            if re.search(r'[A-Za-z]', line) and "Empate" not in line:
+                equipos_locales.append(line)
+                i += 1
+                
+                # La siguiente línea debería ser la cuota local
+                if i < len(lines) and re.match(r'[+-]\d{3,4}', lines[i]):
+                    cuotas_locales.append(lines[i])
+                    i += 1
+                    
+                    # La siguiente línea debería ser "Empate"
+                    if i < len(lines) and "Empate" in lines[i]:
+                        i += 1
+                        
+                        # La siguiente línea debería ser la cuota de empate
+                        if i < len(lines) and re.match(r'[+-]\d{3,4}', lines[i]):
+                            cuotas_empate.append(lines[i])
+                            i += 1
+            else:
+                i += 1
+        
+        # ============================================================================
+        # 2. DETECTAR EQUIPOS VISITANTES Y SUS CUOTAS (Segunda parte)
+        # ============================================================================
         equipos_visitantes = []
         cuotas_visitantes = []
         
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
+        # Continuar desde donde quedamos
+        while i < len(lines) and len(equipos_visitantes) < 5:
+            line = lines[i]
             
-            # Detectar si es un equipo (letras, sin números al inicio)
-            if re.match(r'^[A-Za-z]', line) and not re.search(r'[+-]\d', line):
-                if "Empate" not in line and len(line) > 2:
-                    # Determinar si es local o visitante basado en el contexto
-                    # Por ahora, los primeros 5 son locales, los últimos 5 son visitantes
-                    if len(equipos_locales) < 5:
-                        equipos_locales.append(line)
-                    else:
-                        equipos_visitantes.append(line)
-            
-            # Detectar cuotas (+/- números)
-            elif re.match(r'[+-]\d{3,4}', line):
-                if len(cuotas_locales) < 5:
-                    cuotas_locales.append(line)
-                elif len(cuotas_empate) < 5:
-                    cuotas_empate.append(line)
-                else:
-                    cuotas_visitantes.append(line)
-            
-            # Detectar la palabra "Empate"
-            elif "Empate" in line:
-                empates.append(line)
+            # Buscar equipos visitantes
+            if re.search(r'[A-Za-z]', line) and "Empate" not in line:
+                equipos_visitantes.append(line)
+                i += 1
+                
+                # La siguiente línea debería ser la cuota visitante
+                if i < len(lines) and re.match(r'[+-]\d{3,4}', lines[i]):
+                    cuotas_visitantes.append(lines[i])
+                    i += 1
+            else:
+                i += 1
         
-        # Debug para ver cómo se clasificó
-        st.write("**Clasificación de líneas:**")
-        st.write(f"Locales: {equipos_locales}")
-        st.write(f"Cuotas Locales: {cuotas_locales}")
-        st.write(f"Cuotas Empate: {cuotas_empate}")
-        st.write(f"Visitantes: {equipos_visitantes}")
-        st.write(f"Cuotas Visitantes: {cuotas_visitantes}")
-        
-        # Construir matches
+        # ============================================================================
+        # 3. CONSTRUIR MATCHES
+        # ============================================================================
         matches = []
-        for i in range(min(len(equipos_locales), len(equipos_visitantes))):
-            if i < len(cuotas_locales) and i < len(cuotas_empate) and i < len(cuotas_visitantes):
+        for j in range(min(len(equipos_locales), len(equipos_visitantes))):
+            if (j < len(cuotas_locales) and 
+                j < len(cuotas_empate) and 
+                j < len(cuotas_visitantes)):
+                
                 matches.append({
-                    "home": equipos_locales[i],
-                    "away": equipos_visitantes[i],
+                    "home": equipos_locales[j],
+                    "away": equipos_visitantes[j],
                     "all_odds": [
-                        cuotas_locales[i],
-                        cuotas_empate[i],
-                        cuotas_visitantes[i]
+                        cuotas_locales[j],
+                        cuotas_empate[j],
+                        cuotas_visitantes[j]
                     ]
                 })
         
         return matches
 
-    def is_team_name(self, text):
-        """Determina si un texto es probable nombre de equipo"""
-        if not text or len(text) < 2:
-            return False
+    def parse_alternative(self, text):
+        """
+        Método alternativo si el principal falla
+        """
+        lines = text.split('\n')
+        lines = [line.strip() for line in lines if line.strip()]
         
-        text_lower = text.lower()
+        # Buscar patrones de 4 líneas consecutivas: Equipo, Cuota, "Empate", Cuota
+        matches = []
+        i = 0
+        while i < len(lines) - 3:
+            if (re.search(r'[A-Za-z]', lines[i]) and 
+                re.match(r'[+-]\d{3,4}', lines[i+1]) and 
+                "Empate" in lines[i+2] and 
+                re.match(r'[+-]\d{3,4}', lines[i+3])):
+                
+                # Este es un local, buscar su visitante después
+                local = lines[i]
+                cuota_local = lines[i+1]
+                cuota_empate = lines[i+3]
+                
+                # Buscar visitante (debe ser después de todos los locales)
+                i += 4
+            
+            i += 1
         
-        # Palabras que definitivamente NO son equipos
-        forbidden = ['empate', 'draw', 'vs', 'v', 'apuesta', 'cuota', 'resultado', 
-                     'final', 'vivo', 'directo', 'hoy', 'mañana', 'score', 'points',
-                     'liga', 'champions', 'premier', 'calendar', 'schedule']
-        
-        if any(word in text_lower for word in forbidden):
-            return False
-        
-        # No debe ser un número
-        if re.match(r'^[+-]?\d+$', text):
-            return False
-        
-        return True
-
-    def fix_common_names(self, name):
-        """Corrige nombres que el OCR a veces corta o confunde"""
-        name = name.replace('|', '').strip()
-        
-        # Correcciones comunes
-        corrections = {
-            "RCD Mallorca": "RCD Mallorca",
-            "Real Oviedo": "Real Oviedo",
-            "Getafe": "Getafe",
-            "Girona": "Girona",
-            "Real Madrid": "Real Madrid",
-            "Rayo Vallecano": "Rayo Vallecano",
-            "Celta de Vigo": "Celta de Vigo",
-            "Osasuna": "Osasuna",
-            "Levante": "Levante"
-        }
-        
-        return corrections.get(name, name)
+        return matches
 
 
 # Función de respaldo para entrada manual
