@@ -1,7 +1,7 @@
+# modules/betting_tracker.py
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import json
 
 class BettingTracker:
     def __init__(self):
@@ -26,7 +26,7 @@ class BettingTracker:
         return bet
     
     def update_bet_result(self, bet_id, result):
-        """Actualiza el resultado de una apuesta (Ganada/Perdida)"""
+        """Actualiza el resultado de una apuesta"""
         for bet in st.session_state.bets:
             if bet['id'] == bet_id:
                 bet['status'] = 'Resuelta'
@@ -40,27 +40,28 @@ class BettingTracker:
     def get_stats(self):
         """Obtiene estadísticas de rendimiento"""
         bets = st.session_state.bets
-        total_bets = len(bets)
-        if total_bets == 0:
-            return {'total_bets': 0, 'win_rate': 0, 'profit': 0}
+        if not bets:
+            return {'total_bets': 0, 'win_rate': 0, 'profit': 0, 'pending': 0}
         
+        total_bets = len(bets)
         won = sum(1 for b in bets if b.get('result') == 'Ganada')
         lost = sum(1 for b in bets if b.get('result') == 'Perdida')
         pending = total_bets - won - lost
         
         total_profit = sum(b.get('profit', 0) for b in bets)
+        win_rate = round(won / (won + lost) * 100, 1) if (won + lost) > 0 else 0
         
         return {
             'total_bets': total_bets,
             'won': won,
             'lost': lost,
             'pending': pending,
-            'win_rate': round(won / (won + lost) * 100, 1) if (won + lost) > 0 else 0,
+            'win_rate': win_rate,
             'total_profit': total_profit
         }
     
     def show_tracker_ui(self):
-        """Muestra la interfaz del tracker"""
+        """Muestra la interfaz del tracker en sidebar"""
         st.sidebar.markdown("---")
         st.sidebar.subheader("📊 Registro de Apuestas")
         
@@ -71,17 +72,51 @@ class BettingTracker:
             st.metric("Total", stats['total_bets'])
             st.metric("Ganadas", stats['won'])
         with col2:
-            st.metric("Profit", f"${stats['total_profit']:,.0f}")
+            profit_color = "inverse" if stats['total_profit'] >= 0 else "off"
+            st.metric("Profit", f"${stats['total_profit']:,.0f}", delta_color=profit_color)
             st.metric("Win Rate", f"{stats['win_rate']}%")
         
         if stats['pending'] > 0:
             st.sidebar.info(f"⏳ {stats['pending']} pendientes")
         
-        # Mostrar historial en expander
-        if st.session_state.bets:
-            with st.sidebar.expander("📜 Historial"):
-                for bet in reversed(st.session_state.bets[-10:]):  # Últimas 10
-                    status_emoji = "✅" if bet.get('result') == 'Ganada' else "❌" if bet.get('result') == 'Perdida' else "⏳"
-                    st.markdown(f"{status_emoji} **{bet['date'][5:16]}**")
-                    st.markdown(f"   Cuota: {bet['total_odds']} | ${bet['profit']:+,.0f}")
-                    st.markdown("---")
+        # Botón para ver historial completo
+        if st.sidebar.button("📜 Ver historial"):
+            self.show_history()
+    
+    def show_history(self):
+        """Muestra el historial completo de apuestas"""
+        if not st.session_state.bets:
+            st.sidebar.info("No hay apuestas registradas")
+            return
+        
+        # Crear DataFrame para mostrar
+        history_data = []
+        for bet in reversed(st.session_state.bets[-20:]):  # Últimas 20
+            status_emoji = "✅" if bet.get('result') == 'Ganada' else "❌" if bet.get('result') == 'Perdida' else "⏳"
+            history_data.append({
+                'Fecha': bet['date'][5:16],
+                'Estado': status_emoji,
+                'Cuota': bet['total_odds'],
+                'Profit': f"${bet['profit']:+,.0f}",
+                'Selecciones': len(bet['selections'])
+            })
+        
+        st.sidebar.dataframe(pd.DataFrame(history_data), use_container_width=True)
+        
+        # Botones para actualizar resultados (solo pendientes)
+        pending_bets = [b for b in st.session_state.bets if b['status'] == 'Pendiente']
+        if pending_bets:
+            st.sidebar.markdown("---")
+            st.sidebar.caption("Actualizar resultados:")
+            for bet in pending_bets[:3]:
+                col1, col2, col3 = st.sidebar.columns([2, 1, 1])
+                with col1:
+                    st.caption(f"#{bet['id']}")
+                with col2:
+                    if st.button("✅", key=f"win_{bet['id']}"):
+                        self.update_bet_result(bet['id'], 'Ganada')
+                        st.rerun()
+                with col3:
+                    if st.button("❌", key=f"loss_{bet['id']}"):
+                        self.update_bet_result(bet['id'], 'Perdida')
+                        st.rerun()
