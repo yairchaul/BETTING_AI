@@ -7,20 +7,6 @@ import unicodedata
 from difflib import SequenceMatcher
 import requests
 from PIL import Image
-# Comenta la línea 10
-# import easyocr
-
-# Y reemplaza la clase ImageParser con una versión simulada:
-class ImageParser:
-    def __init__(self):
-        pass
-    
-    def parse_image(self, uploaded_file):
-        # Versión de prueba que devuelve partidos manualmente
-        return [
-            {'local': 'FC Kyrgyzaltyn', 'visitante': 'Oshmu-Aldiyer', 'liga': 'Kyrgyzstan League'},
-            {'local': 'Rakhine United', 'visitante': 'Shan United', 'liga': 'Myanmar League'}
-        ], "texto simulado"
 import io
 import json
 from modules.cerebro import (
@@ -35,79 +21,25 @@ from modules.cerebro import (
 st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
 
 # ============================================================================
-# MÓDULO 1: OCR Y PROCESAMIENTO DE IMÁGENES
+# MÓDULO 1: OCR Y PROCESAMIENTO DE IMÁGENES (VERSIÓN SIMULADA)
 # ============================================================================
 
 class ImageParser:
     def __init__(self):
-        # Inicializar EasyOCR (soporta español e inglés)
-        self.reader = easyocr.Reader(['es', 'en'], gpu=False)
-    
-    def extract_matches_from_text(self, text):
-        """Extrae partidos del formato específico de imagen"""
-        lines = text.split('\n')
-        matches = []
-        current_league = None
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            
-            # Detectar liga (líneas con guiones)
-            if ' - ' in line and len(line.split(' - ')) >= 2:
-                current_league = line
-            
-            # Detectar partido (dos equipos)
-            elif ' vs ' in line.lower():
-                parts = re.split(r'\s+vs\s+', line, flags=re.IGNORECASE)
-                if len(parts) == 2:
-                    matches.append({
-                        'local': parts[0].strip(),
-                        'visitante': parts[1].strip(),
-                        'liga': current_league
-                    })
-            else:
-                # Posible formato de dos líneas
-                if i + 1 < len(lines) and lines[i+1].strip():
-                    next_line = lines[i+1].strip()
-                    # Evitar capturar fechas o puntuaciones
-                    if not any(x in next_line for x in ['Score', 'Points', ':', 'Mar']):
-                        matches.append({
-                            'local': line,
-                            'visitante': next_line,
-                            'liga': current_league
-                        })
-                        i += 1  # Saltar la siguiente línea
-            i += 1
-        
-        return matches
+        pass
     
     def parse_image(self, uploaded_file):
-        """Procesa la imagen y extrae los partidos"""
-        try:
-            # Leer imagen
-            image = Image.open(uploaded_file)
-            
-            # Convertir a array para EasyOCR
-            img_array = np.array(image)
-            
-            # Detectar texto
-            result = self.reader.readtext(img_array)
-            
-            # Unir todo el texto detectado
-            full_text = ' '.join([item[1] for item in result])
-            
-            # Extraer partidos
-            matches = self.extract_matches_from_text(full_text)
-            
-            return matches, full_text
-            
-        except Exception as e:
-            st.error(f"Error procesando imagen: {e}")
-            return [], ""
+        """Versión simulada que devuelve partidos de ejemplo"""
+        # Aquí puedes mantener la lógica de extracción sin easyocr
+        # o simplemente devolver datos de prueba
+        return [
+            {'local': 'FC Kyrgyzaltyn', 'visitante': 'Oshmu-Aldiyer', 'liga': 'Kyrgyzstan League'},
+            {'local': 'Rakhine United', 'visitante': 'Shan United', 'liga': 'Myanmar League'},
+            {'local': 'Bulleen Lions', 'visitante': 'Eltham Redbacks FC', 'liga': 'Australia League'}
+        ], "texto simulado para prueba"
 
 # ============================================================================
-# MÓDULO 2: MATCHER DE EQUIPOS (SOLUCIÓN A TU PROBLEMA PRINCIPAL)
+# MÓDULO 2: MATCHER DE EQUIPOS
 # ============================================================================
 
 class TeamMatcher:
@@ -127,7 +59,7 @@ class TeamMatcher:
         # Quitar caracteres especiales
         name = re.sub(r'[^a-z0-9\s]', '', name)
         
-        # Quitar palabras comunes que no ayudan en búsqueda
+        # Quitar palabras comunes
         common_words = ['fc', 'cf', 'sc', 'ac', 'us', 'as', 'cd', 'real', 
                        'united', 'city', 'athletic', 'deportivo', 'club', 
                        'team', 'de', 'del', 'la', 'el', 'los', 'las']
@@ -207,7 +139,7 @@ class TeamMatcher:
         return team
 
 # ============================================================================
-# MÓDULO 3: SIMULADOR MONTE CARLO (VERSIÓN SIMPLIFICADA)
+# MÓDULO 3: SIMULADOR MONTE CARLO
 # ============================================================================
 
 def run_monte_carlo_simulation(home_attack=1.2, home_defense=1.2, 
@@ -273,7 +205,7 @@ class MatchAnalyzer:
         
         # Simulación con stats específicos (simplificado)
         probs = run_monte_carlo_simulation(
-            home_attack=1.3,  # Idealmente vendrían de stats reales
+            home_attack=1.3,
             home_defense=1.1,
             away_attack=1.2,
             away_defense=1.3
@@ -411,10 +343,6 @@ def main():
         # Procesar imagen
         with st.spinner("🔍 Procesando imagen..."):
             matches, raw_text = st.session_state.parser.parse_image(uploaded_file)
-            
-            # Debug (opcional)
-            with st.expander("🔬 Ver texto detectado"):
-                st.text(raw_text[:500])
         
         if matches:
             with col2:
@@ -469,7 +397,7 @@ def main():
                     if markets_filtered:
                         # Mostrar en tabla
                         market_data = []
-                        for m in markets_filtered[:8]:  # Top 8
+                        for m in markets_filtered[:8]:
                             market_data.append({
                                 'Mercado': m['nombre'],
                                 'Probabilidad': f"{m['prob']:.1%}",
@@ -500,9 +428,8 @@ def main():
                 # Mostrar picks individuales
                 st.markdown("**Selecciones disponibles:**")
                 
-                # CORREGIDO: Aquí estaba el error de indentación
                 cols = st.columns(3)
-                for idx, pick in enumerate(all_picks[:6]):  # Limitar a 6
+                for idx, pick in enumerate(all_picks[:6]):
                     with cols[idx % 3]:
                         with st.container(border=True):
                             st.markdown(f"**{pick['match']}**")
@@ -511,7 +438,6 @@ def main():
                 
                 # Botón para generar combinaciones
                 if st.button("🔄 Generar combinaciones de 2 selecciones"):
-                    # Generar combinaciones simples
                     from itertools import combinations
                     
                     parlays = []
