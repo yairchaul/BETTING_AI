@@ -1,215 +1,256 @@
-import re
-
 import streamlit as st
-
-from google.cloud import vision
-
-
-
-def is_odd(text: str) -> bool:
-
-cleaned = re.sub(r'\s+', '', text.strip())
-
-num_part = cleaned.replace('+', '').replace('-', '')
-
-try:
-
-val = float(num_part)
-
-return abs(val) >= 100 or (1 < val < 10)
-
-except:
-
-return False
-
-
-
-def clean_name(text: str) -> str:
-
-# Quita códigos +XX, fechas, horas, números sueltos al inicio/fin
-
-text = re.sub(r'^\+\d+\s*', '', text) # +43 al inicio
-
-text = re.sub(r'\s*\d{1,2}\s*Feb\s*\d{2}:\d{2}$', '', text) # fecha al final
-
-text = text.strip()
-
-return text if len(text) > 3 else ""
-
-
-
-def analyze_betting_image(uploaded_file):
-
-content = uploaded_file.getvalue()
-
-word_list = []
-
-
-
-try:
-
-client = vision.ImageAnnotatorClient.from_service_account_info(dict(st.secrets["google_credentials"]))
-
-image = vision.Image(content=content)
-
-response = client.document_text_detection(image=image)
-
-
-
-if response.full_text_annotation and response.full_text_annotation.pages:
-
-for page in response.full_text_annotation.pages:
-
-for block in page.blocks:
-
-for paragraph in block.paragraphs:
-
-for word in paragraph.words:
-
-word_text = ''.join(s.text for s in word.symbols).strip()
-
-if not word_text:
-
-continue
-
-v = word.bounding_box.vertices
-
-x = (v[0].x + v[2].x) / 2
-
-y = (v[0].y + v[2].y) / 2
-
-word_list.append({"text": word_text, "x": x, "y": y})
-
-
-
-except Exception as e:
-
-st.error(f"Vision falló: {e}")
-
-return []
-
-
-
-if not word_list:
-
-st.error("No texto.")
-
-return []
-
-
-
-# Ordenar por Y (arriba a abajo)
-
-word_list.sort(key=lambda w: w["y"])
-
-
-
-matches = []
-
-debug = []
-
-
-
-i = 0
-
-while i < len(word_list):
-
-t = word_list[i]["text"]
-
-if is_team_name(t):
-
-home_raw = t
-
-home = clean_name(home_raw)
-
-
-
-# Buscar 3 momios después
-
-odds = []
-
-j = i + 1
-
-while j < len(word_list) and len(odds) < 3:
-
-t_j = word_list[j]["text"]
-
-if is_odd(t_j):
-
-odds.append(t_j)
-
-j += 1
-
-
-
-if len(odds) == 3:
-
-# Buscar visitante después de los momios
-
-away = "Visitante"
-
-k = j
-
-while k < len(word_list):
-
-t_k = word_list[k]["text"]
-
-if is_team_name(t_k):
-
-away = clean_name(t_k)
-
-break
-
-k += 1
-
-
-
-matches.append({
-
-"home": home,
-
-"away": away,
-
-"all_odds": odds
-
-})
-
-
-
-debug.append(f"{home} vs {away} → {odds}")
-
-
-
-# Salta al siguiente posible local
-
-i = k + 1
-
-continue
-
-
-
-i += 1
-
-
-
-with st.expander("🔍 DEBUG OCR - Partidos Detectados", expanded=True):
-
-if debug:
-
-for d in debug:
-
-st.write(d)
-
-else:
-
-st.write("No se encontró equipo + 3 momios. ¿La imagen es clara y tiene solo un partido?")
-
-
-
-return matches
-
-
-
-def read_ticket_image(uploaded_file):
-
-return analyze_betting_image(uploaded_file). 
+import pandas as pd
+from modules.vision_reader import analyze_betting_image, read_ticket_image
+from modules.analyzer import MatchAnalyzer
+from modules.parlay_builder import show_parlay_options
+from modules.betting_tracker import BettingTracker
+
+st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
+
+@st.cache_resource
+def init_components():
+    """Inicializa componentes con cache para mejorar rendimiento"""
+    return {
+        'analyzer': MatchAnalyzer(st.secrets.get("FOOTBALL_API_KEY", "")),
+        'tracker': BettingTracker()
+    }
+
+components = init_components()
+
+def main():
+    st.title("🎯 Analizador Universal de Partidos")
+    st.markdown("Sube una captura y analizo **partido por partido**")
+    
+    # ============================================================================
+    # SIDEBAR CON CONFIGURACIÓN AVANZADA
+    # ============================================================================
+    with st.sidebar:
+        st.header("⚙️ Configuración")
+        
+        # Probabilidad mínima
+        prob_minima = st.slider(
+            "Probabilidad mínima", 
+            min_value=0.0, 
+            max_value=1.0, 
+            value=0.5, 
+            step=0.05,
+            help="Solo muestra mercados con probabilidad mayor a este valor"
+        )
+        
+        st.divider()
+        
+        # Filtros por categoría de mercado
+        st.subheader("🎲 Mercados a mostrar")
+        categorias = st.multiselect(
+            "Selecciona categorías",
+            ["1X2", "Doble Oportunidad", "Totales", "Primer Tiempo", 
+             "BTTS", "Handicap", "Goleador", "Combinado", "Totales (Especial)"],
+            default=["1X2", "Totales", "Primer Tiempo", "BTTS", "Totales (Especial)"],
+            help="Selecciona qué tipos de mercados quieres ver"
+        )
+        
+        # Opción para equipos goleadores
+        show_high_scoring = st.checkbox(
+            "⚽ Enfatizar equipos goleadores", 
+            value=True,
+            help="Resalta mercados de Over 4.5 y Over 5.5 goles"
+        )
+        
+        st.divider()
+        
+        # Estado de la API
+        if st.secrets.get("FOOTBALL_API_KEY"):
+            st.success("✅ API conectada")
+            st.caption("Buscando equipos en base de datos global")
+        else:
+            st.warning("⚠️ Modo simulación")
+            st.caption("Agrega FOOTBALL_API_KEY a secrets para búsqueda real")
+        
+        # Modo debug (ya no es necesario pero lo dejamos)
+        debug_mode = st.checkbox("🔧 Mostrar debug OCR", value=True)
+        
+        # Mostrar tracker en sidebar
+        components['tracker'].show_tracker_ui()
+    
+    # ============================================================================
+    # ÁREA PRINCIPAL
+    # ============================================================================
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        st.subheader("1. Sube tu captura")
+        uploaded_file = st.file_uploader(
+            "Selecciona imagen", 
+            type=['png', 'jpg', 'jpeg'],
+            help="Sube una captura de pantalla con partidos y cuotas"
+        )
+        
+        if uploaded_file:
+            st.image(uploaded_file, caption="Imagen subida", use_container_width=True)
+    
+    if uploaded_file:
+        # Procesar imagen con TU visión_reader.py
+        with st.spinner("🔍 Procesando imagen con Google Vision..."):
+            # Usamos TU función exactamente como la escribiste
+            matches = analyze_betting_image(uploaded_file)
+        
+        if matches:
+            with col2:
+                st.subheader(f"2. Partidos detectados ({len(matches)})")
+                
+                # Mostrar tabla de partidos detectados
+                df_matches = pd.DataFrame([
+                    {
+                        'Local': m.get('home', ''),
+                        'Visitante': m.get('away', ''),
+                        'Cuota Local': m.get('all_odds', ['', '', ''])[0] if len(m.get('all_odds', [])) > 0 else '',
+                        'Cuota Empate': m.get('all_odds', ['', '', ''])[1] if len(m.get('all_odds', [])) > 1 else '',
+                        'Cuota Visitante': m.get('all_odds', ['', '', ''])[2] if len(m.get('all_odds', [])) > 2 else '',
+                    }
+                    for m in matches
+                ])
+                st.dataframe(df_matches, use_container_width=True)
+            
+            st.divider()
+            st.subheader("3. Análisis partido por partido")
+            
+            all_picks = []
+            
+            # Analizar cada partido detectado
+            for i, match in enumerate(matches):
+                home = match.get('home', '')
+                away = match.get('away', '')
+                odds = match.get('all_odds', ['N/A', 'N/A', 'N/A'])
+                
+                with st.expander(f"📊 {home} vs {away}", expanded=i==0):
+                    
+                    # Mostrar cuotas
+                    st.caption(f"🎲 Cuotas: Local {odds[0]}, Empate {odds[1]}, Visitante {odds[2]}")
+                    
+                    # Analizar el partido
+                    analysis = components['analyzer'].analyze_match(
+                        home, 
+                        away, 
+                        ''  # Sin liga por ahora
+                    )
+                    
+                    # Mostrar resultados de búsqueda de equipos
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if analysis.get('home_found'):
+                            st.success(f"✅ Local: {analysis['home_team']}")
+                        else:
+                            st.warning(f"⚠️ Local: {home} (no encontrado en API)")
+                    
+                    with col_b:
+                        if analysis.get('away_found'):
+                            st.success(f"✅ Visitante: {analysis['away_team']}")
+                        else:
+                            st.warning(f"⚠️ Visitante: {away} (no encontrado en API)")
+                    
+                    # ====================================================================
+                    # FILTRAR MERCADOS POR PROBABILIDAD Y CATEGORÍA
+                    # ====================================================================
+                    markets_filtered = [
+                        m for m in analysis['markets'] 
+                        if m['prob'] >= prob_minima and m['category'] in categorias
+                    ]
+                    
+                    # Si show_high_scoring está activado, resaltar mercados Over 4.5+
+                    if show_high_scoring:
+                        for m in markets_filtered:
+                            if 'Over 4.5' in m['name'] or 'Over 5.5' in m['name']:
+                                m['highlight'] = True
+                    
+                    if markets_filtered:
+                        # Mostrar estadísticas generales
+                        st.caption(f"📊 Goles promedio esperados: {analysis['probabilidades']['goles_promedio']:.2f}")
+                        
+                        # Crear DataFrame para mostrar mercados
+                        market_data = []
+                        for m in markets_filtered[:15]:  # Top 15 mercados
+                            highlight = "🔴 " if m.get('highlight') else ""
+                            market_data.append({
+                                'Mercado': highlight + m['name'],
+                                'Probabilidad': f"{m['prob']:.1%}",
+                                'Categoría': m['category']
+                            })
+                        
+                        st.dataframe(
+                            pd.DataFrame(market_data), 
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        
+                        # Mejor opción general
+                        best = markets_filtered[0]
+                        best_emoji = "🔴" if best.get('highlight') else "✨"
+                        st.success(f"{best_emoji} **Mejor opción:** {best['name']} - {best['prob']:.1%}")
+                        
+                        # Guardar para parlays (solo top 3 por partido)
+                        for m in markets_filtered[:3]:
+                            all_picks.append({
+                                'match': f"{analysis['home_team']} vs {analysis['away_team']}",
+                                'selection': m['name'],
+                                'prob': m['prob'],
+                                'category': m['category']
+                            })
+                    else:
+                        st.info("📭 No hay mercados con los filtros seleccionados")
+                        st.caption("Prueba con una probabilidad mínima más baja o selecciona más categorías")
+            
+            # ====================================================================
+            # GENERAR PARLAYS CON LAS MEJORES OPCIONES
+            # ====================================================================
+            if all_picks:
+                # Limitar a picks únicos por partido (los mejores)
+                unique_picks = []
+                seen_matches = set()
+                for pick in all_picks:
+                    if pick['match'] not in seen_matches:
+                        seen_matches.add(pick['match'])
+                        unique_picks.append(pick)
+                
+                show_parlay_options(unique_picks, components['tracker'])
+            else:
+                st.info("ℹ️ No hay suficientes picks para generar parlays")
+        
+        else:
+            st.error("❌ No se detectaron partidos en la imagen")
+            st.info("""
+            **Sugerencias para mejorar la detección:**
+            - Asegúrate que la imagen tenga buena resolución
+            - Los nombres de equipos deben ser legibles
+            - El debug de tu vision_reader ya mostró el proceso
+            - Intenta con una captura más clara
+            """)
+    
+    else:
+        # Mensaje inicial cuando no hay imagen
+        st.info("👆 Sube una imagen para comenzar el análisis")
+        
+        with st.expander("📋 Ver ejemplo de formato aceptado"):
+            st.code("""
+Real Madrid -278 Empate +340 Getafe +900
+Rayo Vallecano -145 Empate +265 Real Oviedo +410
+Celta de Vigo +330 Empate +290 Real Madrid -132
+Osasuna -132 Empate +245 RCD Mallorca +390
+Levante +178 Empate +235 Girona +150
+            """)
+        
+        with st.expander("ℹ️ Cómo funciona"):
+            st.markdown("""
+            ### 🎯 Flujo de análisis:
+            
+            1. **Subes una captura** de cualquier casa de apuestas
+            2. **Google Vision OCR** detecta palabras con coordenadas
+            3. **Algoritmo inteligente** busca patrón: EQUIPO + 3 ODDS + EQUIPO
+            4. **Debug claro** muestra cada detección
+            5. **Buscamos los equipos** en API-Sports
+            6. **Simulación Monte Carlo** (20,000 iteraciones)
+            7. **Analizamos 20+ mercados** por partido
+            8. **Generamos parlays** con valor esperado positivo
+            """)
+
+if __name__ == "__main__":
+    main()
