@@ -6,3 +6,4 @@ pillow
 opencv-python-headless
 groq
 odds-api-io
+pandas
