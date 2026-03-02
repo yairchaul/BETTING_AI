@@ -150,7 +150,7 @@ def main():
                 
                 if raw_text:
                     st.write("**Texto raw detectado (primeros 500 caracteres):**")
-                    st.text(raw_text[:500])
+                    st.code(raw_text)  # Cambiado a st.code para mejor formato
         
         if matches:
             with col2:
