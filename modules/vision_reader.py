@@ -1,96 +1,121 @@
+import pytesseract
+import cv2
 import re
-import streamlit as st
-from google.cloud import vision
+import numpy as np
 
-class ImageParser:
-    def __init__(self):
+
+# -----------------------------
+# PREPROCESAMIENTO DE IMAGEN
+# -----------------------------
+def preprocess_image(image_path):
+
+    img = cv2.imread(image_path)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # mejora contraste
+    gray = cv2.equalizeHist(gray)
+
+    # quitar ruido
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # binarizar
+    _, thresh = cv2.threshold(
+        gray, 150, 255, cv2.THRESH_BINARY_INV
+    )
+
+    return thresh
+
+
+# -----------------------------
+# OCR
+# -----------------------------
+def extract_text(image_path):
+
+    img = preprocess_image(image_path)
+
+    config = "--psm 6"
+
+    text = pytesseract.image_to_string(img, config=config)
+
+    return text
+
+
+# -----------------------------
+# PARSER PRINCIPAL
+# -----------------------------
+def parse_matches(text):
+
+    lines = [
+        l.strip()
+        for l in text.split("\n")
+        if l.strip() != ""
+    ]
+
+    games = []
+
+    i = 0
+
+    while i < len(lines) - 2:
+
+        # buscamos patrón:
+        # Equipo + cuota
+        # Empate + cuota
+        # Equipo + cuota
+
         try:
-            # Usamos los secretos de Streamlit para la conexión
-            self.client = vision.ImageAnnotatorClient.from_service_account_info(
-                dict(st.secrets["google_credentials"])
-            )
-        except Exception as e:
-            st.error(f"Error inicializando Google Vision: {e}")
-            self.client = None
 
-    def process_image(self, image_bytes):
-        """Procesa la imagen y extrae pares de equipos"""
-        if not self.client: return []
-        
-        image = vision.Image(content=image_bytes)
-        response = self.client.text_detection(image=image)
-        texts = response.text_annotations
+            home_line = lines[i]
+            draw_line = lines[i + 1]
+            away_line = lines[i + 2]
 
-        if not texts: return []
-
-        # El primer elemento (index 0) es TODO el texto detectado
-        full_text = texts[0].description
-        return self.smart_parse(full_text)
-
-    def smart_parse(self, text):
-        """Lógica para extraer equipos ignorando ruido de cuotas y fechas"""
-        lines = text.split('\n')
-        matches = []
-        
-        # 1. Limpiamos líneas que son solo números o fechas (Ruido de Caliente/Codere)
-        clean_lines = []
-        for line in lines:
-            line = line.strip()
-            # Ignorar si es solo una cuota (ej: +120, -110, 2.50)
-            if re.match(r'^[+-]?\d+[.,]?\d*$', line): continue
-            # Ignorar si es solo una hora o fecha corta (ej: 12:00, 02 Mar)
-            if re.match(r'^\d{2}:\d{2}$', line): continue
-            if re.match(r'^\d{1,2}\s+[A-Za-z]{3}', line): continue
-            # Ignorar palabras de control de la app
-            if line.lower() in ['empate', 'vs', 'v', 'cerrar', 'apuesta', 'mis']: continue
-            
-            if len(line) > 2:
-                clean_lines.append(line)
-
-        # 2. Agrupamos por pares (Local vs Visitante)
-        # Las apps de apuestas suelen poner: Equipo A \n Equipo B \n Cuotas...
-        i = 0
-        while i < len(clean_lines) - 1:
-            local = clean_lines[i]
-            visitante = clean_lines[i+1]
-            
-            # Si el "visitante" parece otro equipo y no basura, los unimos
-            if self.is_valid_team_pair(local, visitante):
-                matches.append({
-                    "home": self.fix_common_names(local),
-                    "away": self.fix_common_names(visitante)
-                })
-                i += 2 # Saltamos el par
-            else:
+            if "Empate" not in draw_line:
                 i += 1
-                
-        return matches
+                continue
 
-    def is_valid_team_pair(self, t1, t2):
-        """Valida que no estemos emparejando un equipo con un nombre de liga o botón"""
-        bad_words = ['liga', 'champions', 'premier', 'apuesta', 'vivo', 'finalizado']
-        combined = (t1 + t2).lower()
-        return not any(word in combined for word in bad_words)
+            home_team, home_odd = extract_team_odd(home_line)
+            _, draw_odd = extract_team_odd(draw_line)
+            away_team, away_odd = extract_team_odd(away_line)
 
-    def fix_common_names(self, name):
-        """Corrige nombres que el OCR a veces corta o confunde"""
-        name = name.replace('|', '').strip()
-        # Mapeo de nombres cortos a largos para que tu cerebro.py los encuentre
-        corrections = {
-            "PSG": "Paris Saint Germain",
-            "M'gladbach": "Borussia Monchengladbach",
-            "U. Berlin": "Union Berlin",
-            "Le Havre AC": "Le Havre"
-        }
-        return corrections.get(name, name)
+            games.append({
+                "home_team": home_team,
+                "away_team": away_team,
+                "home_odd": home_odd,
+                "draw_odd": draw_odd,
+                "away_odd": away_odd
+            })
 
-def procesar_texto_manual(texto):
-    """Función de apoyo para la caja de texto manual"""
-    lineas = texto.split('\n')
-    partidos = []
-    for linea in lineas:
-        if ' vs ' in linea.lower():
-            teams = re.split(r' vs ', linea, flags=re.IGNORECASE)
-            if len(teams) == 2:
-                partidos.append({"home": teams[0].strip(), "away": teams[1].strip()})
-    return partidos
+            i += 3
+
+        except:
+            i += 1
+
+    return games
+
+
+# -----------------------------
+# EXTRAER EQUIPO + CUOTA
+# -----------------------------
+def extract_team_odd(line):
+
+    match = re.search(r"(.+?)\s*([+-]\d+)", line)
+
+    if not match:
+        return line, None
+
+    team = match.group(1).strip()
+    odd = int(match.group(2))
+
+    return team, odd
+
+
+# -----------------------------
+# FUNCIÓN PRINCIPAL
+# -----------------------------
+def analyze_betting_image(image_path):
+
+    text = extract_text(image_path)
+
+    games = parse_matches(text)
+
+    return games
