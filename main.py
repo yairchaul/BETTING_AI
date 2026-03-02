@@ -6,7 +6,7 @@ from modules.analyzer import MatchAnalyzer
 from modules.parlay_builder import show_parlay_options
 from modules.betting_tracker import BettingTracker
 from modules.team_matcher import TeamMatcher
-from modules.montecarlo import run_simulation
+from modules.ev_engine import build_smart_parlay  # <--- NUEVO: Importamos EV Engine
 
 st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
 
@@ -60,6 +60,28 @@ def main():
         
         st.divider()
         
+        # NUEVO: Configuración de EV Engine
+        st.subheader("📈 Valor Esperado (EV)")
+        ev_minimo = st.number_input(
+            "EV mínimo para considerar",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.05,
+            step=0.01,
+            format="%.2f",
+            help="Solo picks con EV > este valor serán considerados"
+        )
+        
+        max_picks_parlay = st.slider(
+            "Máximo picks por parlay",
+            min_value=2,
+            max_value=6,
+            value=5,
+            help="Número máximo de selecciones en un parlay"
+        )
+        
+        st.divider()
+        
         if st.secrets.get("FOOTBALL_API_KEY"):
             st.success("✅ API conectada")
         else:
@@ -86,116 +108,17 @@ def main():
     
     if uploaded_file:
         # ============================================================================
-        # DIAGNÓSTICO: VER MÉTODOS DISPONIBLES EN ImageParser
-        # ============================================================================
-        if debug_mode:
-            with st.expander("🔧 DIAGNÓSTICO - Métodos de ImageParser", expanded=False):
-                st.write("**Inspeccionando objeto vision_reader.ImageParser...**")
-                
-                # Listar todos los métodos y atributos
-                all_attrs = dir(components['vision'])
-                methods = [attr for attr in all_attrs if not attr.startswith('_')]
-                st.write("**Métodos públicos disponibles:**")
-                st.write(methods)
-                
-                # Verificar específicamente process_image
-                if hasattr(components['vision'], 'process_image'):
-                    st.success("✅ El método 'process_image' SÍ existe")
-                else:
-                    st.error("❌ El método 'process_image' NO existe")
-                    
-                    # Buscar métodos similares
-                    similar = [m for m in methods if 'image' in m.lower() or 'process' in m.lower() or 'parse' in m.lower()]
-                    if similar:
-                        st.write("**Métodos similares encontrados:**")
-                        st.write(similar)
-        
-        # ============================================================================
-        # NUEVA LÓGICA DE PROCESAMIENTO COMPATIBLE (CON TU CÓDIGO)
+        # NUEVA LÓGICA DE PROCESAMIENTO COMPATIBLE
         # ============================================================================
         with st.spinner("🔍 Procesando imagen con Google Vision..."):
             # Usamos .getvalue() en lugar de .read() para evitar que el archivo se "vacíe"
             img_bytes = uploaded_file.getvalue()
             
-            # Variable para almacenar resultados
-            matches = []
-            method_used = None
+            # Llamamos al método process_image de vision_reader.py
+            matches = components['vision'].process_image(img_bytes)
+            
+            # Obtener texto raw para debug
             raw_text = ""
-            
-            # INTENTO 1: Llamar directamente al método process_image (tu código original)
-            try:
-                if hasattr(components['vision'], 'process_image'):
-                    matches = components['vision'].process_image(img_bytes)
-                    method_used = 'process_image (directo)'
-                    st.success(f"✅ Usando método: {method_used}")
-            except Exception as e:
-                if debug_mode:
-                    st.warning(f"⚠️ process_image falló: {e}")
-            
-            # INTENTO 2: Si el primero falló, probar con otros métodos comunes
-            if not matches:
-                possible_methods = ['parse_image', 'analyze_image', 'detect_matches', 'extract_matches', 'smart_parse']
-                
-                for method_name in possible_methods:
-                    if hasattr(components['vision'], method_name):
-                        try:
-                            method = getattr(components['vision'], method_name)
-                            
-                            # Algunos métodos esperan bytes, otros texto
-                            if method_name == 'smart_parse':
-                                # Primero obtener texto
-                                from google.cloud import vision
-                                image = vision.Image(content=img_bytes)
-                                response = components['vision'].client.text_detection(image=image)
-                                if response.text_annotations:
-                                    text = response.text_annotations[0].description
-                                    result = method(text)
-                                else:
-                                    result = []
-                            else:
-                                # La mayoría espera bytes
-                                result = method(img_bytes)
-                            
-                            if result:
-                                matches = result
-                                method_used = method_name
-                                st.success(f"✅ Método alternativo funcionando: {method_name}")
-                                break
-                        except Exception as e:
-                            if debug_mode:
-                                st.warning(f"❌ Método {method_name} falló: {e}")
-                            continue
-            
-            # INTENTO 3: Acceso directo al cliente de Vision
-            if not matches:
-                try:
-                    from google.cloud import vision
-                    image = vision.Image(content=img_bytes)
-                    response = components['vision'].client.text_detection(image=image)
-                    if response.text_annotations:
-                        text = response.text_annotations[0].description
-                        
-                        # Usar smart_parse si existe
-                        if hasattr(components['vision'], 'smart_parse'):
-                            matches = components['vision'].smart_parse(text)
-                            method_used = 'smart_parse (vía cliente directo)'
-                        else:
-                            # Fallback básico: asumir que los equipos están en líneas alternadas
-                            lines = text.split('\n')
-                            clean_lines = [l.strip() for l in lines if len(l.strip()) > 3]
-                            matches = []
-                            for i in range(0, len(clean_lines)-1, 2):
-                                if i+1 < len(clean_lines):
-                                    matches.append({
-                                        'home': clean_lines[i],
-                                        'away': clean_lines[i+1]
-                                    })
-                            method_used = 'fallback básico (líneas alternadas)'
-                except Exception as e:
-                    if debug_mode:
-                        st.error(f"Error en acceso directo: {e}")
-            
-            # Obtener texto raw para debug (siempre intentar)
             try:
                 from google.cloud import vision
                 image = vision.Image(content=img_bytes)
@@ -215,16 +138,13 @@ def main():
         # ============================================================================
         if debug_mode:
             with st.expander("🔧 Debug OCR - Información de detección", expanded=True):
-                st.write(f"**Método utilizado:** {method_used or 'Ninguno'}")
                 st.write(f"**Partidos detectados:** {len(matches)}")
                 
                 if matches:
                     st.write("**Detalle de detecciones:**")
                     for i, m in enumerate(matches):
-                        home = m.get('home', m.get('local', 'N/A'))
-                        away = m.get('away', m.get('visitante', 'N/A'))
-                        odds = m.get('all_odds', m.get('odds', ['N/A']))
-                        st.write(f"{i+1}. {home} vs {away} → Odds: {odds}")
+                        odds_str = ", ".join(m.get('all_odds', ['N/A', 'N/A', 'N/A']))
+                        st.write(f"{i+1}. {m['home']} vs {m['away']} → Odds: {odds_str}")
                 
                 if raw_text:
                     st.write("**Texto raw detectado (primeros 500 caracteres):**")
@@ -235,12 +155,10 @@ def main():
                 st.subheader(f"2. Partidos detectados ({len(matches)})")
                 df_data = []
                 for m in matches:
-                    home = m.get('home', m.get('local', 'N/A'))
-                    away = m.get('away', m.get('visitante', 'N/A'))
-                    odds = m.get('all_odds', m.get('odds', ['N/A', 'N/A', 'N/A']))
+                    odds = m.get('all_odds', ['N/A', 'N/A', 'N/A'])
                     df_data.append({
-                        'Local': home,
-                        'Visitante': away,
+                        'Local': m['home'],
+                        'Visitante': m['away'],
                         'Cuota L': odds[0] if len(odds) > 0 else 'N/A',
                         'Cuota E': odds[1] if len(odds) > 1 else 'N/A',
                         'Cuota V': odds[2] if len(odds) > 2 else 'N/A'
@@ -250,11 +168,16 @@ def main():
             st.divider()
             st.subheader("3. Análisis partido por partido")
             
-            all_picks = []
+            # ============================================================================
+            # NUEVO: Preparar picks para EV Engine
+            # ============================================================================
+            all_picks_for_ev = []  # Para el EV Engine
+            all_picks_simple = []   # Para el visualizador simple
+            
             for i, match in enumerate(matches):
-                home = match.get('home', match.get('local', ''))
-                away = match.get('away', match.get('visitante', ''))
-                odds = match.get('all_odds', match.get('odds', ['N/A', 'N/A', 'N/A']))
+                home = match['home']
+                away = match['away']
+                odds = match.get('all_odds', ['N/A', 'N/A', 'N/A'])
                 
                 with st.expander(f"📊 {home} vs {away}", expanded=i==0):
                     # Mostrar cuotas si están disponibles
@@ -305,19 +228,113 @@ def main():
                         best_emoji = "🔴" if best.get('highlight') else "✨"
                         st.success(f"{best_emoji} **Mejor opción:** {best['name']} - {best['prob']:.1%}")
                         
-                        all_picks.append({
+                        # Guardar para parlays simples
+                        all_picks_simple.append({
                             'match': f"{analysis['home_team']} vs {analysis['away_team']}",
                             'selection': best['name'],
                             'prob': best['prob'],
                             'category': best['category']
                         })
+                        
+                        # ============================================================================
+                        # NUEVO: Preparar picks para EV Engine (con cuotas y EV)
+                        # ============================================================================
+                        # Convertir odds americanas a decimales para EV
+                        for idx, m in enumerate(markets_filtered[:5]):  # Top 5 mercados
+                            odd_value = 2.0  # Valor por defecto
+                            
+                            # Intentar obtener odds reales de la imagen
+                            if odds and len(odds) > 0:
+                                if 'Local' in m['name'] and odds[0] != 'N/A':
+                                    odd_val = odds[0]
+                                    if odd_val.startswith('+'):
+                                        odd_value = (int(odd_val[1:]) / 100) + 1
+                                    elif odd_val.startswith('-'):
+                                        odd_value = (100 / abs(int(odd_val))) + 1
+                                elif 'Visitante' in m['name'] and len(odds) > 2 and odds[2] != 'N/A':
+                                    odd_val = odds[2]
+                                    if odd_val.startswith('+'):
+                                        odd_value = (int(odd_val[1:]) / 100) + 1
+                                    elif odd_val.startswith('-'):
+                                        odd_value = (100 / abs(int(odd_val))) + 1
+                            
+                            # Calcular EV
+                            ev = (m['prob'] * odd_value) - 1
+                            
+                            # Solo considerar si EV > mínimo
+                            if ev > ev_minimo:
+                                all_picks_for_ev.append({
+                                    'match': f"{analysis['home_team']} vs {analysis['away_team']}",
+                                    'selection': m['name'],
+                                    'probability': m['prob'],
+                                    'odd': odd_value,
+                                    'ev': ev,
+                                    'category': m['category']
+                                })
                     else:
                         st.info("📭 No hay mercados con los filtros seleccionados")
             
-            if all_picks:
-                show_parlay_options(all_picks, components['tracker'])
-            else:
-                st.info("ℹ️ No hay suficientes picks para generar parlays")
+            # ============================================================================
+            # NUEVO: Usar EV Engine para generar parlays inteligentes
+            # ============================================================================
+            st.divider()
+            
+            col_parlay1, col_parlay2 = st.columns(2)
+            
+            with col_parlay1:
+                st.subheader("🎯 Parlays Simples")
+                if all_picks_simple:
+                    from modules.parlay_builder import show_parlay_options as show_simple_parlays
+                    show_simple_parlays(all_picks_simple, components['tracker'])
+                else:
+                    st.info("ℹ️ No hay suficientes picks para generar parlays simples")
+            
+            with col_parlay2:
+                st.subheader("📈 Parlays Optimizados (EV+)")
+                if all_picks_for_ev:
+                    # Usar EV Engine para construir el mejor parlay
+                    smart_parlay = build_smart_parlay(all_picks_for_ev)
+                    
+                    if smart_parlay:
+                        with st.container(border=True):
+                            st.markdown("**🤖 Parlay Inteligente - Máximo EV**")
+                            st.markdown(f"**Cuota Total:** {smart_parlay['total_odd']}")
+                            st.markdown(f"**Probabilidad Combinada:** {smart_parlay['combined_prob']:.1%}")
+                            st.markdown(f"**Valor Esperado (EV):** {smart_parlay['total_ev']:.2%}")
+                            
+                            # Color según EV
+                            if smart_parlay['total_ev'] > 0.2:
+                                st.markdown("🟢 **EV Alto - Muy Recomendado**")
+                            elif smart_parlay['total_ev'] > 0.1:
+                                st.markdown("🟡 **EV Moderado - Recomendado**")
+                            else:
+                                st.markdown("🟠 **EV Bajo - Considerar riesgo**")
+                            
+                            st.markdown("**Selecciones:**")
+                            for m in smart_parlay['matches']:
+                                st.markdown(f"• {m}")
+                            
+                            # Botón para registrar
+                            if st.button("📝 Registrar este parlay", key="register_smart"):
+                                components['tracker'].add_bet({
+                                    'matches': smart_parlay['matches'],
+                                    'total_odds': smart_parlay['total_odd'],
+                                    'total_prob': smart_parlay['combined_prob']
+                                }, stake=100)
+                                st.success("✅ Parlay registrado!")
+                                st.rerun()
+                    else:
+                        st.info("📭 No se encontraron parlays con EV positivo")
+                        
+                        # Mostrar top picks con mejor EV
+                        st.caption("**Top picks individuales con mejor EV:**")
+                        top_ev_picks = sorted(all_picks_for_ev, key=lambda x: x['ev'], reverse=True)[:5]
+                        for p in top_ev_picks:
+                            ev_color = "🟢" if p['ev'] > 0.1 else "🟡"
+                            st.markdown(f"{ev_color} {p['match']}: {p['selection']} (EV: {p['ev']:.2%})")
+                else:
+                    st.info("ℹ️ No hay picks con EV suficiente")
+        
         else:
             st.error("❌ No se detectaron partidos en la imagen")
             st.info("""
