@@ -22,6 +22,7 @@ def main():
     with st.sidebar:
         st.header("⚙️ Configuración")
         prob_minima = st.slider("Probabilidad mínima", 0.0, 1.0, 0.5, 0.05)
+        debug_mode = st.checkbox("🔧 Modo debug", value=True)
         
         if st.secrets.get("FOOTBALL_API_KEY"):
             st.success("✅ API conectada")
@@ -34,13 +35,17 @@ def main():
         st.subheader("1. Sube tu captura")
         uploaded_file = st.file_uploader("Selecciona imagen", type=['png', 'jpg', 'jpeg'])
         if uploaded_file:
-            st.image(uploaded_file, use_column_width=True)
+            st.image(uploaded_file, width=400)
     
     if uploaded_file:
         with st.spinner("🔍 Procesando imagen..."):
-            matches = components['parser'].parse_image(uploaded_file)
-            st.write("Texto detectado:", matches.get('raw_text', '')[:200] if isinstance(matches, dict) else '')
-            matches = matches if isinstance(matches, list) else matches.get('matches', [])
+            result = components['parser'].parse_image(uploaded_file)
+            matches = result['matches']
+            raw_text = result['raw_text']
+        
+        if debug_mode:
+            with st.expander("🔬 Ver texto detectado (debug)", expanded=True):
+                st.text(raw_text)
         
         if matches:
             with col2:
@@ -74,14 +79,17 @@ def main():
                     markets = [m for m in analysis['markets'] if m['prob'] >= prob_minima]
                     
                     if markets:
-                        market_df = pd.DataFrame([
-                            {'Mercado': m['name'], 'Probabilidad': f"{m['prob']:.1%}"}
-                            for m in markets[:8]
-                        ])
-                        st.dataframe(market_df, use_container_width=True)
+                        # Mostrar tabla de mercados
+                        market_data = []
+                        for m in markets[:8]:
+                            market_data.append({
+                                'Mercado': m['name'],
+                                'Probabilidad': f"{m['prob']:.1%}"
+                            })
+                        st.dataframe(pd.DataFrame(market_data), use_container_width=True)
                         
                         best = markets[0]
-                        st.success(f"✨ Mejor: {best['name']} - {best['prob']:.1%}")
+                        st.success(f"✨ **Mejor opción:** {best['name']} - {best['prob']:.1%}")
                         
                         all_picks.append({
                             'match': f"{analysis['home_team']} vs {analysis['away_team']}",
@@ -94,7 +102,14 @@ def main():
             if all_picks:
                 show_parlay_options(all_picks)
         else:
-            st.error("❌ No se detectaron partidos")
+            st.error("❌ No se detectaron partidos en la imagen")
+            st.info("""
+            **Sugerencias:**
+            - Asegúrate que la imagen tenga buena resolución
+            - Los nombres de equipos deben ser legibles
+            - Intenta con una captura más clara
+            - Activa modo debug para ver qué texto detecta el OCR
+            """)
     else:
         st.info("👆 Sube una imagen para comenzar")
 
