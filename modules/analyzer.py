@@ -1,3 +1,4 @@
+# modules/analyzer.py
 from .team_matcher import TeamMatcher
 from .montecarlo import run_simulation
 
@@ -12,11 +13,24 @@ class MatchAnalyzer:
         home_team = self.matcher.find_team(home_name, league_hint)
         away_team = self.matcher.find_team(away_name, league_hint)
         
-        # Obtener estadísticas reales si es posible
-        if home_team and away_team:
-            # Aquí podrías obtener stats reales de la API
-            # Por ahora usamos valores por defecto
-            probs = run_simulation()
+        # Obtener estadísticas si es posible
+        home_stats = None
+        away_stats = None
+        
+        if home_team:
+            home_stats = self.matcher.get_team_stats(home_team['id'])
+        if away_team:
+            away_stats = self.matcher.get_team_stats(away_team['id'])
+        
+        # Ajustar parámetros según estadísticas
+        if home_stats and away_stats:
+            # Aquí podrías extraer stats reales
+            probs = run_simulation(
+                home_attack=1.3,
+                home_defense=1.1,
+                away_attack=1.2,
+                away_defense=1.2
+            )
         else:
             probs = run_simulation()
         
@@ -26,12 +40,16 @@ class MatchAnalyzer:
         return {
             'home_team': home_team['name'] if home_team else home_name,
             'away_team': away_team['name'] if away_team else away_name,
+            'home_id': home_team['id'] if home_team else None,
+            'away_id': away_team['id'] if away_team else None,
             'home_found': home_team is not None,
             'away_found': away_team is not None,
             'markets': markets,
             'probabilidades': probs,
             'stats': {
                 'goles_promedio': probs['goles_promedio'],
+                'goles_local': probs['goles_local_promedio'],
+                'goles_visit': probs['goles_visit_promedio'],
                 'prob_over_5.5': probs['over_5.5']
             }
         }
@@ -68,6 +86,10 @@ class MatchAnalyzer:
             # Handicaps / Goleadas
             {'name': 'Local gana por 2+ goles', 'prob': probs['local_gana_por_2+'], 'category': 'Handicap'},
             {'name': 'Visitante gana por 2+ goles', 'prob': probs['visitante_gana_por_2+'], 'category': 'Handicap'},
+            {'name': 'Local gana por 3+ goles', 'prob': probs['local_gana_por_3+'], 'category': 'Handicap'},
+            {'name': 'Visitante gana por 3+ goles', 'prob': probs['visitante_gana_por_3+'], 'category': 'Handicap'},
+            
+            # Goleadores
             {'name': 'Local marca 3+ goles', 'prob': probs['local_marca_3+'], 'category': 'Goleador'},
             {'name': 'Visitante marca 3+ goles', 'prob': probs['visitante_marca_3+'], 'category': 'Goleador'},
             
@@ -80,6 +102,9 @@ class MatchAnalyzer:
              'category': 'Combinado'},
             {'name': 'BTTS + Over 2.5', 
              'prob': probs['btts'] * probs['over_2.5'] * 1.1, 
+             'category': 'Combinado'},
+            {'name': 'Local gana + BTTS', 
+             'prob': probs['local_gana'] * probs['btts'] * 1.1, 
              'category': 'Combinado'},
         ]
         return sorted(markets, key=lambda x: x['prob'], reverse=True)
