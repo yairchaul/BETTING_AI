@@ -6,7 +6,7 @@ from modules.analyzer import MatchAnalyzer
 from modules.parlay_builder import show_parlay_options
 from modules.betting_tracker import BettingTracker
 from modules.team_matcher import TeamMatcher
-from modules.ev_engine import build_smart_parlay  # <--- NUEVO: Importamos EV Engine
+from modules.ev_engine import build_smart_parlay
 
 st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
 
@@ -60,7 +60,7 @@ def main():
         
         st.divider()
         
-        # NUEVO: Configuración de EV Engine
+        # Configuración de EV Engine
         st.subheader("📈 Valor Esperado (EV)")
         ev_minimo = st.number_input(
             "EV mínimo para considerar",
@@ -108,13 +108,10 @@ def main():
     
     if uploaded_file:
         # ============================================================================
-        # NUEVA LÓGICA DE PROCESAMIENTO COMPATIBLE
+        # PROCESAMIENTO DE IMAGEN
         # ============================================================================
         with st.spinner("🔍 Procesando imagen con Google Vision..."):
-            # Usamos .getvalue() en lugar de .read() para evitar que el archivo se "vacíe"
             img_bytes = uploaded_file.getvalue()
-            
-            # Llamamos al método process_image de vision_reader.py
             matches = components['vision'].process_image(img_bytes)
             
             # Obtener texto raw para debug
@@ -134,7 +131,7 @@ def main():
                     st.warning(f"Nota: No se pudo obtener texto raw: {e}")
         
         # ============================================================================
-        # MOSTRAR DEBUG
+        # MOSTRAR DEBUG MEJORADO (CON TU CÓDIGO)
         # ============================================================================
         if debug_mode:
             with st.expander("🔧 Debug OCR - Información de detección", expanded=True):
@@ -143,8 +140,13 @@ def main():
                 if matches:
                     st.write("**Detalle de detecciones:**")
                     for i, m in enumerate(matches):
-                        odds_str = ", ".join(m.get('all_odds', ['N/A', 'N/A', 'N/A']))
-                        st.write(f"{i+1}. {m['home']} vs {m['away']} → Odds: {odds_str}")
+                        odds = m.get('all_odds', ['N/A', 'N/A', 'N/A'])
+                        # ============================================================================
+                        # TU CÓDIGO DE DEBUG MEJORADO
+                        # ============================================================================
+                        st.write(f"{i+1}. 🏠 {m['home']} vs 🚀 {m['away']}")
+                        st.write(f"   📊 Odds: Local {odds[0]}, Empate {odds[1]}, Visitante {odds[2]}")
+                        st.write("---")
                 
                 if raw_text:
                     st.write("**Texto raw detectado (primeros 500 caracteres):**")
@@ -168,11 +170,9 @@ def main():
             st.divider()
             st.subheader("3. Análisis partido por partido")
             
-            # ============================================================================
-            # NUEVO: Preparar picks para EV Engine
-            # ============================================================================
-            all_picks_for_ev = []  # Para el EV Engine
-            all_picks_simple = []   # Para el visualizador simple
+            # Preparar picks para EV Engine
+            all_picks_for_ev = []
+            all_picks_simple = []
             
             for i, match in enumerate(matches):
                 home = match['home']
@@ -236,14 +236,10 @@ def main():
                             'category': best['category']
                         })
                         
-                        # ============================================================================
-                        # NUEVO: Preparar picks para EV Engine (con cuotas y EV)
-                        # ============================================================================
-                        # Convertir odds americanas a decimales para EV
-                        for idx, m in enumerate(markets_filtered[:5]):  # Top 5 mercados
-                            odd_value = 2.0  # Valor por defecto
+                        # Preparar picks para EV Engine
+                        for idx, m in enumerate(markets_filtered[:5]):
+                            odd_value = 2.0
                             
-                            # Intentar obtener odds reales de la imagen
                             if odds and len(odds) > 0:
                                 if 'Local' in m['name'] and odds[0] != 'N/A':
                                     odd_val = odds[0]
@@ -258,10 +254,8 @@ def main():
                                     elif odd_val.startswith('-'):
                                         odd_value = (100 / abs(int(odd_val))) + 1
                             
-                            # Calcular EV
                             ev = (m['prob'] * odd_value) - 1
                             
-                            # Solo considerar si EV > mínimo
                             if ev > ev_minimo:
                                 all_picks_for_ev.append({
                                     'match': f"{analysis['home_team']} vs {analysis['away_team']}",
@@ -275,7 +269,7 @@ def main():
                         st.info("📭 No hay mercados con los filtros seleccionados")
             
             # ============================================================================
-            # NUEVO: Usar EV Engine para generar parlays inteligentes
+            # GENERAR PARLAYS
             # ============================================================================
             st.divider()
             
@@ -292,7 +286,6 @@ def main():
             with col_parlay2:
                 st.subheader("📈 Parlays Optimizados (EV+)")
                 if all_picks_for_ev:
-                    # Usar EV Engine para construir el mejor parlay
                     smart_parlay = build_smart_parlay(all_picks_for_ev)
                     
                     if smart_parlay:
@@ -302,7 +295,6 @@ def main():
                             st.markdown(f"**Probabilidad Combinada:** {smart_parlay['combined_prob']:.1%}")
                             st.markdown(f"**Valor Esperado (EV):** {smart_parlay['total_ev']:.2%}")
                             
-                            # Color según EV
                             if smart_parlay['total_ev'] > 0.2:
                                 st.markdown("🟢 **EV Alto - Muy Recomendado**")
                             elif smart_parlay['total_ev'] > 0.1:
@@ -314,7 +306,6 @@ def main():
                             for m in smart_parlay['matches']:
                                 st.markdown(f"• {m}")
                             
-                            # Botón para registrar
                             if st.button("📝 Registrar este parlay", key="register_smart"):
                                 components['tracker'].add_bet({
                                     'matches': smart_parlay['matches'],
@@ -326,7 +317,6 @@ def main():
                     else:
                         st.info("📭 No se encontraron parlays con EV positivo")
                         
-                        # Mostrar top picks con mejor EV
                         st.caption("**Top picks individuales con mejor EV:**")
                         top_ev_picks = sorted(all_picks_for_ev, key=lambda x: x['ev'], reverse=True)[:5]
                         for p in top_ev_picks:
