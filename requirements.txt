@@ -3,3 +3,4 @@ requests
 numpy
 google-cloud-vision
 pillow
+opencv-python-headless
