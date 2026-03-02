@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from modules.vision_reader import ImageParser  # Cambiado a vision_reader
+from modules.vision_reader import analyze_betting_image, read_ticket_image
 from modules.analyzer import MatchAnalyzer
 from modules.parlay_builder import show_parlay_options
 from modules.betting_tracker import BettingTracker
@@ -11,7 +11,6 @@ st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
 def init_components():
     """Inicializa componentes con cache para mejorar rendimiento"""
     return {
-        'parser': ImageParser(),  # Ahora usa vision_reader
         'analyzer': MatchAnalyzer(st.secrets.get("FOOTBALL_API_KEY", "")),
         'tracker': BettingTracker()
     }
@@ -67,8 +66,8 @@ def main():
             st.warning("⚠️ Modo simulación")
             st.caption("Agrega FOOTBALL_API_KEY a secrets para búsqueda real")
         
-        # Modo debug
-        debug_mode = st.checkbox("🔧 Modo debug", value=True)
+        # Modo debug (ya no es necesario pero lo dejamos)
+        debug_mode = st.checkbox("🔧 Mostrar debug OCR", value=True)
         
         # Mostrar tracker en sidebar
         components['tracker'].show_tracker_ui()
@@ -90,44 +89,10 @@ def main():
             st.image(uploaded_file, caption="Imagen subida", use_container_width=True)
     
     if uploaded_file:
-        # Procesar imagen con OCR
-        with st.spinner("🔍 Procesando imagen..."):
-            result = components['parser'].parse_image(uploaded_file)
-            matches = result['matches']
-            raw_text = result['raw_text']
-            debug_lines = result.get('debug', [])
-        
-        # ============================================================================
-        # NUEVO SISTEMA DE DEBUG - Mostrar en la parte superior
-        # ============================================================================
-        if debug_mode and debug_lines:
-            with st.container():
-                st.markdown("---")
-                st.subheader("🔍 DEBUG OCR - Procesamiento")
-                
-                # Mostrar cada línea de debug con su formato correspondiente
-                for line in debug_lines:
-                    if line.startswith('✅'):
-                        st.success(line)
-                    elif line.startswith('❌'):
-                        st.error(line)
-                    elif line.startswith('⚠️'):
-                        st.warning(line)
-                    elif line.startswith('ℹ️'):
-                        st.info(line)
-                    else:
-                        st.text(line)
-                
-                # Mostrar estadísticas del OCR
-                if 'words_detected' in result:
-                    st.caption(f"📊 Palabras detectadas: {result['words_detected']}")
-                
-                st.markdown("---")
-        
-        # También mostrar texto raw en expander (opcional)
-        if debug_mode and raw_text:
-            with st.expander("🔬 Ver texto completo detectado"):
-                st.text(raw_text)
+        # Procesar imagen con TU visión_reader.py
+        with st.spinner("🔍 Procesando imagen con Google Vision..."):
+            # Usamos TU función exactamente como la escribiste
+            matches = analyze_betting_image(uploaded_file)
         
         if matches:
             with col2:
@@ -136,10 +101,11 @@ def main():
                 # Mostrar tabla de partidos detectados
                 df_matches = pd.DataFrame([
                     {
-                        'Local': m.get('home', m.get('local', '')),
-                        'Visitante': m.get('away', m.get('visitante', '')),
-                        'Liga': m.get('liga', 'Desconocida'),
-                        'Cuotas': ', '.join(m.get('odds', ['N/A']))
+                        'Local': m.get('home', ''),
+                        'Visitante': m.get('away', ''),
+                        'Cuota Local': m.get('all_odds', ['', '', ''])[0] if len(m.get('all_odds', [])) > 0 else '',
+                        'Cuota Empate': m.get('all_odds', ['', '', ''])[1] if len(m.get('all_odds', [])) > 1 else '',
+                        'Cuota Visitante': m.get('all_odds', ['', '', ''])[2] if len(m.get('all_odds', [])) > 2 else '',
                     }
                     for m in matches
                 ])
@@ -152,16 +118,20 @@ def main():
             
             # Analizar cada partido detectado
             for i, match in enumerate(matches):
-                home = match.get('home', match.get('local', ''))
-                away = match.get('away', match.get('visitante', ''))
+                home = match.get('home', '')
+                away = match.get('away', '')
+                odds = match.get('all_odds', ['N/A', 'N/A', 'N/A'])
                 
                 with st.expander(f"📊 {home} vs {away}", expanded=i==0):
+                    
+                    # Mostrar cuotas
+                    st.caption(f"🎲 Cuotas: Local {odds[0]}, Empate {odds[1]}, Visitante {odds[2]}")
                     
                     # Analizar el partido
                     analysis = components['analyzer'].analyze_match(
                         home, 
                         away, 
-                        match.get('liga', '')
+                        ''  # Sin liga por ahora
                     )
                     
                     # Mostrar resultados de búsqueda de equipos
@@ -169,20 +139,14 @@ def main():
                     with col_a:
                         if analysis.get('home_found'):
                             st.success(f"✅ Local: {analysis['home_team']}")
-                            st.caption(f"ID: {analysis.get('home_id', 'N/A')}")
                         else:
                             st.warning(f"⚠️ Local: {home} (no encontrado en API)")
                     
                     with col_b:
                         if analysis.get('away_found'):
                             st.success(f"✅ Visitante: {analysis['away_team']}")
-                            st.caption(f"ID: {analysis.get('away_id', 'N/A')}")
                         else:
                             st.warning(f"⚠️ Visitante: {away} (no encontrado en API)")
-                    
-                    # Mostrar cuotas si están disponibles
-                    if 'odds' in match and len(match['odds']) >= 3:
-                        st.caption(f"🎲 Cuotas: Local {match['odds'][0]}, Empate {match['odds'][1]}, Visitante {match['odds'][2]}")
                     
                     # ====================================================================
                     # FILTRAR MERCADOS POR PROBABILIDAD Y CATEGORÍA
@@ -257,8 +221,8 @@ def main():
             **Sugerencias para mejorar la detección:**
             - Asegúrate que la imagen tenga buena resolución
             - Los nombres de equipos deben ser legibles
-            - Activa el modo debug para ver qué texto detecta el OCR
-            - Intenta con una captura más clara o de diferente formato
+            - El debug de tu vision_reader ya mostró el proceso
+            - Intenta con una captura más clara
             """)
     
     else:
@@ -279,32 +243,14 @@ Levante +178 Empate +235 Girona +150
             ### 🎯 Flujo de análisis:
             
             1. **Subes una captura** de cualquier casa de apuestas
-            2. **Google Vision OCR** detecta los nombres de equipos y cuotas
-            3. **Algoritmo de matching** busca los equipos en API-Sports (70%+ similitud)
-            4. **Simulación Monte Carlo** (20,000 iteraciones) genera probabilidades
-            5. **Analizamos 20+ mercados** por partido:
-               - Resultado final (1X2)
-               - Doble oportunidad
-               - Totales de goles (Over 0.5 hasta Over 5.5)
-               - Primer tiempo (goles y BTTS)
-               - Handicaps y goleadas
-               - Equipos goleadores (3+ goles)
-            6. **Filtros inteligentes** por categoría y probabilidad
-            7. **Generación de parlays** con valor esperado (EV) positivo
-            8. **Registro de apuestas** con tracking de resultados
-            
-            ### 🆕 Novedades v2.0:
-            - ✅ Over 5.5 goles para equipos goleadores (como PSV)
-            - ✅ Over 1.5 goles en primer tiempo
-            - ✅ Ambos anotan en primer tiempo
-            - ✅ Matching inteligente de nombres (70% similitud)
-            - ✅ Sistema de registro y tracking de apuestas
-            - ✅ Filtros por categoría de mercado
-            - ✅ Modo debug avanzado con emojis
+            2. **Google Vision OCR** detecta palabras con coordenadas
+            3. **Algoritmo inteligente** busca patrón: EQUIPO + 3 ODDS + EQUIPO
+            4. **Debug claro** muestra cada detección
+            5. **Buscamos los equipos** en API-Sports
+            6. **Simulación Monte Carlo** (20,000 iteraciones)
+            7. **Analizamos 20+ mercados** por partido
+            8. **Generamos parlays** con valor esperado positivo
             """)
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()
