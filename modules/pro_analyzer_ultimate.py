@@ -643,49 +643,49 @@ class ProAnalyzerUltimate:
                 'condition': lambda liga, local, visit: liga in ['Brazil Serie A', 'Brazil Serie B', 'Brazil Copa do Brasil'] and self._is_top_team(local, liga) and not self._is_top_team(visit, liga),
                 'action': 'local_gana',
                 'base_prob': 72,
-                'reason': f'{local} es muy fuerte en casa en Brasil'
+                'reason': 'El equipo local es muy fuerte en casa en Brasil'
             },
             {
                 'name': 'LOCAL_FUERTE_ARGENTINA',
                 'condition': lambda liga, local, visit: liga in ['Argentina Liga Profesional'] and self._is_top_team(local, liga),
                 'action': 'local_no_pierde',
                 'base_prob': 75,
-                'reason': f'{local} rara vez pierde en casa en Argentina'
+                'reason': 'El equipo local rara vez pierde en casa en Argentina'
             },
             {
                 'name': 'VISITANTE_TOP_VS_DEBIL',
                 'condition': lambda liga, local, visit: not self._is_top_team(local, liga) and self._is_top_team(visit, liga),
                 'action': 'visitante_gana',
                 'base_prob': 65,
-                'reason': f'{visit} es muy superior a {local}'
+                'reason': 'El equipo visitante es muy superior al local'
             },
             {
                 'name': 'BTT_ALTO_EN_LIGA',
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('btts_pct', 50) > 55,
                 'action': 'btts',
                 'base_prob': 60,
-                'reason': f'En {liga} es comun que ambos anoten'
+                'reason': f'En esta liga es comun que ambos anoten'
             },
             {
                 'name': 'LOCAL_MUY_FUERTE',
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('local_ventaja', 50) > 60,
                 'action': 'local_no_pierde',
                 'base_prob': 70,
-                'reason': f'En {liga} los locales son muy fuertes'
+                'reason': f'En esta liga los locales son muy fuertes'
             },
             {
                 'name': 'LIGA_POCOS_GOLES',
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('goles_promedio', 2.5) < 2.3,
                 'action': 'under_2_5',
                 'base_prob': 65,
-                'reason': f'{liga} tiene pocos goles historicamente'
+                'reason': f'Esta liga tiene pocos goles historicamente'
             },
             {
                 'name': 'LIGA_MUCHOS_GOLES',
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('goles_promedio', 2.5) > 2.8,
                 'action': 'over_2_5',
                 'base_prob': 62,
-                'reason': f'{liga} tiene muchos goles historicamente'
+                'reason': f'Esta liga tiene muchos goles historicamente'
             }
         ]
     
