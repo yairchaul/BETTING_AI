@@ -1,59 +1,29 @@
 import numpy as np
 
-SIMULATIONS = 20000
-
-def adjusted_lambda(home_stats, away_stats):
-    # Mantenemos tu lógica de ataque/defensa funcional
-    home_attack = home_stats.get("attack", 50)
-    home_def = home_stats.get("defense", 50)
-    away_attack = away_stats.get("attack", 50)
-    away_def = away_stats.get("defense", 50)
-
-    league_avg = 1.35
-    home_lambda = league_avg * (home_attack / 50) * (50 / away_def)
-    away_lambda = league_avg * (away_attack / 50) * (50 / home_def)
-    home_lambda *= 1.12  # Ventaja local
-
-    return home_lambda, away_lambda
-
-
-def run_simulations(stats):
-    # Verificamos si stats tiene la estructura nueva o la vieja
-    if "home" in stats:
-        home_data = stats["home"]
-        away_data = stats["away"]
-    else:
-        # Fallback por si stats viene plano
-        home_data = away_data = stats
+def run_simulation(home_attack=1.3, home_defense=1.1, away_attack=1.2, away_defense=1.2, simulations=10000):
+    """Simulación Monte Carlo de partido"""
     
-    lam_home, lam_away = adjusted_lambda(home_data, away_data)
-    # ... resto del código ...
-
-    # Mantenemos tu VARIANZA REALISTA
-    noise_home = np.random.normal(1, 0.12, SIMULATIONS)
-    noise_away = np.random.normal(1, 0.12, SIMULATIONS)
-
-    goals_home = np.random.poisson(lam_home * noise_home)
-    goals_away = np.random.poisson(lam_away * noise_away)
+    league_avg = 1.35
+    
+    # Goles esperados
+    lambda_home = league_avg * (home_attack / 1.2) * (1.2 / away_defense) * 1.1
+    lambda_away = league_avg * (away_attack / 1.2) * (1.2 / home_defense)
+    
+    # Ruido
+    noise_home = np.random.normal(1, 0.1, simulations)
+    noise_away = np.random.normal(1, 0.1, simulations)
+    
+    # Simular goles
+    goals_home = np.random.poisson(lambda_home * noise_home)
+    goals_away = np.random.poisson(lambda_away * noise_away)
     total_goals = goals_home + goals_away
-
-    # Probabilidades base
-    home_win = np.mean(goals_home > goals_away)
-    draw = np.mean(goals_home == goals_away)
-    away_win = np.mean(goals_away > goals_home)
-
-    # NUEVA: Doble Oportunidad (Local o Empate) + Over 1.5
-    # Esta es la que pediste para el parlay
-    prob_do_over = np.mean(((goals_home >= goals_away)) & (total_goals > 1.5))
-
+    
     return {
-        "Resultado Final (Local)": home_win,
-        "Resultado Final (Empate)": draw,
-        "Resultado Final (Visitante)": away_win,
-        "Doble Oportunidad / Over 1.5": prob_do_over,
-        "Total Goles Over 1.5": np.mean(total_goals > 1.5),
-        "Total Goles Under 2.5": np.mean(total_goals < 2.5),
-        "Ambos Anotan": np.mean((goals_home > 0) & (goals_away > 0))
+        'local_gana': float(np.mean(goals_home > goals_away)),
+        'empate': float(np.mean(goals_home == goals_away)),
+        'visitante_gana': float(np.mean(goals_away > goals_home)),
+        'over_1.5': float(np.mean(total_goals > 1.5)),
+        'over_2.5': float(np.mean(total_goals > 2.5)),
+        'under_2.5': float(np.mean(total_goals < 2.5)),
+        'btts': float(np.mean((goals_home > 0) & (goals_away > 0)))
     }
-
-
