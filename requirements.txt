@@ -1,6 +1,15 @@
-pip==24.0
+# Core
 streamlit==1.28.1
 pandas==2.0.3
 numpy==1.24.3
 requests==2.31.0
+
+# OCR - Versiones específicas que funcionan en Streamlit Cloud
 Pillow==10.0.1
+opencv-python-headless==4.8.1.78
+easyocr==1.7.1
+torch==2.0.1
+torchvision==0.15.2
+
+# Utilidades
+python-dotenv==1.0.0
