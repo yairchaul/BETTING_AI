@@ -14,187 +14,192 @@ class ImageParser:
             st.error(f"Error inicializando Google Vision: {e}")
             self.client = None
     
-    def parse_image(self, uploaded_file):
-        """
-        Procesa la imagen usando coordenadas para detectar partidos
-        """
-        if not self.client:
-            return {'matches': [], 'raw_text': '', 'error': 'Cliente no inicializado'}
-        
+    def is_odd(self, text: str) -> bool:
+        """Detecta si un texto es una cuota"""
+        cleaned = re.sub(r'\s+', '', text.strip())
+        num_part = cleaned.replace('+', '').replace('-', '')
         try:
-            content = uploaded_file.getvalue()
-            image = vision.Image(content=content)
-            response = client.document_text_detection(image=image)
-            
-            if not response.full_text_annotation:
-                return {'matches': [], 'raw_text': ''}
-            
-            full_text = response.full_text_annotation.text
-            
-            # 1. Extraer palabras con sus coordenadas
-            word_list = self._extract_words_with_coordinates(response)
-            
-            # 2. Agrupar por líneas (basado en coordenada Y)
-            lines = self._group_by_lines(word_list)
-            
-            # 3. Detectar partidos en las líneas
-            matches = self._detect_matches_from_lines(lines)
-            
-            return {
-                'matches': matches,
-                'raw_text': full_text,
-                'debug': {
-                    'words_detected': len(word_list),
-                    'lines_detected': len(lines),
-                    'matches_found': len(matches)
-                }
-            }
-            
-        except Exception as e:
-            st.error(f"Error en Google Vision: {e}")
-            return {'matches': [], 'raw_text': '', 'error': str(e)}
+            val = float(num_part)
+            # Cuotas americanas son >100, decimales entre 1 y 10
+            return abs(val) >= 100 or (1 < val < 10)
+        except:
+            return False
     
-    def _extract_words_with_coordinates(self, response):
-        """
-        Extrae cada palabra con sus coordenadas (x, y) del centro
-        """
+    def is_team_name(self, text: str) -> bool:
+        """Detecta si un texto es probable nombre de equipo"""
+        if not text or len(text) < 3:
+            return False
+        
+        # No debe ser un número
+        if text.replace('.', '').replace('-', '').replace('+', '').isdigit():
+            return False
+        
+        # No debe ser una fecha
+        if re.match(r'\d{1,2}\s+[A-Za-z]{3}', text):
+            return False
+        
+        # No debe ser una hora
+        if re.match(r'\d{2}:\d{2}', text):
+            return False
+        
+        # Palabras que no son equipos
+        blacklist = ['empate', 'draw', 'vs', 'v', 'fc', 'cf', 'sc', 'ac', 'cd', 
+                     'ud', 'sd', 'club', 'deportivo', 'real', 'united', 'city',
+                     'athletic', 'sporting', 'racing', 'internacional']
+        
+        if text.lower() in blacklist:
+            return False
+        
+        return True
+    
+    def clean_name(self, text: str) -> str:
+        """Limpia el nombre del equipo"""
+        # Quita códigos +XX al inicio
+        text = re.sub(r'^\+\d+\s*', '', text)
+        
+        # Quita fechas al final (ej: "02 Mar 03:00")
+        text = re.sub(r'\s*\d{1,2}\s+[A-Za-z]{3}\s*\d{2}:\d{2}$', '', text)
+        
+        # Quita códigos +XX en cualquier parte
+        text = re.sub(r'\+\d+', '', text)
+        
+        # Quita caracteres especiales
+        text = re.sub(r'[|•\-_=+*]', ' ', text)
+        
+        # Normaliza espacios
+        text = ' '.join(text.split())
+        
+        return text.strip() if len(text) > 2 else ""
+    
+    def extract_words_with_coordinates(self, response):
+        """Extrae palabras individuales con coordenadas"""
         word_list = []
+        
+        if not response.full_text_annotation or not response.full_text_annotation.pages:
+            return word_list
         
         for page in response.full_text_annotation.pages:
             for block in page.blocks:
                 for paragraph in block.paragraphs:
-                    # Construir el texto completo del párrafo
-                    paragraph_text = " ".join([
-                        "".join([s.text for s in word.symbols]) 
-                        for word in paragraph.words
-                    ])
-                    
-                    # Calcular punto medio del bounding box
-                    vertices = paragraph.bounding_box.vertices
-                    avg_x = sum(v.x for v in vertices) / 4
-                    avg_y = sum(v.y for v in vertices) / 4
-                    
-                    word_list.append({
-                        "text": paragraph_text,
-                        "x": avg_x,
-                        "y": avg_y
-                    })
+                    for word in paragraph.words:
+                        word_text = ''.join(s.text for s in word.symbols).strip()
+                        if not word_text:
+                            continue
+                        
+                        # Calcular centro del bounding box
+                        v = word.bounding_box.vertices
+                        x = (v[0].x + v[2].x) / 2
+                        y = (v[0].y + v[2].y) / 2
+                        
+                        word_list.append({
+                            "text": word_text,
+                            "x": x,
+                            "y": y
+                        })
         
         return word_list
     
-    def _group_by_lines(self, word_list, tolerance=15):
+    def parse_image(self, uploaded_file):
         """
-        Agrupa palabras por líneas basado en coordenada Y
+        Procesa la imagen analizando palabra por palabra
         """
-        if not word_list:
-            return []
+        if not self.client:
+            return {
+                'matches': [], 
+                'raw_text': '', 
+                'debug': [],
+                'error': 'Cliente Google Vision no inicializado'
+            }
         
-        # Ordenar por Y
-        word_list.sort(key=lambda w: w["y"])
-        
-        lines = []
-        current_line = [word_list[0]]
-        
-        for i in range(1, len(word_list)):
-            if abs(word_list[i]["y"] - current_line[-1]["y"]) < tolerance:
-                current_line.append(word_list[i])
-            else:
-                # Ordenar la línea actual por X (izquierda a derecha)
-                current_line.sort(key=lambda w: w["x"])
-                lines.append(current_line)
-                current_line = [word_list[i]]
-        
-        # Agregar la última línea
-        current_line.sort(key=lambda w: w["x"])
-        lines.append(current_line)
-        
-        return lines
-    
-    def _detect_matches_from_lines(self, lines):
-        """
-        Detecta partidos en las líneas de texto
-        """
-        matches = []
-        
-        for line in lines:
-            # Unir texto de la línea
-            text_line = " ".join([w["text"] for w in line])
+        try:
+            content = uploaded_file.getvalue()
+            image = vision.Image(content=content)
+            response = self.client.document_text_detection(image=image)
             
-            # Buscar momios americanos (+/- seguido de 3-4 dígitos)
-            odds = re.findall(r'[+-]\d{3,4}', text_line)
+            # Guardar texto completo para debug
+            full_text = response.full_text_annotation.text if response.full_text_annotation else ""
             
-            if len(odds) >= 3:
-                # Limpiar el texto
-                clean_text = text_line
+            # Extraer palabras con coordenadas
+            word_list = self.extract_words_with_coordinates(response)
+            
+            if not word_list:
+                return {
+                    'matches': [], 
+                    'raw_text': full_text, 
+                    'debug': ['No se detectaron palabras en la imagen']
+                }
+            
+            # Ordenar por Y (arriba a abajo)
+            word_list.sort(key=lambda w: w["y"])
+            
+            matches = []
+            debug_lines = []
+            
+            i = 0
+            while i < len(word_list):
+                current_word = word_list[i]["text"]
                 
-                # Quitar fechas (ej: "02 Mar 03:00")
-                clean_text = re.sub(r'\d{1,2}\s+[A-Za-z]{3}\s+\d{2}:\d{2}', '', clean_text)
-                
-                # Quitar números sueltos (+43, etc)
-                clean_text = re.sub(r'\+\s*\d+', '', clean_text)
-                
-                # Quitar las odds que ya extrajimos
-                for odd in odds[:3]:
-                    clean_text = clean_text.replace(odd, "")
-                
-                clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-                
-                # Intentar separar local y visitante
-                # Método 1: Dividir por "vs" si existe
-                if ' vs ' in clean_text.lower():
-                    parts = re.split(r'\s+vs\s+', clean_text, flags=re.IGNORECASE)
-                    if len(parts) == 2:
-                        home = self._clean_team_name(parts[0])
-                        away = self._clean_team_name(parts[1])
+                # Buscar posible nombre de equipo
+                if self.is_team_name(current_word):
+                    home_raw = current_word
+                    home = self.clean_name(home_raw)
+                    
+                    # Buscar 3 odds después
+                    odds = []
+                    j = i + 1
+                    while j < len(word_list) and len(odds) < 3:
+                        candidate = word_list[j]["text"]
+                        if self.is_odd(candidate):
+                            odds.append(candidate)
+                        j += 1
+                    
+                    if len(odds) == 3:
+                        # Buscar equipo visitante después de las odds
+                        away = "Visitante no detectado"
+                        k = j
+                        while k < len(word_list):
+                            candidate = word_list[k]["text"]
+                            if self.is_team_name(candidate):
+                                away = self.clean_name(candidate)
+                                break
+                            k += 1
                         
-                        if home and away:
+                        if home and away != "Visitante no detectado":
                             matches.append({
                                 "home": home,
                                 "away": away,
+                                "odds": odds,
                                 "home_odd": odds[0],
                                 "draw_odd": odds[1],
                                 "away_odd": odds[2],
-                                "liga": "Detectada de imagen",
-                                "odds": odds[:3]
+                                "liga": "Detectada de imagen"
                             })
+                            
+                            debug_lines.append(f"✅ {home} vs {away} → {odds}")
+                            
+                            # Saltar al siguiente posible local
+                            i = k + 1
                             continue
                 
-                # Método 2: Dividir por espacios dobles
-                parts = [p.strip() for p in clean_text.split("  ") if len(p.strip()) > 2]
-                
-                if len(parts) >= 2:
-                    home = self._clean_team_name(parts[0])
-                    away = self._clean_team_name(parts[-1])
-                    
-                    if home and away and home != away:
-                        matches.append({
-                            "home": home,
-                            "away": away,
-                            "home_odd": odds[0],
-                            "draw_odd": odds[1],
-                            "away_odd": odds[2],
-                            "liga": "Detectada de imagen",
-                            "odds": odds[:3]
-                        })
-        
-        return matches
-    
-    def _clean_team_name(self, name):
-        """
-        Limpia el nombre del equipo
-        """
-        if not name:
-            return ""
-        
-        # Eliminar números y caracteres especiales
-        name = re.sub(r'[0-9+\-]', '', name)
-        
-        # Eliminar palabras comunes que no son parte del nombre
-        common = ['FC', 'CF', 'SC', 'AC', 'CD', 'UD', 'SD', 'Club', 'Deportivo', 'Real']
-        for word in common:
-            name = name.replace(word, '')
-        
-        # Limpiar espacios
-        name = ' '.join(name.split())
-        
-        return name.strip()
+                i += 1
+            
+            # Si no se encontraron partidos con el método principal
+            if not matches:
+                debug_lines.append("❌ No se encontró patrón 'equipo + 3 odds + equipo'")
+                debug_lines.append("🔍 Revisa que la imagen tenga formato claro")
+            
+            return {
+                'matches': matches,
+                'raw_text': full_text,
+                'debug': debug_lines,
+                'words_detected': len(word_list)
+            }
+            
+        except Exception as e:
+            st.error(f"Error en Google Vision: {e}")
+            return {
+                'matches': [], 
+                'raw_text': '', 
+                'debug': [f"Error: {str(e)}"],
+                'error': str(e)
+            }
