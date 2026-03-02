@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from modules.vision_reader import analyze_betting_image, read_ticket_image
+from modules.vision_reader import ImageParser  # CORREGIDO
 from modules.analyzer import MatchAnalyzer
 from modules.parlay_builder import show_parlay_options
 from modules.betting_tracker import BettingTracker
@@ -66,7 +66,7 @@ def main():
             st.warning("⚠️ Modo simulación")
             st.caption("Agrega FOOTBALL_API_KEY a secrets para búsqueda real")
         
-        # Modo debug (ya no es necesario pero lo dejamos)
+        # Modo debug
         debug_mode = st.checkbox("🔧 Mostrar debug OCR", value=True)
         
         # Mostrar tracker en sidebar
@@ -91,8 +91,25 @@ def main():
     if uploaded_file:
         # Procesar imagen con TU visión_reader.py
         with st.spinner("🔍 Procesando imagen con Google Vision..."):
-            # Usamos TU función exactamente como la escribiste
-            matches = analyze_betting_image(uploaded_file)
+            # Crear instancia del parser y procesar imagen
+            parser = ImageParser()
+            result = parser.parse_image(uploaded_file)
+            matches = result.get('matches', [])
+            debug_lines = result.get('debug', [])
+        
+        # Mostrar debug si está activado
+        if debug_mode and debug_lines:
+            with st.container():
+                st.markdown("---")
+                st.subheader("🔍 DEBUG OCR - Procesamiento")
+                for line in debug_lines:
+                    if line.startswith('✅'):
+                        st.success(line)
+                    elif line.startswith('❌'):
+                        st.error(line)
+                    else:
+                        st.info(line)
+                st.markdown("---")
         
         if matches:
             with col2:
@@ -148,9 +165,7 @@ def main():
                         else:
                             st.warning(f"⚠️ Visitante: {away} (no encontrado en API)")
                     
-                    # ====================================================================
                     # FILTRAR MERCADOS POR PROBABILIDAD Y CATEGORÍA
-                    # ====================================================================
                     markets_filtered = [
                         m for m in analysis['markets'] 
                         if m['prob'] >= prob_minima and m['category'] in categorias
@@ -168,7 +183,7 @@ def main():
                         
                         # Crear DataFrame para mostrar mercados
                         market_data = []
-                        for m in markets_filtered[:15]:  # Top 15 mercados
+                        for m in markets_filtered[:15]:
                             highlight = "🔴 " if m.get('highlight') else ""
                             market_data.append({
                                 'Mercado': highlight + m['name'],
@@ -187,7 +202,7 @@ def main():
                         best_emoji = "🔴" if best.get('highlight') else "✨"
                         st.success(f"{best_emoji} **Mejor opción:** {best['name']} - {best['prob']:.1%}")
                         
-                        # Guardar para parlays (solo top 3 por partido)
+                        # Guardar para parlays
                         for m in markets_filtered[:3]:
                             all_picks.append({
                                 'match': f"{analysis['home_team']} vs {analysis['away_team']}",
@@ -199,11 +214,8 @@ def main():
                         st.info("📭 No hay mercados con los filtros seleccionados")
                         st.caption("Prueba con una probabilidad mínima más baja o selecciona más categorías")
             
-            # ====================================================================
-            # GENERAR PARLAYS CON LAS MEJORES OPCIONES
-            # ====================================================================
+            # GENERAR PARLAYS
             if all_picks:
-                # Limitar a picks únicos por partido (los mejores)
                 unique_picks = []
                 seen_matches = set()
                 for pick in all_picks:
@@ -226,7 +238,6 @@ def main():
             """)
     
     else:
-        # Mensaje inicial cuando no hay imagen
         st.info("👆 Sube una imagen para comenzar el análisis")
         
         with st.expander("📋 Ver ejemplo de formato aceptado"):
@@ -245,11 +256,10 @@ Levante +178 Empate +235 Girona +150
             1. **Subes una captura** de cualquier casa de apuestas
             2. **Google Vision OCR** detecta palabras con coordenadas
             3. **Algoritmo inteligente** busca patrón: EQUIPO + 3 ODDS + EQUIPO
-            4. **Debug claro** muestra cada detección
-            5. **Buscamos los equipos** en API-Sports
-            6. **Simulación Monte Carlo** (20,000 iteraciones)
-            7. **Analizamos 20+ mercados** por partido
-            8. **Generamos parlays** con valor esperado positivo
+            4. **Buscamos los equipos** en API-Sports
+            5. **Simulación Monte Carlo** (20,000 iteraciones)
+            6. **Analizamos 20+ mercados** por partido
+            7. **Generamos parlays** con valor esperado positivo
             """)
 
 if __name__ == "__main__":
