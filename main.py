@@ -22,6 +22,25 @@ def init_components():
 
 components = init_components()
 
+def parse_raw_betting_text(text):
+    """
+    Parsea texto raw pegado: 'Real Madrid-278 Empate+340Getafe+900'
+    Retorna lista de diccionarios con estructura limpia.
+    """
+    # Expresión regular para separar: [Equipo] [Cuota] [Empate] [Cuota] [Equipo] [Cuota]
+    # Maneja casos donde no hay espacios entre cuota y el siguiente nombre
+    pattern = r"([a-zA-Z\s]+)([-+]\d+)\s*Empate\s*([-+]\d+)([a-zA-Z\s]+)([-+]\d+)"
+    matches_found = re.findall(pattern, text)
+    
+    clean_list = []
+    for m in matches_found:
+        clean_list.append({
+            'home': m[0].strip(),
+            'away': m[3].strip(),
+            'all_odds': [m[1], m[2], m[4]]
+        })
+    return clean_list
+
 def main():
     st.title("🎯 Analizador Universal de Partidos")
     st.markdown("Sube una captura y analizo **partido por partido**")
@@ -60,7 +79,6 @@ def main():
         
         st.divider()
         
-        # Configuración de EV Engine
         st.subheader("📈 Valor Esperado (EV)")
         ev_minimo = st.number_input(
             "EV mínimo para considerar",
@@ -107,14 +125,13 @@ def main():
             st.image(uploaded_file, caption="Imagen subida", use_container_width=True)
     
     if uploaded_file:
-        # ============================================================================
-        # PROCESAMIENTO DE IMAGEN
-        # ============================================================================
         with st.spinner("🔍 Procesando imagen con Google Vision..."):
             img_bytes = uploaded_file.getvalue()
+            
+            # 1. Intento de detección normal por coordenadas
             matches = components['vision'].process_image(img_bytes)
             
-            # Obtener texto raw para debug
+            # 2. Obtener texto raw para limpieza profunda
             raw_text = ""
             try:
                 from google.cloud import vision
@@ -123,54 +140,19 @@ def main():
                 if response.text_annotations:
                     raw_text = response.text_annotations[0].description
                     
-                    # Detección de partido en vivo
+                    # SI LA DETECCIÓN NORMAL FALLÓ O VIENE VACÍA, USAMOS EL PARSEO POR REGEX
+                    if not matches or len(matches) == 0:
+                        matches = parse_raw_betting_text(raw_text)
+                    
                     if re.search(r"\d{1,2}['′]", raw_text) or re.search(r"\d+\s*-\s*\d+", raw_text):
-                        st.info("🏟️ **Partido en tiempo real detectado** - Analizando con condiciones actuales")
+                        st.info("🏟️ **Partido en tiempo real detectado**")
             except Exception as e:
                 if debug_mode:
                     st.warning(f"Nota: No se pudo obtener texto raw: {e}")
         
         # ============================================================================
-        # DEBUG MEJORADO CON TABLA HTML (TU CÓDIGO)
+        # TABLA DE 6 COLUMNAS (DEBUG / RESULTADOS)
         # ============================================================================
-        if debug_mode:
-            with st.expander("🔧 Debug OCR - Información de detección", expanded=True):
-                st.write(f"**Partidos detectados:** {len(matches)}")
-                
-                if matches:
-                    st.write("**Detalle de detecciones:**")
-                    
-                    # Crear tabla HTML para los partidos detectados
-                    html_matches = "<table style='width:100%; border-collapse: collapse;'>"
-                    html_matches += "<tr style='background-color: #2196F3; color: white;'>"
-                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>#</th>"
-                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Local</th>"
-                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota L</th>"
-                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Empate</th>"
-                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota E</th>"
-                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Visitante</th>"
-                    html_matches += "<th style='padding: 8px; border: 1px solid #ddd;'>Cuota V</th>"
-                    html_matches += "</tr>"
-                    
-                    for i, m in enumerate(matches):
-                        odds = m.get('all_odds', ['N/A', 'N/A', 'N/A'])
-                        html_matches += "<tr>"
-                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{i+1}</td>"
-                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{m['home']}</td>"
-                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{odds[0]}</td>"
-                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>Empate</td>"
-                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{odds[1]}</td>"
-                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{m['away']}</td>"
-                        html_matches += f"<td style='padding: 8px; border: 1px solid #ddd;'>{odds[2]}</td>"
-                        html_matches += "</tr>"
-                    
-                    html_matches += "</table>"
-                    st.markdown(html_matches, unsafe_allow_html=True)
-                
-                if raw_text:
-                    st.write("**Texto raw detectado (primeros 500 caracteres):**")
-                    st.code(raw_text)
-        
         if matches:
             with col2:
                 st.subheader(f"2. Partidos detectados ({len(matches)})")
@@ -179,17 +161,21 @@ def main():
                     odds = m.get('all_odds', ['N/A', 'N/A', 'N/A'])
                     df_data.append({
                         'Local': m['home'],
+                        'Cuota L': odds[0],
+                        'Empate': 'Empate',
+                        'Cuota E': odds[1],
                         'Visitante': m['away'],
-                        'Cuota L': odds[0] if len(odds) > 0 else 'N/A',
-                        'Cuota E': odds[1] if len(odds) > 1 else 'N/A',
-                        'Cuota V': odds[2] if len(odds) > 2 else 'N/A'
+                        'Cuota V': odds[2]
                     })
-                st.dataframe(pd.DataFrame(df_data), use_container_width=True)
-            
+                st.dataframe(pd.DataFrame(df_data), use_container_width=True, hide_index=True)
+
+            if debug_mode and raw_text:
+                with st.expander("🔧 Ver Texto Raw Detectado"):
+                    st.code(raw_text)
+
             st.divider()
             st.subheader("3. Análisis partido por partido")
             
-            # Preparar picks para EV Engine
             all_picks_for_ev = []
             all_picks_simple = []
             
@@ -199,38 +185,28 @@ def main():
                 odds = match.get('all_odds', ['N/A', 'N/A', 'N/A'])
                 
                 with st.expander(f"📊 {home} vs {away}", expanded=i==0):
-                    # Mostrar cuotas si están disponibles
                     if odds and odds[0] != 'N/A':
                         st.caption(f"🎲 **Cuotas:** Local {odds[0]} | Empate {odds[1]} | Visitante {odds[2]}")
                     
-                    # Analizar el partido
                     analysis = components['analyzer'].analyze_match(home, away, "")
                     
-                    # Mostrar resultados de búsqueda
                     col_a, col_b = st.columns(2)
                     with col_a:
                         if analysis.get('home_found'):
-                            st.success(f"✅ Local encontrado: {analysis['home_team']}")
+                            st.success(f"✅ Local: {analysis['home_team']}")
                         else:
-                            st.warning(f"⚠️ Local: {home} (no encontrado en API)")
+                            st.warning(f"⚠️ Local: {home}")
                     
                     with col_b:
                         if analysis.get('away_found'):
-                            st.success(f"✅ Visitante encontrado: {analysis['away_team']}")
+                            st.success(f"✅ Visitante: {analysis['away_team']}")
                         else:
-                            st.warning(f"⚠️ Visitante: {away} (no encontrado en API)")
+                            st.warning(f"⚠️ Visitante: {away}")
                     
-                    # Filtrar mercados
                     markets_filtered = [
                         m for m in analysis['markets'] 
                         if m['prob'] >= prob_minima and m['category'] in categorias
                     ]
-                    
-                    # Resaltar mercados especiales
-                    if show_high_scoring:
-                        for m in markets_filtered:
-                            if 'Over 4.5' in m['name'] or 'Over 5.5' in m['name']:
-                                m['highlight'] = True
                     
                     if markets_filtered:
                         st.caption(f"📊 Goles promedio esperados: {analysis['probabilidades']['goles_promedio']:.2f}")
@@ -244,142 +220,65 @@ def main():
                         st.dataframe(market_df, use_container_width=True, hide_index=True)
                         
                         best = markets_filtered[0]
-                        best_emoji = "🔴" if best.get('highlight') else "✨"
-                        st.success(f"{best_emoji} **Mejor opción:** {best['name']} - {best['prob']:.1%}")
+                        st.success(f"✨ **Mejor opción:** {best['name']} - {best['prob']:.1%}")
                         
-                        # Guardar para parlays simples
                         all_picks_simple.append({
-                            'match': f"{analysis['home_team']} vs {analysis['away_team']}",
+                            'match': f"{home} vs {away}",
                             'selection': best['name'],
                             'prob': best['prob'],
                             'category': best['category']
                         })
                         
-                        # Preparar picks para EV Engine
-                        for idx, m in enumerate(markets_filtered[:5]):
-                            odd_value = 2.0
+                        # Cálculo de EV
+                        for m in markets_filtered[:5]:
+                            odd_value = 2.0 # Default
+                            target_odd = "N/A"
                             
-                            if odds and len(odds) > 0:
-                                if 'Local' in m['name'] and odds[0] != 'N/A':
-                                    odd_val = odds[0]
-                                    if odd_val.startswith('+'):
-                                        odd_value = (int(odd_val[1:]) / 100) + 1
-                                    elif odd_val.startswith('-'):
-                                        odd_value = (100 / abs(int(odd_val))) + 1
-                                elif 'Visitante' in m['name'] and len(odds) > 2 and odds[2] != 'N/A':
-                                    odd_val = odds[2]
-                                    if odd_val.startswith('+'):
-                                        odd_value = (int(odd_val[1:]) / 100) + 1
-                                    elif odd_val.startswith('-'):
-                                        odd_value = (100 / abs(int(odd_val))) + 1
-                            
-                            ev = (m['prob'] * odd_value) - 1
-                            
-                            if ev > ev_minimo:
-                                all_picks_for_ev.append({
-                                    'match': f"{analysis['home_team']} vs {analysis['away_team']}",
-                                    'selection': m['name'],
-                                    'probability': m['prob'],
-                                    'odd': odd_value,
-                                    'ev': ev,
-                                    'category': m['category']
-                                })
+                            if 'Local' in m['name']: target_odd = odds[0]
+                            elif 'Visitante' in m['name']: target_odd = odds[2]
+                            elif 'Empate' in m['name']: target_odd = odds[1]
+
+                            if target_odd != "N/A":
+                                try:
+                                    val = int(target_odd)
+                                    odd_value = (val/100)+1 if val > 0 else (100/abs(val))+1
+                                except: pass
+                                
+                                ev = (m['prob'] * odd_value) - 1
+                                if ev > ev_minimo:
+                                    all_picks_for_ev.append({
+                                        'match': f"{home} vs {away}",
+                                        'selection': m['name'],
+                                        'probability': m['prob'],
+                                        'odd': odd_value,
+                                        'ev': ev
+                                    })
                     else:
-                        st.info("📭 No hay mercados con los filtros seleccionados")
-            
+                        st.info("📭 Sin mercados para los filtros actuales")
+
             # ============================================================================
-            # GENERAR PARLAYS
+            # SECCIÓN PARLAYS
             # ============================================================================
             st.divider()
+            cp1, cp2 = st.columns(2)
             
-            col_parlay1, col_parlay2 = st.columns(2)
-            
-            with col_parlay1:
+            with cp1:
                 st.subheader("🎯 Parlays Simples")
                 if all_picks_simple:
-                    from modules.parlay_builder import show_parlay_options as show_simple_parlays
-                    show_simple_parlays(all_picks_simple, components['tracker'])
-                else:
-                    st.info("ℹ️ No hay suficientes picks para generar parlays simples")
+                    show_parlay_options(all_picks_simple, components['tracker'])
             
-            with col_parlay2:
+            with cp2:
                 st.subheader("📈 Parlays Optimizados (EV+)")
                 if all_picks_for_ev:
                     smart_parlay = build_smart_parlay(all_picks_for_ev)
-                    
                     if smart_parlay:
                         with st.container(border=True):
-                            st.markdown("**🤖 Parlay Inteligente - Máximo EV**")
-                            st.markdown(f"**Cuota Total:** {smart_parlay['total_odd']}")
-                            st.markdown(f"**Probabilidad Combinada:** {smart_parlay['combined_prob']:.1%}")
-                            st.markdown(f"**Valor Esperado (EV):** {smart_parlay['total_ev']:.2%}")
-                            
-                            if smart_parlay['total_ev'] > 0.2:
-                                st.markdown("🟢 **EV Alto - Muy Recomendado**")
-                            elif smart_parlay['total_ev'] > 0.1:
-                                st.markdown("🟡 **EV Moderado - Recomendado**")
-                            else:
-                                st.markdown("🟠 **EV Bajo - Considerar riesgo**")
-                            
-                            st.markdown("**Selecciones:**")
+                            st.write(f"**Cuota Total:** {smart_parlay['total_odd']}")
+                            st.write(f"**EV:** {smart_parlay['total_ev']:.2%}")
                             for m in smart_parlay['matches']:
-                                st.markdown(f"• {m}")
-                            
-                            if st.button("📝 Registrar este parlay", key="register_smart"):
-                                components['tracker'].add_bet({
-                                    'matches': smart_parlay['matches'],
-                                    'total_odds': smart_parlay['total_odd'],
-                                    'total_prob': smart_parlay['combined_prob']
-                                }, stake=100)
-                                st.success("✅ Parlay registrado!")
-                                st.rerun()
-                    else:
-                        st.info("📭 No se encontraron parlays con EV positivo")
-                        
-                        st.caption("**Top picks individuales con mejor EV:**")
-                        top_ev_picks = sorted(all_picks_for_ev, key=lambda x: x['ev'], reverse=True)[:5]
-                        for p in top_ev_picks:
-                            ev_color = "🟢" if p['ev'] > 0.1 else "🟡"
-                            st.markdown(f"{ev_color} {p['match']}: {p['selection']} (EV: {p['ev']:.2%})")
-                else:
-                    st.info("ℹ️ No hay picks con EV suficiente")
-        
+                                st.write(f"• {m}")
         else:
-            st.error("❌ No se detectaron partidos en la imagen")
-            st.info("""
-            **Sugerencias para mejorar la detección:**
-            - Asegúrate que la imagen tenga buena resolución
-            - Los nombres de equipos deben ser legibles
-            - La imagen debe contener cuotas en formato americano (+120, -150)
-            - Activa el debug para ver qué texto detectó el OCR
-            """)
-    
-    else:
-        st.info("👆 Sube una imagen para comenzar el análisis")
-        
-        with st.expander("📋 Formato esperado (ejemplo)"):
-            st.code("""
-[Equipo Local] [Cuota Local] [Empate] [Cuota Empate] [Equipo Visitante] [Cuota Visitante]
-
-Ejemplos:
-Real Madrid -278 Empate +340 Getafe +900
-Rayo Vallecano -145 Empate +265 Real Oviedo +410
-Celta de Vigo +330 Empate +290 Real Madrid -132
-            """)
-        
-        with st.expander("ℹ️ Cómo funciona"):
-            st.markdown("""
-            ### 🎯 Flujo de análisis:
-            
-            1. **Subes una captura** de cualquier casa de apuestas
-            2. **Google Vision OCR** detecta palabras con coordenadas
-            3. **Algoritmo inteligente** busca patrón: EQUIPO + 3 ODDS + EQUIPO
-            4. **Buscamos los equipos** en API-Sports
-            5. **Simulación Monte Carlo** (20,000 iteraciones)
-            6. **Analizamos 20+ mercados** por partido
-            7. **Generamos parlays** con valor esperado positivo
-            8. **Registramos apuestas** y tracking de resultados
-            """)
+            st.error("❌ No se detectaron partidos. Intenta con una imagen más clara.")
 
 if __name__ == "__main__":
     main()
