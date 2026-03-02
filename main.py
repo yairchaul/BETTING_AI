@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
-from modules.vision_reader import ImageParser  # CORREGIDO
+from modules.vision_reader import ImageParser
 from modules.analyzer import MatchAnalyzer
 from modules.parlay_builder import show_parlay_options
 from modules.betting_tracker import BettingTracker
+from modules.team_matcher import TeamMatcher
+from modules.montecarlo import run_simulation
 
 st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
 
@@ -11,8 +13,10 @@ st.set_page_config(page_title="Analizador de Partidos IA", layout="wide")
 def init_components():
     """Inicializa componentes con cache para mejorar rendimiento"""
     return {
+        'vision': ImageParser(),
         'analyzer': MatchAnalyzer(st.secrets.get("FOOTBALL_API_KEY", "")),
-        'tracker': BettingTracker()
+        'tracker': BettingTracker(),
+        'matcher': TeamMatcher(st.secrets.get("FOOTBALL_API_KEY", ""))
     }
 
 components = init_components()
@@ -89,26 +93,47 @@ def main():
             st.image(uploaded_file, caption="Imagen subida", use_container_width=True)
     
     if uploaded_file:
-        # Procesar imagen con TU visión_reader.py
+        # Procesar imagen con Vision Reader
         with st.spinner("🔍 Procesando imagen con Google Vision..."):
-            # Crear instancia del parser y procesar imagen
-            parser = ImageParser()
-            result = parser.parse_image(uploaded_file)
-            matches = result.get('matches', [])
-            debug_lines = result.get('debug', [])
+            try:
+                # Usar el método parse_image de tu vision_reader
+                result = components['vision'].parse_image(uploaded_file)
+                matches = result.get('matches', [])
+                debug_lines = result.get('debug', [])
+                raw_text = result.get('raw_text', '')
+            except AttributeError:
+                # Fallback si no existe parse_image, usar método alternativo
+                st.warning("Usando método alternativo de detección...")
+                from modules.ocr_reader import ImageParser as OCRParser
+                ocr_parser = OCRParser()
+                result = ocr_parser.parse_image(uploaded_file)
+                matches = result.get('matches', []) if isinstance(result, dict) else []
+                debug_lines = ["ℹ️ Usando OCR alternativo"]
+                raw_text = str(result)
         
         # Mostrar debug si está activado
-        if debug_mode and debug_lines:
+        if debug_mode:
             with st.container():
                 st.markdown("---")
                 st.subheader("🔍 DEBUG OCR - Procesamiento")
-                for line in debug_lines:
-                    if line.startswith('✅'):
-                        st.success(line)
-                    elif line.startswith('❌'):
-                        st.error(line)
-                    else:
-                        st.info(line)
+                
+                if debug_lines:
+                    for line in debug_lines:
+                        if line.startswith('✅'):
+                            st.success(line)
+                        elif line.startswith('❌'):
+                            st.error(line)
+                        elif line.startswith('⚠️'):
+                            st.warning(line)
+                        else:
+                            st.info(line)
+                else:
+                    st.info("No hay líneas de debug disponibles")
+                
+                if raw_text:
+                    with st.expander("📄 Texto completo detectado"):
+                        st.text(raw_text[:1000] + ("..." if len(raw_text) > 1000 else ""))
+                
                 st.markdown("---")
         
         if matches:
@@ -116,16 +141,18 @@ def main():
                 st.subheader(f"2. Partidos detectados ({len(matches)})")
                 
                 # Mostrar tabla de partidos detectados
-                df_matches = pd.DataFrame([
-                    {
-                        'Local': m.get('home', ''),
-                        'Visitante': m.get('away', ''),
-                        'Cuota Local': m.get('all_odds', ['', '', ''])[0] if len(m.get('all_odds', [])) > 0 else '',
-                        'Cuota Empate': m.get('all_odds', ['', '', ''])[1] if len(m.get('all_odds', [])) > 1 else '',
-                        'Cuota Visitante': m.get('all_odds', ['', '', ''])[2] if len(m.get('all_odds', [])) > 2 else '',
-                    }
-                    for m in matches
-                ])
+                df_data = []
+                for m in matches:
+                    odds = m.get('all_odds', m.get('odds', ['N/A', 'N/A', 'N/A']))
+                    df_data.append({
+                        'Local': m.get('home', m.get('local', '')),
+                        'Visitante': m.get('away', m.get('visitante', '')),
+                        'Cuota L': odds[0] if len(odds) > 0 else 'N/A',
+                        'Cuota E': odds[1] if len(odds) > 1 else 'N/A',
+                        'Cuota V': odds[2] if len(odds) > 2 else 'N/A',
+                    })
+                
+                df_matches = pd.DataFrame(df_data)
                 st.dataframe(df_matches, use_container_width=True)
             
             st.divider()
@@ -135,9 +162,9 @@ def main():
             
             # Analizar cada partido detectado
             for i, match in enumerate(matches):
-                home = match.get('home', '')
-                away = match.get('away', '')
-                odds = match.get('all_odds', ['N/A', 'N/A', 'N/A'])
+                home = match.get('home', match.get('local', ''))
+                away = match.get('away', match.get('visitante', ''))
+                odds = match.get('all_odds', match.get('odds', ['N/A', 'N/A', 'N/A']))
                 
                 with st.expander(f"📊 {home} vs {away}", expanded=i==0):
                     
@@ -148,20 +175,20 @@ def main():
                     analysis = components['analyzer'].analyze_match(
                         home, 
                         away, 
-                        ''  # Sin liga por ahora
+                        match.get('liga', '')
                     )
                     
                     # Mostrar resultados de búsqueda de equipos
                     col_a, col_b = st.columns(2)
                     with col_a:
                         if analysis.get('home_found'):
-                            st.success(f"✅ Local: {analysis['home_team']}")
+                            st.success(f"✅ Local encontrado: {analysis['home_team']}")
                         else:
                             st.warning(f"⚠️ Local: {home} (no encontrado en API)")
                     
                     with col_b:
                         if analysis.get('away_found'):
-                            st.success(f"✅ Visitante: {analysis['away_team']}")
+                            st.success(f"✅ Visitante encontrado: {analysis['away_team']}")
                         else:
                             st.warning(f"⚠️ Visitante: {away} (no encontrado en API)")
                     
@@ -216,6 +243,7 @@ def main():
             
             # GENERAR PARLAYS
             if all_picks:
+                # Limitar a picks únicos por partido
                 unique_picks = []
                 seen_matches = set()
                 for pick in all_picks:
@@ -233,20 +261,22 @@ def main():
             **Sugerencias para mejorar la detección:**
             - Asegúrate que la imagen tenga buena resolución
             - Los nombres de equipos deben ser legibles
-            - El debug de tu vision_reader ya mostró el proceso
+            - Activa el modo debug para ver qué detecta el OCR
             - Intenta con una captura más clara
             """)
     
     else:
+        # Mensaje inicial cuando no hay imagen
         st.info("👆 Sube una imagen para comenzar el análisis")
         
-        with st.expander("📋 Ver ejemplo de formato aceptado"):
+        with st.expander("📋 Formato esperado (ejemplo)"):
             st.code("""
+[Equipo Local] [Cuota Local] [Empate] [Cuota Empate] [Equipo Visitante] [Cuota Visitante]
+
+Ejemplos:
 Real Madrid -278 Empate +340 Getafe +900
 Rayo Vallecano -145 Empate +265 Real Oviedo +410
 Celta de Vigo +330 Empate +290 Real Madrid -132
-Osasuna -132 Empate +245 RCD Mallorca +390
-Levante +178 Empate +235 Girona +150
             """)
         
         with st.expander("ℹ️ Cómo funciona"):
@@ -260,6 +290,7 @@ Levante +178 Empate +235 Girona +150
             5. **Simulación Monte Carlo** (20,000 iteraciones)
             6. **Analizamos 20+ mercados** por partido
             7. **Generamos parlays** con valor esperado positivo
+            8. **Registramos apuestas** y tracking de resultados
             """)
 
 if __name__ == "__main__":
