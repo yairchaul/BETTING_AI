@@ -7,7 +7,7 @@ import unicodedata
 from difflib import SequenceMatcher
 import requests
 from PIL import Image
-import easyocr
+import pytesseract
 import io
 import json
 from modules.cerebro import (
