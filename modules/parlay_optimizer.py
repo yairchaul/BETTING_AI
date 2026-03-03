@@ -1,20 +1,18 @@
 # modules/parlay_optimizer.py
 import numpy as np
-import pandas as pd
-import streamlit as st
-from itertools import combinations
 import random
+from itertools import combinations
 
 class ParlayOptimizer:
     """
-    Optimizador de parlays usando teoría de portafolios
-    Basado en Optimal Bets [citation:6] y algoritmos genéticos [citation:9]
+    Optimizador de parlays usando algoritmos genéticos
+    Basado en teoría de portafolios y optimización combinatoria
     """
     
     def __init__(self):
         self.generation = 0
     
-    def find_optimal_parlays(self, available_picks, max_size=4, target_odds=3.0, population_size=50):
+    def find_optimal_parlays(self, available_picks, max_size=3, target_odds=3.0, population_size=50):
         """
         Encuentra parlays óptimos usando algoritmo genético
         """
@@ -24,7 +22,7 @@ class ParlayOptimizer:
         # Población inicial
         population = self._initialize_population(available_picks, max_size, population_size)
         
-        # Evolución (simplificada)
+        # Evolución
         best_fitness = 0
         best_parlay = None
         
@@ -54,6 +52,31 @@ class ParlayOptimizer:
         
         return best_parlay
     
+    def find_best_combinations(self, picks, max_size=3, min_prob=0.55):
+        """
+        Encuentra las mejores combinaciones por fuerza bruta (para comparación)
+        """
+        best_combinations = []
+        
+        for size in range(2, max_size + 1):
+            for combo in combinations(picks, size):
+                prob_total = np.prod([p['prob'] for p in combo])
+                odds_total = np.prod([p.get('odd', 1/p['prob']) for p in combo])
+                ev = (prob_total * odds_total) - 1
+                
+                if prob_total >= min_prob ** size:
+                    best_combinations.append({
+                        'picks': combo,
+                        'prob': prob_total,
+                        'odds': odds_total,
+                        'ev': ev,
+                        'size': size
+                    })
+        
+        # Ordenar por EV
+        best_combinations.sort(key=lambda x: x['ev'], reverse=True)
+        return best_combinations[:10]
+    
     def _initialize_population(self, picks, max_size, size):
         """Crea población inicial aleatoria"""
         population = []
@@ -68,35 +91,26 @@ class ParlayOptimizer:
         if not parlay or len(parlay) < 2:
             return 0
         
-        # Probabilidad total
         prob_total = np.prod([p.get('prob', 0.5) for p in parlay])
-        
-        # Cuota total
         odds_total = np.prod([p.get('odd', 2.0) for p in parlay])
-        
-        # EV (Valor Esperado)
         ev = (prob_total * odds_total) - 1
         
-        # Cercanía a odds objetivo (si se especifica)
-        odds_distance = 1 - abs(odds_total - target_odds) / target_odds if target_odds else 1
+        # Penalizar si es muy riesgoso
+        risk_penalty = 1 - (1 - prob_total) * 2
         
-        # Diversificación (penalizar mercados similares)
+        # Bonus por diversificación
         categories = [p.get('category', '') for p in parlay]
         unique_cats = len(set(categories))
-        diversity = unique_cats / len(parlay) if parlay else 0
+        diversity_bonus = unique_cats / len(parlay) if parlay else 0
         
-        # Fitness combinado
-        fitness = (ev * 0.5) + (odds_distance * 0.3) + (diversity * 0.2)
-        
-        return max(0, fitness)
+        fitness = ev * 0.6 + diversity_bonus * 0.4
+        return max(0, fitness * risk_penalty)
     
     def _tournament_selection(self, population, fitness_scores, tournament_size=3):
         """Selección por torneo"""
         selected = []
         for _ in range(len(population)):
-            # Seleccionar torneo_size individuos al azar
             indices = random.sample(range(len(population)), min(tournament_size, len(population)))
-            # Elegir el mejor del torneo
             best_idx = indices[0]
             for idx in indices[1:]:
                 if fitness_scores[idx] > fitness_scores[best_idx]:
@@ -109,7 +123,6 @@ class ParlayOptimizer:
         if len(parent1) < 2 or len(parent2) < 2:
             return parent1, parent2
         
-        # Punto de cruce aleatorio
         point1 = random.randint(1, len(parent1)-1)
         point2 = random.randint(1, len(parent2)-1)
         
@@ -126,7 +139,6 @@ class ParlayOptimizer:
         if not parlay:
             return parlay
         
-        # Mutación: reemplazar un pick
         idx = random.randint(0, len(parlay)-1)
         new_pick = random.choice(available_picks)
         parlay[idx] = new_pick
@@ -134,11 +146,7 @@ class ParlayOptimizer:
         return parlay
     
     def calculate_kelly_stake(self, prob, odds, bankroll, fraction=0.25):
-        """
-        Calcula stake óptimo usando Kelly Criterion [citation:6]
-        """
-        # Fórmula de Kelly: f = (bp - q) / b
-        # donde b = odds - 1, p = prob, q = 1-p
+        """Calcula stake óptimo usando Kelly Criterion"""
         b = odds - 1
         if b <= 0:
             return 0
@@ -147,16 +155,12 @@ class ParlayOptimizer:
         q = 1 - p
         
         kelly_fraction = (b * p - q) / b
-        
-        # Kelly fraccionado para reducir riesgo
         optimal_stake = bankroll * kelly_fraction * fraction
         
-        return max(0, min(optimal_stake, bankroll * 0.1))  # Máximo 10% del bankroll
+        return max(0, min(optimal_stake, bankroll * 0.1))
     
     def efficient_frontier(self, parlays, bankroll=1000):
-        """
-        Calcula la frontera eficiente de parlays (Sharpe Ratio) [citation:6]
-        """
+        """Calcula la frontera eficiente de parlays"""
         results = []
         for parlay in parlays:
             if len(parlay) < 2:
@@ -166,7 +170,7 @@ class ParlayOptimizer:
             odds_total = np.prod([p.get('odd', 2.0) for p in parlay])
             
             expected_return = (prob_total * odds_total) - 1
-            risk = 1 - prob_total  # riesgo aproximado
+            risk = 1 - prob_total
             
             sharpe = expected_return / risk if risk > 0 else 0
             
@@ -180,5 +184,4 @@ class ParlayOptimizer:
                 'stake': self.calculate_kelly_stake(prob_total, odds_total, bankroll)
             })
         
-        # Ordenar por Sharpe Ratio
         return sorted(results, key=lambda x: x['sharpe'], reverse=True)
