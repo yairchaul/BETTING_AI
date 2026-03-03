@@ -11,3 +11,6 @@ streamlit
 pandas
 python-dotenv
 degen
+xgboost
+scikit-learn
+joblib
