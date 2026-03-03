@@ -815,15 +815,14 @@ class ProAnalyzerUltimate:
         }
     
     def _generate_markets(self, liga_data, best_bet):
-        """Genera mercados basados en datos de liga"""
-        markets = [
-            {'name': 'Gana Local', 'prob': 0.40, 'category': '1X2'},
-            {'name': 'Empate', 'prob': 0.25, 'category': '1X2'},
-            {'name': 'Gana Visitante', 'prob': 0.35, 'category': '1X2'},
-            {'name': 'Over 1.5 goles', 'prob': 1 - (liga_data.get('under_2_5_prob', 50) / 100 * 0.6), 'category': 'Totales'},
-            {'name': 'Over 2.5 goles', 'prob': liga_data.get('over_2_5_prob', 50) / 100, 'category': 'Totales'},
-            {'name': 'Under 2.5 goles', 'prob': liga_data.get('under_2_5_prob', 50) / 100, 'category': 'Totales'},
-            {'name': 'Ambos anotan (BTTS)', 'prob': liga_data.get('btts_pct', 50) / 100, 'category': 'BTTS'},
-            {'name': 'Over 0.5 goles (1T)', 'prob': min(0.85, liga_data.get('goles_promedio', 2.5) / 3 * 1.2), 'category': 'Primer Tiempo'},
-        ]
-        return sorted(markets, key=lambda x: x['prob'], reverse=True)
+    """Genera mercados basados en datos de liga (con probabilidades realistas)"""
+    markets = [
+        {'name': 'Gana Local', 'prob': 0.40, 'category': '1X2'},
+        {'name': 'Empate', 'prob': 0.25, 'category': '1X2'},
+        {'name': 'Gana Visitante', 'prob': 0.35, 'category': '1X2'},
+        {'name': 'Over 1.5 goles', 'prob': 0.70, 'category': 'Totales'},  # Valor fijo más realista
+        {'name': 'Over 2.5 goles', 'prob': liga_data.get('over_2_5_prob', 50) / 100, 'category': 'Totales'},
+        {'name': 'Under 2.5 goles', 'prob': liga_data.get('under_2_5_prob', 50) / 100, 'category': 'Totales'},
+        {'name': 'Ambos anotan (BTTS)', 'prob': liga_data.get('btts_pct', 50) / 100, 'category': 'BTTS'},
+    ]
+    return sorted(markets, key=lambda x: x['prob'], reverse=True)
