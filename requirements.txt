@@ -14,3 +14,4 @@ degen
 xgboost
 scikit-learn
 joblib
+plotly
