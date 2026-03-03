@@ -20,7 +20,6 @@ class UniversalParser:
         
         for line in lines:
             # Buscar patrones como: [-118] [Empate] (la cuota pegada a "Empate")
-            # También busca casos como: [+340] [Empate]
             match = re.match(r'^([+-]\d{3,4})\s+(Empate.*?)$', line, re.IGNORECASE)
             if match:
                 # Separar en dos líneas
@@ -39,7 +38,7 @@ class UniversalParser:
         lines = self._preprocess_lines(raw_lines)
         
         # DEBUG: Mostrar líneas después del preprocesamiento
-        st.write("📄 Líneas después de preprocesar:", lines)
+        # st.write("📄 Líneas después de preprocesar:", lines)
         
         matches = []
         
@@ -47,17 +46,10 @@ class UniversalParser:
         six_line_matches = self._parse_six_line_format(lines)
         matches.extend(six_line_matches)
         
-        # ESTRATEGIA 2: Formato de 5 líneas
-        five_line_matches = self._parse_five_line_format(lines)
-        matches.extend(five_line_matches)
-        
-        # ESTRATEGIA 3: Formato de lista vertical
-        vertical_matches = self._parse_vertical_list(lines)
-        matches.extend(vertical_matches)
-        
-        # ESTRATEGIA 4: Formato de 1 línea (6 columnas)
-        one_line_matches = self._parse_one_line_format(lines)
-        matches.extend(one_line_matches)
+        # ESTRATEGIA 2: Formato de 1 línea (6 columnas) - como fallback
+        if len(matches) == 0:
+            one_line_matches = self._parse_one_line_format(lines)
+            matches.extend(one_line_matches)
         
         # Eliminar duplicados
         unique_matches = []
@@ -72,7 +64,7 @@ class UniversalParser:
     
     def _parse_six_line_format(self, lines):
         """
-        Formato de 6 líneas por partido:
+        Formato de 6 líneas por partido (CORREGIDO):
         Línea 1: Equipo Local
         Línea 2: Cuota Local
         Línea 3: "Empate"
@@ -101,86 +93,19 @@ class UniversalParser:
                     home_clean = re.sub(r'[|•\-_=+*]', '', home).strip()
                     away_clean = re.sub(r'[|•\-_=+*]', '', away).strip()
                     
-                    matches.append({
-                        'home': home_clean,
-                        'away': away_clean,
-                        'all_odds': [home_odd, empate_odd, away_odd]
-                    })
-                    i += 6
-                    continue
-            i += 1
-        
-        return matches
-    
-    def _parse_five_line_format(self, lines):
-        """
-        Formato de 5 líneas por partido (cuando falta una línea):
-        Línea 1: Equipo Local
-        Línea 2: Cuota Local + "Empate" (ya separado por preprocesamiento)
-        Línea 3: Cuota Empate
-        Línea 4: Equipo Visitante
-        Línea 5: Cuota Visitante
-        """
-        matches = []
-        i = 0
-        
-        while i < len(lines) - 4:
-            home = lines[i]
-            home_odd = lines[i+1]
-            empate_odd = lines[i+2]
-            away = lines[i+3]
-            away_odd = lines[i+4]
-            
-            # Validar que las odds tengan formato
-            if (re.match(r'^[+-]\d+$', home_odd) and
-                re.match(r'^[+-]\d+$', empate_odd) and
-                re.match(r'^[+-]\d+$', away_odd)):
-                
-                # Limpiar nombres
-                home_clean = re.sub(r'[|•\-_=+*]', '', home).strip()
-                away_clean = re.sub(r'[|•\-_=+*]', '', away).strip()
-                
-                matches.append({
-                    'home': home_clean,
-                    'away': away_clean,
-                    'all_odds': [home_odd, empate_odd, away_odd]
-                })
-                i += 5
-                continue
-            i += 1
-        
-        return matches
-    
-    def _parse_vertical_list(self, lines):
-        """Parsea formato de lista vertical"""
-        matches = []
-        
-        all_odds = []
-        for line in lines:
-            odds_in_line = re.findall(r'[+-]\d{3,4}', line)
-            all_odds.extend(odds_in_line)
-        
-        team_names = []
-        for line in lines:
-            if not re.search(r'[+-]\d{3,4}', line) and re.search(r'[A-Za-z]', line):
-                clean_name = re.sub(r'[|•\-_=+*]', '', line).strip()
-                if len(clean_name) > 3 and clean_name.lower() not in self.forbidden_words:
-                    team_names.append(clean_name)
-        
-        if len(team_names) >= 2:
-            for i in range(0, len(team_names) - 1, 2):
-                if i + 1 < len(team_names):
-                    idx_odds = i
-                    if idx_odds + 2 < len(all_odds):
+                    # Verificar que no sean palabras prohibidas
+                    if (home_clean.lower() not in self.forbidden_words and 
+                        away_clean.lower() not in self.forbidden_words and
+                        len(home_clean) > 2 and len(away_clean) > 2):
+                        
                         matches.append({
-                            'home': team_names[i],
-                            'away': team_names[i + 1],
-                            'all_odds': [
-                                all_odds[idx_odds],
-                                all_odds[idx_odds + 1],
-                                all_odds[idx_odds + 2] if idx_odds + 2 < len(all_odds) else 'N/A'
-                            ]
+                            'home': home_clean,
+                            'away': away_clean,
+                            'all_odds': [home_odd, empate_odd, away_odd]
                         })
+                        i += 6
+                        continue
+            i += 1
         
         return matches
     
@@ -192,9 +117,23 @@ class UniversalParser:
         for line in lines:
             match = re.match(pattern, line)
             if match:
-                matches.append({
-                    'home': match.group(1).strip(),
-                    'away': match.group(5).strip(),
-                    'all_odds': [match.group(2), match.group(4), match.group(6)]
-                })
+                home = match.group(1).strip()
+                local_odd = match.group(2)
+                empate_odd = match.group(4)
+                away = match.group(5).strip()
+                away_odd = match.group(6)
+                
+                # Limpiar nombres
+                home_clean = re.sub(r'[|•\-_=+*]', '', home).strip()
+                away_clean = re.sub(r'[|•\-_=+*]', '', away).strip()
+                
+                if (home_clean.lower() not in self.forbidden_words and 
+                    away_clean.lower() not in self.forbidden_words and
+                    len(home_clean) > 2 and len(away_clean) > 2):
+                    
+                    matches.append({
+                        'home': home_clean,
+                        'away': away_clean,
+                        'all_odds': [local_odd, empate_odd, away_odd]
+                    })
         return matches
