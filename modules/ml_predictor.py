@@ -7,7 +7,6 @@ from sklearn.preprocessing import StandardScaler
 import xgboost as xgb
 import joblib
 import os
-from datetime import datetime
 
 class MLPredictor:
     """
@@ -21,6 +20,11 @@ class MLPredictor:
         self.is_trained = False
         self.model_path = 'models/xgboost_model.pkl'
         self.scaler_path = 'models/scaler.pkl'
+        self.feature_names = [
+            'Goles local', 'Goles recibidos local', 'BTTS local', 'Victorias local',
+            'Goles visitante', 'Goles recibidos visitante', 'BTTS visitante', 'Victorias visitante',
+            'Goles liga', 'Ventaja local', 'BTTS liga'
+        ]
         
         # Cargar modelo si existe
         self._load_model()
@@ -32,7 +36,6 @@ class MLPredictor:
                 self.model = joblib.load(self.model_path)
                 self.scaler = joblib.load(self.scaler_path)
                 self.is_trained = True
-                st.success("✅ Modelo ML cargado exitosamente")
         except:
             pass
     
@@ -45,7 +48,7 @@ class MLPredictor:
         except Exception as e:
             st.warning(f"No se pudo guardar el modelo: {e}")
     
-    def prepare_features(self, home_team, away_team, home_stats, away_stats, league_data):
+    def prepare_features(self, home_stats, away_stats, league_data):
         """
         Prepara las características para el modelo
         """
@@ -144,12 +147,5 @@ class MLPredictor:
         if not self.is_trained:
             return None
         
-        feature_names = [
-            'Goles local', 'Goles recibidos local', 'BTTS local', 'Victorias local',
-            'Goles visitante', 'Goles recibidos visitante', 'BTTS visitante', 'Victorias visitante',
-            'Goles liga', 'Ventaja local', 'BTTS liga'
-        ]
-        
         importance = self.model.feature_importances_
-        
-        return sorted(zip(feature_names, importance), key=lambda x: x[1], reverse=True)
+        return sorted(zip(self.feature_names, importance), key=lambda x: x[1], reverse=True)
