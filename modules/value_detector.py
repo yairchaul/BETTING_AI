@@ -172,3 +172,4 @@ class ValueDetector:
         """Obtiene un resumen de todos los valores para un partido"""
         results = self.analyze_match_markets(match_analysis, match_odds)
         return [r for r in results if r.get('ev', 0) > 0]
+        
