@@ -12,46 +12,60 @@ class ParlayOptimizer:
     def __init__(self):
         self.generation = 0
     
-    def find_optimal_parlays(self, available_picks, max_size=3, target_odds=3.0, population_size=50):
-        """
-        Encuentra parlays óptimos usando algoritmo genético
-        """
-        if len(available_picks) < 2:
-            return []
-        
-        # Población inicial
-        population = self._initialize_population(available_picks, max_size, population_size)
-        
-        # Evolución
-        best_fitness = 0
-        best_parlay = None
-        
-        for generation in range(10):  # 10 generaciones
-            # Evaluar fitness
-            fitness_scores = []
-            for parlay in population:
-                fitness = self._calculate_fitness(parlay, target_odds)
-                fitness_scores.append(fitness)
-                
-                if fitness > best_fitness:
-                    best_fitness = fitness
-                    best_parlay = parlay
-            
-            # Selección (torneo)
-            selected = self._tournament_selection(population, fitness_scores)
-            
-            # Cruce y mutación
-            next_population = []
-            for i in range(0, len(selected), 2):
-                if i+1 < len(selected):
-                    child1, child2 = self._crossover(selected[i], selected[i+1])
-                    next_population.append(self._mutate(child1, available_picks))
-                    next_population.append(self._mutate(child2, available_picks))
-            
-            population = next_population[:population_size]
-        
-        return best_parlay
+  def find_optimal_parlays(self, available_picks, max_size=3, target_odds=3.0, population_size=20):
+    """
+    Encuentra parlays óptimos (versión simplificada y corregida)
+    """
+    if len(available_picks) < 2:
+        return []
     
+    from itertools import combinations
+    
+    best_parlays = []
+    
+    # Probar todas las combinaciones de tamaño 2 y 3
+    for size in [2, 3]:
+        if size > len(available_picks) or size > max_size:
+            continue
+            
+        for combo in combinations(available_picks, size):
+            # Verificar que no haya duplicados del mismo partido
+            matches = set()
+            valid = True
+            for pick in combo:
+                if pick['match'] in matches:
+                    valid = False
+                    break
+                matches.add(pick['match'])
+            
+            if not valid:
+                continue
+            
+            # Calcular probabilidad y odds
+            prob_total = 1.0
+            odds_total = 1.0
+            for pick in combo:
+                prob_total *= pick['prob']
+                odds_total *= pick.get('odd', 1/pick['prob'])
+            
+            # EV (Valor Esperado)
+            ev = (prob_total * odds_total) - 1
+            
+            best_parlays.append({
+                'picks': list(combo),
+                'prob': prob_total,
+                'odds': odds_total,
+                'ev': ev,
+                'size': size
+            })
+    
+    # Ordenar por EV y eliminar duplicados
+    best_parlays.sort(key=lambda x: x['ev'], reverse=True)
+    
+    # Eliminar parlays con probabilidad extremadamente baja
+    best_parlays = [p for p in best_parlays if p['prob'] > 0.01]
+    
+    return best_parlays[0] if best_parlays else None
     def find_best_combinations(self, picks, max_size=3, min_prob=0.55):
         """
         Encuentra las mejores combinaciones por fuerza bruta (para comparación)
