@@ -26,7 +26,12 @@ components = init_components()
 
 def parse_raw_betting_text(text):
     """
-    Versión CORREGIDA que respeta el orden correcto de los partidos
+    Versión para formato de 1 línea con 6 elementos:
+    [Local] [Cuota L] [Empate] [Cuota E] [Visitante] [Cuota V]
+    
+    Ejemplo de tu imagen:
+    Pacha -110 Empate +260 Necaxa +280
+    Santos Laguna +450 Empate +330 Cruz Azul -182
     """
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     matches = []
@@ -35,31 +40,104 @@ def parse_raw_betting_text(text):
     forbidden_words = ['empate', 'empaté', 'draw', 'vs', 'v', 'local', 'visitante', 'cuota', 'odds']
     
     # ============================================================================
-    # PASO 1: Identificar el patrón de 6 líneas por partido
+    # ESTRATEGIA PRINCIPAL: Formato de 6 elementos en una línea
+    # [Local] [Cuota L] [Empate] [Cuota E] [Visitante] [Cuota V]
     # ============================================================================
-    i = 0
-    while i < len(lines) - 5:
-        potencial_home = lines[i]
-        potencial_home_odd = lines[i+1]
-        potencial_empate_word = lines[i+2]
-        potencial_empate_odd = lines[i+3]
-        potencial_away = lines[i+4]
-        potencial_away_odd = lines[i+5]
+    # Patrón mejorado para capturar los 6 elementos
+    # Grupo 1: Equipo local (cualquier texto hasta encontrar un número con signo)
+    # Grupo 2: Cuota local ([+-] seguido de 3-4 dígitos)
+    # Grupo 3: Palabra "Empate" (con posibles variantes como "Empaite")
+    # Grupo 4: Cuota empate ([+-] seguido de 3-4 dígitos)
+    # Grupo 5: Equipo visitante (texto hasta el último número)
+    # Grupo 6: Cuota visitante ([+-] seguido de 3-4 dígitos al final)
+    pattern = r'^(.+?)\s+([+-]\d{3,4})\s+([Ee]mpat[ea]?[i]?[e]?)\s+([+-]\d{3,4})\s+(.+?)\s+([+-]\d{3,4})$'
+    
+    for line in lines:
+        # Intentar con el patrón principal de 6 elementos
+        match = re.match(pattern, line)
+        if match:
+            home = match.group(1).strip()
+            local_odd = match.group(2)
+            empate_word = match.group(3)
+            empate_odd = match.group(4)
+            away = match.group(5).strip()
+            away_odd = match.group(6)
+            
+            # Validar que el visitante no sea una palabra prohibida
+            if away.lower() not in forbidden_words and len(away) > 2:
+                matches.append({
+                    'home': home,
+                    'away': away,
+                    'all_odds': [local_odd, empate_odd, away_odd]
+                })
+                continue
         
-        if ('empate' in potencial_empate_word.lower() or 'empaté' in potencial_empate_word.lower()):
-            if (re.match(r'^[+-]\d{3,4}$', potencial_home_odd) and
-                re.match(r'^[+-]\d{3,4}$', potencial_empate_odd) and
-                re.match(r'^[+-]\d{3,4}$', potencial_away_odd)):
+        # Si el patrón de 6 falla, intentar con 5 elementos (por si falta la cuota visitante)
+        pattern5 = r'^(.+?)\s+([+-]\d{3,4})\s+([Ee]mpat[ea]?[i]?[e]?)\s+([+-]\d{3,4})\s+(.+?)$'
+        match5 = re.match(pattern5, line)
+        if match5:
+            home = match5.group(1).strip()
+            local_odd = match5.group(2)
+            empate_odd = match5.group(4)
+            away = match5.group(5).strip()
+            
+            if away.lower() not in forbidden_words and len(away) > 2:
+                matches.append({
+                    'home': home,
+                    'away': away,
+                    'all_odds': [local_odd, empate_odd, 'N/A']
+                })
+                continue
+        
+        # Si ambos patrones fallan, intentar extracción manual
+        odds_in_line = re.findall(r'[+-]\d{3,4}', line)
+        if len(odds_in_line) >= 2:
+            # Dividir la línea por los números
+            parts = re.split(r'[+-]\d{3,4}', line)
+            if len(parts) >= 3:
+                home_part = parts[0].strip()
+                # La parte entre el primer y segundo número contiene "Empate"
+                middle_part = parts[1].strip()
+                away_part = parts[2].strip() if len(parts) > 2 else ''
                 
-                if potencial_away.lower() not in forbidden_words:
+                # Limpiar la parte del medio
+                middle_clean = re.sub(r'empate', '', middle_part, flags=re.IGNORECASE).strip()
+                
+                if home_part and away_part and len(home_part) > 2 and len(away_part) > 2:
+                    away_odd = odds_in_line[2] if len(odds_in_line) > 2 else 'N/A'
                     matches.append({
-                        'home': potencial_home,
-                        'away': potencial_away,
-                        'all_odds': [potencial_home_odd, potencial_empate_odd, potencial_away_odd]
+                        'home': home_part,
+                        'away': away_part,
+                        'all_odds': [odds_in_line[0], odds_in_line[1], away_odd]
                     })
-                    i += 6
-                    continue
-        i += 1
+    
+    # ============================================================================
+    # ESTRATEGIA 2: Formato de 6 líneas (por si acaso)
+    # ============================================================================
+    if not matches:
+        i = 0
+        while i < len(lines) - 5:
+            potencial_home = lines[i]
+            potencial_home_odd = lines[i+1]
+            potencial_empate_word = lines[i+2]
+            potencial_empate_odd = lines[i+3]
+            potencial_away = lines[i+4]
+            potencial_away_odd = lines[i+5] if i+5 < len(lines) else ''
+            
+            if ('empate' in potencial_empate_word.lower() or 'empaté' in potencial_empate_word.lower()):
+                if (re.match(r'^[+-]\d{3,4}$', potencial_home_odd) and
+                    re.match(r'^[+-]\d{3,4}$', potencial_empate_odd)):
+                    
+                    if potencial_away.lower() not in forbidden_words and len(potencial_away) > 2:
+                        away_odd = potencial_away_odd if re.match(r'^[+-]\d{3,4}$', potencial_away_odd) else 'N/A'
+                        matches.append({
+                            'home': potencial_home,
+                            'away': potencial_away,
+                            'all_odds': [potencial_home_odd, potencial_empate_odd, away_odd]
+                        })
+                        i += 6
+                        continue
+            i += 1
     
     return matches
 
@@ -165,7 +243,7 @@ def main():
             raw_text = ""
             metodo_usado = "Ninguno"
             
-            # INTENTO 1: Groq Vision
+            # INTENTO 1: Groq Vision (si está disponible)
             if components['groq_vision']:
                 try:
                     matches = components['groq_vision'].extract_matches_with_vision(img_bytes)
@@ -176,7 +254,7 @@ def main():
                     if debug_mode:
                         st.warning(f"Groq Vision falló: {e}")
             
-            # INTENTO 2: OCR tradicional
+            # INTENTO 2: OCR tradicional + parsing (formato de 1 línea con 6 elementos)
             if not matches:
                 try:
                     from google.cloud import vision
@@ -185,7 +263,7 @@ def main():
                     if response.text_annotations:
                         raw_text = response.text_annotations[0].description
                         matches = parse_raw_betting_text(raw_text)
-                        metodo_usado = "OCR + Parsing"
+                        metodo_usado = "OCR + Parsing (6 elementos)"
                         st.info(f"📝 {metodo_usado}: {len(matches)} partidos")
                 except Exception as e:
                     st.error(f"Error en OCR: {e}")
@@ -320,6 +398,9 @@ def main():
         
         else:
             st.error("❌ No se detectaron partidos en la imagen")
+            if raw_text:
+                st.info("Texto detectado pero no se pudo parsear. Aquí está el texto raw:")
+                st.code(raw_text)
     
     else:
         st.info("👆 Sube una imagen para comenzar el análisis profesional")
