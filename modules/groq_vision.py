@@ -7,10 +7,26 @@ import re
 
 class GroqVisionParser:
     def __init__(self):
-        """Inicializa el cliente de Groq con el nuevo modelo estable."""
+        """Inicializa el cliente de Groq y obtiene un modelo de visión activo."""
         self.client = Groq(api_key=st.secrets.get("GROQ_API_KEY", ""))
-        # Se actualiza al modelo 'instant' que reemplaza a los 'preview' decommissioned
-        self.model = "llama-3.2-11b-vision-instant"
+        self.model = self._get_available_vision_model()
+
+    def _get_available_vision_model(self):
+        """
+        Consulta la API de Groq y selecciona el modelo 'instant' para evitar errores de baja.
+        """
+        if not self.client:
+            return "llama-3.2-11b-vision-instant"
+
+        try:
+            models = self.client.models.list()
+            vision_models = [m.id for m in models.data if "vision" in m.id and "preview" not in m.id]
+            
+            if "llama-3.2-11b-vision-instant" in vision_models:
+                return "llama-3.2-11b-vision-instant"
+            return vision_models[0] if vision_models else "llama-3.2-11b-vision-instant"
+        except:
+            return "llama-3.2-11b-vision-instant"
 
     def encode_image(self, image_bytes):
         """Convierte la imagen a base64."""
@@ -18,69 +34,55 @@ class GroqVisionParser:
 
     def extract_matches_with_vision(self, image_bytes):
         """
-        Usa Groq Vision para extraer partidos. 
-        Mantiene la estructura original del código del usuario.
+        Extrae partidos y valida cuotas bloqueadas (candados).
         """
-        if not self.client.api_key:
-            st.error("API Key de Groq no configurada en secrets.")
+        if not self.model:
             return []
 
         try:
             base64_image = self.encode_image(image_bytes)
 
-            # Prompt optimizado para la estructura visual de tu imagen (Melbourne, Fethiyespor, etc.)
             prompt = """
-            Analiza esta imagen de apuestas deportivas. 
-            Extrae los nombres de los equipos y las cuotas de los mercados 1, X, 2 (Local, Empate, Visitante).
+            Analiza la imagen de apuestas. Para cada partido:
+            1. Identifica Equipo Local y Visitante.
+            2. Extrae cuotas 1, X, 2. 
+            3. SI HAY UN CANDADO, la cuota es "LOCKED".
+            4. Limpia los nombres: quita (M), (W), (R), etc.
             
-            Reglas de extracción:
-            1. El primer equipo es 'home', el segundo es 'away'.
-            2. Las cuotas están en los cuadros debajo de 1, X, 2.
-            3. Si el cuadro tiene un candado, pon "LOCKED".
-            
-            Devuelve ESTRICTAMENTE un JSON array:
-            [
-              {
-                "home": "Nombre Local",
-                "away": "Nombre Visitante",
-                "all_odds": ["+125", "+220", "+200"]
-              }
-            ]
+            Devuelve solo JSON:
+            [{"home": "Nombre", "away": "Nombre", "all_odds": ["1", "X", "2"]}]
             """
 
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                temperature=0, # Menor temperatura para mayor precisión en datos numéricos
-                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }],
+                temperature=0,
             )
 
             content = response.choices[0].message.content
-            
-            # --- Lógica de limpieza original preservada ---
-            content = re.sub(r'```json\s*|\s*```', '', content)
-            content = re.sub(r'```\s*', '', content)
-
+            # Limpieza de Markdown
+            content = re.sub(r'```json\s*|\s*```|```', '', content)
             json_match = re.search(r'\[.*\]', content, re.DOTALL)
+            
             if json_match:
-                content = json_match.group()
-
-            return json.loads(content)
+                matches = json.loads(json_match.group())
+                # Validación extra: Filtrar partidos con cuotas bloqueadas
+                valid_matches = []
+                for m in matches:
+                    if "LOCKED" in m['all_odds']:
+                        st.warning(f"⚠️ Partido omitido por cuotas bloqueadas: {m['home']} vs {m['away']}")
+                    else:
+                        valid_matches.append(m)
+                return valid_matches
+            
+            return []
 
         except Exception as e:
-            # Mantenemos el reporte de error original
             st.error(f"Error en Groq Vision: {e}")
             return []
