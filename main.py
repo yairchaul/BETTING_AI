@@ -34,59 +34,62 @@ def init_components():
 components = init_components()
 
 def generar_parlay_pro(matches_analizados, max_selecciones=3):
-    """Genera parlay con las mejores opciones (diversificadas)"""
+    """Genera parlay con las mejores opciones (diversificadas y sin duplicados)"""
     if len(matches_analizados) < 2:
         return None
     
     selecciones = []
     categorias_usadas = set()
+    partidos_usados = set()
     
     for match in matches_analizados:
+        # Buscar la mejor opción que no sea Over 1.5 si ya tenemos muchos
         best = match.get('best_bet', {})
-        if best and best.get('probability', 0) > 0.55:
-            market = best.get('market', 'Over 1.5 goles')
-            category = best.get('category', '')
+        markets = match.get('markets', [])
+        match_name = f"{match.get('home_team', 'Unknown')} vs {match.get('away_team', 'Unknown')}"
+        
+        if match_name in partidos_usados:
+            continue
             
-            # Intentar diversificar por categoría
-            if len(selecciones) < max_selecciones:
-                # Si es Over 1.5 y ya tenemos muchos, buscar otra opción
-                if market == 'Over 1.5 goles' and len(categorias_usadas) >= 2:
-                    markets = match.get('markets', [])
-                    for m in markets[:3]:
-                        if m['name'] != 'Over 1.5 goles' and m['category'] not in categorias_usadas:
-                            best = m
-                            market = m['name']
-                            category = m['category']
-                            break
-                
-                categorias_usadas.add(category)
-                selecciones.append({
-                    'match': f"{match.get('home_team', 'Unknown')} vs {match.get('away_team', 'Unknown')}",
-                    'selection': market,
-                    'prob': best.get('probability', 0.7),
-                    'odd': 1 / best.get('probability', 0.7) * 0.95,
-                    'confianza': best.get('confidence', 'MEDIA'),
-                    'category': category,
-                    'razon': best.get('reason', '')
-                })
+        # Priorizar mercados diferentes a Over 1.5
+        mejores_opciones = sorted(markets, key=lambda x: x['prob'], reverse=True)
+        
+        seleccionado = None
+        for opcion in mejores_opciones[:5]:  # Top 5
+            if opcion['name'] != 'Over 1.5 goles' and opcion['category'] not in categorias_usadas:
+                seleccionado = opcion
+                break
+        
+        # Si no encontramos, usar la mejor opción
+        if not seleccionado and mejores_opciones:
+            seleccionado = mejores_opciones[0]
+        
+        if seleccionado and seleccionado.get('prob', 0) > 0.55:
+            categorias_usadas.add(seleccionado.get('category', ''))
+            partidos_usados.add(match_name)
+            
+            selecciones.append({
+                'match': match_name,
+                'selection': seleccionado['name'],
+                'prob': seleccionado['prob'],
+                'odd': 1 / seleccionado['prob'] * 0.95,
+                'confianza': seleccionado.get('confidence', 'MEDIA'),
+                'category': seleccionado.get('category', ''),
+                'razon': seleccionado.get('reason', '')
+            })
+            
+            if len(selecciones) >= max_selecciones:
+                break
     
     if len(selecciones) >= 2:
         prob_total = np.prod([s['prob'] for s in selecciones])
         odds_total = np.prod([s['odd'] for s in selecciones])
         
-        confianzas = [s['confianza'] for s in selecciones]
-        if 'ALTA' in confianzas and len([c for c in confianzas if c == 'ALTA']) >= 2:
-            nivel_confianza = 'ALTO'
-        elif 'BAJA' in confianzas and len([c for c in confianzas if c == 'BAJA']) >= 2:
-            nivel_confianza = 'BAJO'
-        else:
-            nivel_confianza = 'MEDIO'
-        
         return {
             'selecciones': selecciones,
             'probabilidad_total': prob_total,
             'cuota_estimada': round(odds_total, 2),
-            'nivel_confianza': nivel_confianza,
+            'nivel_confianza': 'MEDIO' if prob_total > 0.2 else 'BAJO',
             'ev': (prob_total * odds_total) - 1
         }
     return None
