@@ -1,6 +1,7 @@
 # pages/3_Backtesting.py
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from modules.backtester import Backtester
 from modules.betting_tracker import BettingTracker
@@ -10,7 +11,6 @@ st.set_page_config(page_title="Backtesting de Estrategias", layout="wide")
 st.title("📊 Backtesting y Validación de Estrategias")
 st.markdown("""
 Esta herramienta permite validar si las recomendaciones del sistema hubieran sido rentables en el pasado.
-El backtesting es fundamental para cualquier estrategia de apuestas seria [citation:1][citation:4].
 """)
 
 # Inicializar
@@ -47,8 +47,9 @@ with tab1:
                 st.info(f"📊 Usando {len(bets_data)} apuestas del historial")
                 
                 if st.button("🚀 Ejecutar Backtesting"):
-                    results = st.session_state.backtester.run_backtest(bets_data)
-                    st.session_state.backtest_results = results
+                    with st.spinner("Ejecutando backtesting..."):
+                        results = st.session_state.backtester.run_backtest(bets_data)
+                        st.session_state.backtest_results = results
             else:
                 st.warning("No hay apuestas en el historial. Usa datos simulados.")
                 use_tracker = False
@@ -60,20 +61,21 @@ with tab1:
             avg_odds = st.slider("Odds promedio", 1.5, 5.0, 2.2, 0.1)
             
             if st.button("🎲 Generar y Backtestear"):
-                # Generar datos simulados
-                simulated = []
-                for i in range(num_bets):
-                    result = 'win' if np.random.random() < (win_rate/100) else 'loss'
-                    simulated.append({
-                        'date': (pd.Timestamp.now() - pd.Timedelta(days=num_bets-i)).strftime('%Y-%m-%d'),
-                        'match': f'Partido Simulado {i+1}',
-                        'bet': 'Apuesta de prueba',
-                        'odds': avg_odds + np.random.normal(0, 0.1),
-                        'stake': 50,
-                        'result': result
-                    })
-                results = st.session_state.backtester.run_backtest(simulated)
-                st.session_state.backtest_results = results
+                with st.spinner("Generando datos simulados..."):
+                    np.random.seed(42)
+                    simulated = []
+                    for i in range(num_bets):
+                        result = 'win' if np.random.random() < (win_rate/100) else 'loss'
+                        simulated.append({
+                            'date': (pd.Timestamp.now() - pd.Timedelta(days=num_bets-i)).strftime('%Y-%m-%d'),
+                            'match': f'Partido Simulado {i+1}',
+                            'bet': 'Apuesta de prueba',
+                            'odds': avg_odds + np.random.normal(0, 0.1),
+                            'stake': 50,
+                            'result': result
+                        })
+                    results = st.session_state.backtester.run_backtest(simulated)
+                    st.session_state.backtest_results = results
     
     with col2:
         if 'backtest_results' in st.session_state:
@@ -82,7 +84,6 @@ with tab1:
             
             st.subheader("📊 Resultados del Backtesting")
             
-            # Métricas principales
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1:
                 st.metric("ROI %", f"{metrics.get('roi', 0):.2f}%")
@@ -117,15 +118,10 @@ with tab1:
             )
             st.plotly_chart(fig, use_container_width=True)
             
-            # Tabla de resultados
             st.dataframe(df_results[['date', 'match', 'bet', 'odds', 'result', 'profit', 'bankroll']].tail(10))
 
 with tab2:
     st.subheader("🎲 Simulación Monte Carlo")
-    st.markdown("""
-    La simulación Monte Carlo ejecuta miles de escenarios posibles para estimar el riesgo real
-    de tu estrategia [citation:1].
-    """)
     
     col_mc1, col_mc2 = st.columns([1, 1])
     
@@ -136,13 +132,14 @@ with tab2:
         bets_mc = st.slider("Apuestas por simulación", 100, 5000, 1000, 100)
         
         if st.button("🎲 Ejecutar Simulación"):
-            mc_results = st.session_state.backtester.monte_carlo_simulation(
-                win_rate=win_rate_mc/100,
-                avg_odds=odds_mc,
-                simulations=simulations_mc,
-                bets_per_sim=bets_mc
-            )
-            st.session_state.mc_results = mc_results
+            with st.spinner(f"Ejecutando {simulations_mc} simulaciones..."):
+                mc_results = st.session_state.backtester.monte_carlo_simulation(
+                    win_rate=win_rate_mc/100,
+                    avg_odds=odds_mc,
+                    simulations=simulations_mc,
+                    bets_per_sim=bets_mc
+                )
+                st.session_state.mc_results = mc_results
     
     with col_mc2:
         if 'mc_results' in st.session_state:
@@ -157,20 +154,11 @@ with tab2:
                 st.metric("Desviación Estándar", f"${mc['std_final']:.2f}")
                 st.metric("Percentil 95%", f"${mc['percentile_95']:.2f}")
                 st.metric("Probabilidad Ruina", f"{mc['prob_ruin']:.2f}%")
-            
-            # Histograma
-            # (simplificado - en producción generarías datos reales)
-            st.info("En producción se mostraría un histograma de las simulaciones")
 
 with tab3:
     st.subheader("⚖️ Comparación de Estrategias")
-    st.markdown("""
-    Compara diferentes estrategias para identificar la más rentable.
-    Basado en el enfoque de Teoría Moderna de Portafolios [citation:6].
-    """)
     
     if st.button("Generar Comparación de Ejemplo"):
-        # Ejemplo de comparación
         strategies = {
             'Solo Overs': {'roi': 8.5, 'win_rate': 58.2, 'profit': 425, 'sharpe': 1.2, 'drawdown': 15.3},
             'Solo Favoritos': {'roi': 5.2, 'win_rate': 72.1, 'profit': 260, 'sharpe': 0.9, 'drawdown': 8.7},
@@ -186,7 +174,6 @@ with tab3:
         
         st.dataframe(df_comp, use_container_width=True)
         
-        # Gráfico de comparación
         fig = go.Figure()
         fig.add_trace(go.Bar(
             x=df_comp['Estrategia'],
