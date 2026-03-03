@@ -4,33 +4,23 @@ import streamlit as st
 from groq import Groq
 import json
 import re
+import time
 
 class GroqVisionParser:
     def __init__(self):
         """Inicializa el cliente de Groq con fallback silencioso"""
         self.api_key = st.secrets.get("GROQ_API_KEY", "")
         self.client = None
+        self.model = None
         self.is_available = False
+        self.available_models = []
         
         # Solo intentar si hay API key
         if self.api_key:
-            try:
-                self.client = Groq(api_key=self.api_key)
-                # Verificar si hay modelos sin mostrar mensajes
-                models = self.client.models.list()
-                # Buscar modelos de visión
-                vision_models = [m.id for m in models.data if 'vision' in m.id.lower()]
-                self.is_available = len(vision_models) > 0
-            except:
-                self.is_available = False
+            self._initialize_with_retry()
     
-    def extract_matches_with_vision(self, image_bytes):
-        """Si no está disponible, retorna None sin mensajes"""
-        if not self.is_available:
-            return None
-        # ... resto del código (si hay modelos disponibles)# modules/groq_vision.py   
-    def _initialize_with_retry(self, max_retries=3):
-        """Intenta inicializar Groq con reintentos y modelos alternativos"""
+    def _initialize_with_retry(self, max_retries=2):
+        """Intenta inicializar Groq con reintentos (silencioso)"""
         for attempt in range(max_retries):
             try:
                 self.client = Groq(api_key=self.api_key)
@@ -39,19 +29,20 @@ class GroqVisionParser:
                 if self.available_models:
                     self.model = self.available_models[0]
                     self.is_available = True
-                    st.success(f"✅ Groq Vision activo con modelo: {self.model}")
+                    # Solo mostrar éxito si realmente hay modelo (sin warnings)
                     return
                 else:
-                    st.warning(f"⚠️ Intento {attempt + 1}: No se encontró modelo de visión")
-            except Exception as e:
-                st.warning(f"⚠️ Intento {attempt + 1} falló: {e}")
-            time.sleep(1)
+                    # Silencioso - no mostrar advertencias
+                    pass
+            except:
+                # Silencioso - no mostrar errores
+                pass
+            time.sleep(0.5)
         
-        st.warning("⚠️ Groq Vision no disponible - Usando solo Google Vision")
         self.is_available = False
     
     def _fetch_available_models(self):
-        """Obtiene modelos de visión disponibles"""
+        """Obtiene modelos de visión disponibles (silencioso)"""
         try:
             models = self.client.models.list()
             
@@ -63,14 +54,13 @@ class GroqVisionParser:
                 if any(keyword in m.id.lower() for keyword in vision_keywords)
             ]
             
-            # Ordenar por preferencia (modelos más nuevos primero)
+            # Ordenar por preferencia
             preferred = ['llama-3.2-90b-vision-preview', 'llama-3.2-11b-vision-preview']
             self.available_models.sort(key=lambda x: (
                 -preferred.index(x) if x in preferred else 0
             ))
             
-        except Exception as e:
-            st.error(f"Error consultando modelos: {e}")
+        except:
             self.available_models = []
     
     def encode_image(self, image_bytes):
@@ -78,48 +68,58 @@ class GroqVisionParser:
         return base64.b64encode(image_bytes).decode('utf-8')
     
     def extract_matches_with_vision(self, image_bytes):
-        """Usa Groq Vision con múltiples estrategias de prompt"""
-        if not self.is_available:
+        """
+        Usa Groq Vision con múltiples estrategias de prompt
+        Retorna None silenciosamente si no está disponible
+        """
+        if not self.is_available or not self.model:
             return None
         
         prompts = [
-            # Prompt para formato de 10 líneas (tu imagen)
+            # Prompt para formato de 9-10 líneas
             """
-            Esta imagen contiene partidos de fútbol en este formato exacto:
+            Esta imagen contiene partidos de fútbol. Puede estar en este formato:
             
             [+Número]
             [Equipo Local]
             [Equipo Visitante]
             [Fecha]
             1
-            X
+            [X] (opcional)
             2
             [Cuota Local]
             [Cuota Empate]
             [Cuota Visitante]
             
-            Extrae TODOS los partidos. Devuelve JSON con home, away, all_odds [cuota_local, cuota_empate, cuota_visitante]
+            Extrae TODOS los partidos. Devuelve JSON con home, away, all_odds.
             """,
             
             # Prompt para formato de 6 líneas
             """
             Extrae los partidos de fútbol de esta imagen. Cada partido tiene:
-            1. Nombre del equipo local
-            2. Cuota local (+/- números)
+            1. Equipo local
+            2. Cuota local
             3. Palabra "Empate"
             4. Cuota empate
-            5. Nombre del equipo visitante
+            5. Equipo visitante
             6. Cuota visitante
             
-            Devuelve JSON con objetos {home, away, all_odds: [cuota_local, cuota_empate, cuota_visitante]}
+            Devuelve JSON con objetos {home, away, all_odds}.
             """,
             
             # Prompt para formato de 1 línea
             """
-            La imagen contiene líneas con este formato:
+            La imagen contiene líneas con formato:
             [Local] [Cuota L] [Empate] [Cuota E] [Visitante] [Cuota V]
             
             Extrae todos los partidos en formato JSON.
+            """,
+            
+            # Prompt para lista vertical
+            """
+            La imagen contiene una lista vertical de equipos con sus cuotas.
+            Agrupa los equipos en partidos (local y visitante) con sus cuotas.
+            Devuelve JSON con objetos {home, away, all_odds}.
             """
         ]
         
@@ -156,12 +156,11 @@ class GroqVisionParser:
                     content = json_match.group()
                 
                 matches = json.loads(content)
-                if matches:
+                if matches and len(matches) > 0:
                     return matches
                     
-            except Exception as e:
-                if i == len(prompts) - 1:
-                    st.warning(f"Groq Vision falló con todos los prompts: {e}")
+            except:
+                # Silencioso - intentar con el siguiente prompt
                 continue
         
         return None
