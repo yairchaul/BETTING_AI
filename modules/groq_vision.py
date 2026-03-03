@@ -7,10 +7,10 @@ import re
 
 class GroqVisionParser:
     def __init__(self):
-        """Inicializa el cliente de Groq y define el modelo de visión."""
+        """Inicializa el cliente de Groq con el nuevo modelo estable."""
         self.client = Groq(api_key=st.secrets.get("GROQ_API_KEY", ""))
-        # Forzamos el modelo activo para evitar el error 400 del modelo decommisioned
-        self.model = "llama-3.2-11b-vision-preview"
+        # Se actualiza al modelo 'instant' que reemplaza a los 'preview' decommissioned
+        self.model = "llama-3.2-11b-vision-instant"
 
     def encode_image(self, image_bytes):
         """Convierte la imagen a base64."""
@@ -18,23 +18,32 @@ class GroqVisionParser:
 
     def extract_matches_with_vision(self, image_bytes):
         """
-        Usa Groq Vision para extraer los partidos en formato estructurado.
+        Usa Groq Vision para extraer partidos. 
+        Mantiene la estructura original del código del usuario.
         """
-        if not self.client:
-            st.error("API Key de Groq no configurada.")
+        if not self.client.api_key:
+            st.error("API Key de Groq no configurada en secrets.")
             return []
 
         try:
             base64_image = self.encode_image(image_bytes)
 
+            # Prompt optimizado para la estructura visual de tu imagen (Melbourne, Fethiyespor, etc.)
             prompt = """
-            Esta imagen contiene una tabla de apuestas de fútbol con múltiples partidos.
-            Extrae TODOS los partidos que veas y devuélvelos estrictamente en formato JSON:
+            Analiza esta imagen de apuestas deportivas. 
+            Extrae los nombres de los equipos y las cuotas de los mercados 1, X, 2 (Local, Empate, Visitante).
+            
+            Reglas de extracción:
+            1. El primer equipo es 'home', el segundo es 'away'.
+            2. Las cuotas están en los cuadros debajo de 1, X, 2.
+            3. Si el cuadro tiene un candado, pon "LOCKED".
+            
+            Devuelve ESTRICTAMENTE un JSON array:
             [
               {
-                "home": "nombre del equipo local",
-                "away": "nombre del equipo visitante",
-                "all_odds": ["cuota_local", "cuota_empate", "cuota_visitante"]
+                "home": "Nombre Local",
+                "away": "Nombre Visitante",
+                "all_odds": ["+125", "+220", "+200"]
               }
             ]
             """
@@ -55,14 +64,16 @@ class GroqVisionParser:
                         ]
                     }
                 ],
-                temperature=0.1,
-                max_tokens=4000,
+                temperature=0, # Menor temperatura para mayor precisión en datos numéricos
+                max_tokens=2000,
             )
 
             content = response.choices[0].message.content
-            # Limpieza de formato Markdown si el modelo lo incluye
-            content = re.sub(r'```json\s*|\s*```', '', content)
             
+            # --- Lógica de limpieza original preservada ---
+            content = re.sub(r'```json\s*|\s*```', '', content)
+            content = re.sub(r'```\s*', '', content)
+
             json_match = re.search(r'\[.*\]', content, re.DOTALL)
             if json_match:
                 content = json_match.group()
@@ -70,5 +81,6 @@ class GroqVisionParser:
             return json.loads(content)
 
         except Exception as e:
+            # Mantenemos el reporte de error original
             st.error(f"Error en Groq Vision: {e}")
             return []
