@@ -64,7 +64,6 @@ def generar_parlay_pro(matches_analizados, max_selecciones=3):
             categorias_usadas.add(seleccionado.get('category', ''))
             partidos_usados.add(match_name)
             
-            # Intentar obtener cuota real si está disponible en el análisis
             cuota_final = seleccionado.get('real_odd') or (1 / seleccionado['prob'] * 0.95)
             
             selecciones.append({
@@ -137,21 +136,20 @@ def main():
             st.image(uploaded_file, use_container_width=True)
     
     if uploaded_file:
-        with st.spinner("🔍 Procesando imagen..."):
+        with st.spinner("🔍 Procesando imagen con IA Híbrida..."):
             img_bytes = uploaded_file.getvalue()
             matches = []
-            raw_text = ""
             
             try:
-                from google.cloud import vision
-                image = vision.Image(content=img_bytes)
-                response = components['vision'].client.text_detection(image=image)
-                if response.text_annotations:
-                    raw_text = response.text_annotations[0].description
-                    matches = components['parser'].parse(raw_text)
-                    st.info(f"📝 Partidos detectados: {len(matches)}")
+                # INTEGRACIÓN HÍBRIDA: Google Vision + Groq Vision
+                matches = components['parser'].parse_image(img_bytes)
+                
+                if matches:
+                    st.success(f"✅ Se detectaron {len(matches)} partidos.")
+                else:
+                    st.warning("⚠️ No se detectaron partidos claros. Intenta otra captura.")
             except Exception as e:
-                st.error(f"Error en OCR: {e}")
+                st.error(f"Error en el análisis híbrido: {e}")
         
         if matches:
             with col2:
@@ -170,10 +168,6 @@ def main():
                     })
                 
                 st.dataframe(pd.DataFrame(df_view), use_container_width=True, hide_index=True)
-            
-            if debug_mode and raw_text:
-                with st.expander("🔬 Ver texto raw detectado"):
-                    st.code(raw_text[:2000])
             
             st.divider()
             st.subheader("3. Análisis Profesional")
@@ -209,7 +203,6 @@ def main():
                                         st.metric("Visitante", f"{ollama_analysis.get('away_win_prob', 0):.1%}")
                                     st.caption(f"💡 {ollama_analysis.get('explanation', '')}")
                         
-                        # Detector de valor (usa odds reales)
                         value_result = components['value_detector'].get_best_value_bet(analysis, match)
                         
                         if value_result:
@@ -217,7 +210,6 @@ def main():
                                 if value_result.get('type') == 'value_bet' and value_result.get('ev', 0) > value_threshold:
                                     st.markdown(f"### 🔥 VALUE BET DETECTADO")
                                     st.markdown(f"**{value_result['market']}**")
-                                    
                                     col_val1, col_val2 = st.columns(2)
                                     with col_val1:
                                         st.metric("Tu probabilidad", f"{value_result.get('market_prob', 0):.1%}")
@@ -225,15 +217,12 @@ def main():
                                     with col_val2:
                                         st.metric("Odds mercado", f"{value_result['decimal_odd']:.2f}")
                                         st.metric("📈 EV", f"+{value_result['ev']:.1%}")
-                                    
                                     st.success(value_result['recommendation'])
                                 else:
                                     best = analysis.get('best_bet', {})
                                     st.markdown(f"### ✨ RECOMENDACIÓN")
                                     st.markdown(f"**{best.get('market', 'Over 1.5')}** - {best.get('probability', 0.7):.1%}")
-                        
-                        # PREPARAR PICKS PARA OPTIMIZADOR USANDO ODDS REALES
-                        # Mapeamos las cuotas del OCR a los mercados de análisis
+
                         market_odds_map = {
                             'Gana Local': odds_raw[0],
                             'Empate': odds_raw[1],
@@ -246,11 +235,8 @@ def main():
                         ]
                         
                         for m in markets_filtered:
-                            # 1. Obtener Cuota Real
                             real_odd_str = market_odds_map.get(m['name'], 'N/A')
                             v_data = components['value_detector'].detect_value(m['prob'], real_odd_str)
-                            
-                            # 2. Si hay cuota real en la imagen, usarla. Si no, usar estimación como fallback.
                             final_odd = v_data['decimal_odd'] if v_data['decimal_odd'] else (1 / m['prob'] * 0.95)
                             final_ev = v_data['ev'] if v_data['decimal_odd'] else 0
                             
@@ -287,33 +273,21 @@ def main():
                 
                 if all_picks_for_optimizer and len(all_picks_for_optimizer) >= 2:
                     st.divider()
-                    st.subheader("🎯 Parlay Optimizado (Basado en EV Real)")
-                    
-                    optimal = components['optimizer'].find_optimal_parlays(
-                        all_picks_for_optimizer, 
-                        max_size=max_parlay,
-                        target_ev=value_threshold
-                    )
+                    st.subheader("🎯 Parlay Optimizado (EV Real)")
+                    optimal = components['optimizer'].find_optimal_parlays(all_picks_for_optimizer, max_size=max_parlay, target_ev=value_threshold)
                     
                     if optimal:
                         prob_opt = np.prod([p['prob'] for p in optimal['picks']])
                         odds_opt = np.prod([p['odd'] for p in optimal['picks']])
                         ev_opt = (prob_opt * odds_opt) - 1
-                        
                         with st.container(border=True):
                             col_o1, col_o2, col_o3 = st.columns(3)
-                            with col_o1:
-                                st.metric("Cuota", f"{odds_opt:.2f}")
-                            with col_o2:
-                                st.metric("Probabilidad", f"{prob_opt:.1%}")
-                            with col_o3:
-                                st.metric("EV", f"{ev_opt:.2%}")
-                            
+                            with col_o1: st.metric("Cuota", f"{odds_opt:.2f}")
+                            with col_o2: st.metric("Probabilidad", f"{prob_opt:.1%}")
+                            with col_o3: st.metric("EV", f"{ev_opt:.2%}")
                             for p in optimal['picks']:
                                 ev_icon = '🔥' if p.get('ev', 0) > 0.05 else '✅'
                                 st.markdown(f"{ev_icon} **{p['match']}**: {p['selection']} (Odd: {p['odd']:.2f}) [EV: {p.get('ev', 0):.1%}]")
-                    else:
-                        st.info("No se encontraron combinaciones con EV positivo usando cuotas reales.")
         else:
             st.error("❌ No se detectaron partidos")
     else:
