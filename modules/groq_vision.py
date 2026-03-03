@@ -13,6 +13,7 @@ class GroqVisionParser:
         self.client = None
         self.model = None
         self.is_available = False
+        self.available_models = []
         
         if self.api_key:
             self._initialize_with_retry()
@@ -22,8 +23,10 @@ class GroqVisionParser:
         for attempt in range(max_retries):
             try:
                 self.client = Groq(api_key=self.api_key)
-                self.model = self._get_best_available_model()
-                if self.model:
+                self._fetch_available_models()
+                
+                if self.available_models:
+                    self.model = self.available_models[0]
                     self.is_available = True
                     st.success(f"✅ Groq Vision activo con modelo: {self.model}")
                     return
@@ -36,50 +39,57 @@ class GroqVisionParser:
         st.warning("⚠️ Groq Vision no disponible - Usando solo Google Vision")
         self.is_available = False
     
-    def _get_best_available_model(self):
-        """Obtiene el mejor modelo de visión disponible con múltiples estrategias"""
+    def _fetch_available_models(self):
+        """Obtiene modelos de visión disponibles"""
         try:
-            # Estrategia 1: Listar modelos directamente
             models = self.client.models.list()
             
-            # Modelos de visión conocidos (ordenados por preferencia)
-            preferred_vision_models = [
-                "llama-3.2-11b-vision-preview",
-                "llama-3.2-90b-vision-preview",
-                "llava-v1.5-7b-4096-preview",
-                "llava-v1.5-13b-4096-preview"
+            # Palabras clave para identificar modelos de visión
+            vision_keywords = ['vision', 'llama-3.2', 'llava']
+            
+            self.available_models = [
+                m.id for m in models.data 
+                if any(keyword in m.id.lower() for keyword in vision_keywords)
             ]
             
-            # Buscar modelos de visión disponibles
-            available_models = [m.id for m in models.data]
-            vision_models = [m for m in preferred_vision_models if m in available_models]
-            
-            if vision_models:
-                return vision_models[0]
-            
-            # Estrategia 2: Buscar cualquier modelo con "vision" en el nombre
-            vision_models = [m for m in available_models if 'vision' in m.lower()]
-            if vision_models:
-                return vision_models[0]
-            
-            return None
+            # Ordenar por preferencia (modelos más nuevos primero)
+            preferred = ['llama-3.2-90b-vision-preview', 'llama-3.2-11b-vision-preview']
+            self.available_models.sort(key=lambda x: (
+                -preferred.index(x) if x in preferred else 0
+            ))
             
         except Exception as e:
             st.error(f"Error consultando modelos: {e}")
-            return None
+            self.available_models = []
     
     def encode_image(self, image_bytes):
         """Convierte la imagen a base64"""
         return base64.b64encode(image_bytes).decode('utf-8')
     
     def extract_matches_with_vision(self, image_bytes):
-        """
-        Usa Groq Vision con múltiples estrategias de prompt
-        """
+        """Usa Groq Vision con múltiples estrategias de prompt"""
         if not self.is_available:
             return None
         
         prompts = [
+            # Prompt para formato de 10 líneas (tu imagen)
+            """
+            Esta imagen contiene partidos de fútbol en este formato exacto:
+            
+            [+Número]
+            [Equipo Local]
+            [Equipo Visitante]
+            [Fecha]
+            1
+            X
+            2
+            [Cuota Local]
+            [Cuota Empate]
+            [Cuota Visitante]
+            
+            Extrae TODOS los partidos. Devuelve JSON con home, away, all_odds [cuota_local, cuota_empate, cuota_visitante]
+            """,
+            
             # Prompt para formato de 6 líneas
             """
             Extrae los partidos de fútbol de esta imagen. Cada partido tiene:
@@ -90,18 +100,15 @@ class GroqVisionParser:
             5. Nombre del equipo visitante
             6. Cuota visitante
             
-            Devuelve SOLO un array JSON con objetos {home, away, all_odds: [cuota_local, cuota_empate, cuota_visitante]}
+            Devuelve JSON con objetos {home, away, all_odds: [cuota_local, cuota_empate, cuota_visitante]}
             """,
             
-            # Prompt para formato de bloques
+            # Prompt para formato de 1 línea
             """
-            Esta imagen contiene partidos de fútbol. Cada partido puede tener:
-            - Nombre de liga
-            - Equipo local y visitante
-            - Fecha/hora
-            - Cuotas etiquetadas como 1, 2, 3 (local, empate, visitante)
+            La imagen contiene líneas con este formato:
+            [Local] [Cuota L] [Empate] [Cuota E] [Visitante] [Cuota V]
             
-            Extrae TODOS los partidos. Devuelve JSON con home, away, all_odds [cuota_local, cuota_empate, cuota_visitante]
+            Extrae todos los partidos en formato JSON.
             """
         ]
         
@@ -147,3 +154,4 @@ class GroqVisionParser:
                 continue
         
         return None
+        
