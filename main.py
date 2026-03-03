@@ -15,7 +15,7 @@ st.set_page_config(page_title="Analizador Profesional de Apuestas", layout="wide
 
 @st.cache_resource
 def init_components():
-    """Inicializa componentes compatibles con la nube"""
+    """Inicializa componentes"""
     return {
         'vision': ImageParser(),
         'groq_vision': GroqVisionParser(),
@@ -44,7 +44,6 @@ def generar_parlay_pro(matches_analizados, max_selecciones=3):
                 'prob': best.get('probability', 0.7),
                 'odd': 1 / best.get('probability', 0.7) * 0.95,
                 'confianza': best.get('confidence', 'MEDIA'),
-                'liga': match.get('liga', 'Desconocida'),
                 'razon': best.get('reason', '')
             })
     
@@ -90,21 +89,18 @@ def main():
         check_live_odds = st.checkbox("📡 Verificar odds en vivo", value=True)
         max_parlay = st.slider("Máximo selecciones por parlay", 2, 5, 3, 1)
         
-        value_threshold = st.slider("Umbral de valor (edge mínimo)", 0.0, 0.2, 0.05, 0.01)
+        value_threshold = st.slider("Umbral de valor", 0.0, 0.2, 0.05, 0.01)
         
         st.divider()
         
+        # Estado de APIs (sin mensajes de Groq)
         col_api1, col_api2 = st.columns(2)
         with col_api1:
             if st.secrets.get("FOOTBALL_API_KEY"):
                 st.success("⚽ API")
-            else:
-                st.warning("⚽ No API")
         with col_api2:
-            if components['groq_vision'].is_available:
-                st.success("🤖 Groq OK")
-            else:
-                st.warning("🤖 Groq No disponible")
+            # No mostrar nada sobre Groq si no está disponible
+            pass
         
         debug_mode = st.checkbox("🔧 Modo debug", value=True)
         components['tracker'].show_tracker_ui()
@@ -122,39 +118,18 @@ def main():
             img_bytes = uploaded_file.getvalue()
             matches = []
             raw_text = ""
-            metodo_usado = "Ninguno"
             
-            if components['groq_vision'].is_available:
-                try:
-                    matches = components['groq_vision'].extract_matches_with_vision(img_bytes)
-                    if matches:
-                        metodo_usado = "Groq Vision AI"
-                        st.success(f"✅ {metodo_usado}: {len(matches)} partidos")
-                except Exception as e:
-                    if debug_mode:
-                        st.warning(f"Groq Vision falló: {e}")
-            
-            if not matches:
-                try:
-                    from google.cloud import vision
-                    image = vision.Image(content=img_bytes)
-                    response = components['vision'].client.text_detection(image=image)
-                    if response.text_annotations:
-                        raw_text = response.text_annotations[0].description
-                        matches = components['parser'].parse(raw_text)
-                        metodo_usado = "Google Vision + Parser Universal"
-                        st.info(f"📝 {metodo_usado}: {len(matches)} partidos")
-                except Exception as e:
-                    st.error(f"Error en OCR: {e}")
-            
-            if not matches and components['vision'].client:
-                try:
-                    matches = components['vision'].process_image(img_bytes)
-                    metodo_usado = "Google Vision + Coordenadas"
-                    st.info(f"📐 {metodo_usado}: {len(matches)} partidos")
-                except Exception as e:
-                    if debug_mode:
-                        st.warning(f"Error en coordenadas: {e}")
+            # SOLO USAR GOOGLE VISION + PARSER UNIVERSAL
+            try:
+                from google.cloud import vision
+                image = vision.Image(content=img_bytes)
+                response = components['vision'].client.text_detection(image=image)
+                if response.text_annotations:
+                    raw_text = response.text_annotations[0].description
+                    matches = components['parser'].parse(raw_text)
+                    st.info(f"📝 Partidos detectados: {len(matches)}")
+            except Exception as e:
+                st.error(f"Error en OCR: {e}")
         
         if matches:
             with col2:
@@ -198,24 +173,7 @@ def main():
                         liga = analysis.get('liga', 'Desconocida')
                         st.info(f"🏆 Liga detectada: **{liga}**")
                         
-                        if check_live_odds:
-                            fixture_id = components['odds'].get_fixture_id(home, away, liga)
-                            if fixture_id:
-                                with st.spinner("📡 Consultando odds en vivo..."):
-                                    live_odds = components['odds'].get_best_odds(fixture_id)
-                                    if live_odds:
-                                        st.success("📊 Odds en vivo:")
-                                        col_odd1, col_odd2, col_odd3 = st.columns(3)
-                                        with col_odd1:
-                                            st.metric("Local", f"{live_odds['home']['value']}", 
-                                                     live_odds['home']['bookmaker'][:15])
-                                        with col_odd2:
-                                            st.metric("Empate", f"{live_odds['draw']['value']}", 
-                                                     live_odds['draw']['bookmaker'][:15])
-                                        with col_odd3:
-                                            st.metric("Visitante", f"{live_odds['away']['value']}", 
-                                                     live_odds['away']['bookmaker'][:15])
-                        
+                        # Detector de valor
                         value_result = components['value_detector'].get_best_value_bet(analysis, match)
                         
                         if value_result:
@@ -229,44 +187,17 @@ def main():
                                     col_val1, col_val2 = st.columns(2)
                                     with col_val1:
                                         st.metric("Tu probabilidad", f"{value_result.get('implied_probability', 0):.1%}")
-                                        st.metric("Odds del mercado", f"{value_result['decimal_odd']:.2f}")
+                                        st.metric("Odds", f"{value_result['decimal_odd']:.2f}")
                                     with col_val2:
                                         st.metric("Prob. mercado", f"{implied_prob:.1%}")
-                                        st.metric("📈 EDGE", f"+{value_result['edge']:.1%}", delta_color="normal")
+                                        st.metric("📈 EDGE", f"+{value_result['edge']:.1%}")
                                     
                                     st.success(value_result['recommendation'])
                                 else:
                                     best = analysis.get('best_bet', {})
-                                    conf_color = {'ALTA': '🟢', 'MEDIA': '🟡', 'BAJA': '🔴'}.get(best.get('confidence', 'MEDIA'), '⚪')
-                                    
-                                    st.markdown(f"### {conf_color} RECOMENDACIÓN")
-                                    st.markdown(f"**{best.get('market', 'Over 1.5 goles')}** - {best.get('probability', 0.7):.1%}")
+                                    st.markdown(f"### ✨ RECOMENDACIÓN")
+                                    st.markdown(f"**{best.get('market', 'Over 1.5')}** - {best.get('probability', 0.7):.1%}")
                                     st.markdown(f"📌 *{best.get('reason', 'Análisis contextual')}*")
-                                    
-                                    if value_result.get('edge', 0) > 0:
-                                        st.caption(f"💡 Nota: Hay una pequeña ventaja de {value_result['edge']:.1%} sobre el mercado")
-                        else:
-                            best = analysis.get('best_bet', {})
-                            conf_color = {'ALTA': '🟢', 'MEDIA': '🟡', 'BAJA': '🔴'}.get(best.get('confidence', 'MEDIA'), '⚪')
-                            
-                            with st.container(border=True):
-                                st.markdown(f"### {conf_color} RECOMENDACIÓN")
-                                st.markdown(f"**{best.get('market', 'Over 1.5 goles')}** - {best.get('probability', 0.7):.1%}")
-                                st.markdown(f"📌 *{best.get('reason', 'Análisis contextual')}*")
-                        
-                        markets_filtered = [
-                            m for m in analysis.get('markets', []) 
-                            if m.get('prob', 0) >= prob_minima and m.get('category', '') in categorias
-                        ]
-                        
-                        if markets_filtered:
-                            with st.expander("📊 Todos los mercados analizados"):
-                                df_markets = pd.DataFrame([{
-                                    'Mercado': m['name'],
-                                    'Prob': f"{m['prob']:.1%}",
-                                    'Tipo': m['category']
-                                } for m in markets_filtered[:10]])
-                                st.dataframe(df_markets, use_container_width=True, hide_index=True)
                         
                         matches_analizados.append(analysis)
             
