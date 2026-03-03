@@ -7,6 +7,7 @@ from modules.universal_parser import UniversalParser
 from modules.smart_searcher import SmartSearcher
 from modules.pro_analyzer_ultimate import ProAnalyzerUltimate
 from modules.odds_integrator import OddsIntegrator
+from modules.value_detector import ValueDetector
 from modules.parlay_builder import show_parlay_options
 from modules.betting_tracker import BettingTracker
 
@@ -22,7 +23,8 @@ def init_components():
         'searcher': SmartSearcher(),
         'analyzer': ProAnalyzerUltimate(),
         'odds': OddsIntegrator(),
-        'tracker': BettingTracker()
+        'tracker': BettingTracker(),
+        'value_detector': ValueDetector()
     }
 
 components = init_components()
@@ -85,6 +87,10 @@ def main():
         check_live_odds = st.checkbox("📡 Verificar odds en vivo", value=True)
         max_parlay = st.slider("Máximo selecciones por parlay", 2, 5, 3, 1)
         
+        # Umbral de valor para value betting
+        value_threshold = st.slider("Umbral de valor (edge mínimo)", 0.0, 0.2, 0.05, 0.01, 
+                                   help="Mínimo porcentaje de ventaja para considerar VALUE BET")
+        
         st.divider()
         
         col_api1, col_api2, col_api3 = st.columns(3)
@@ -122,9 +128,7 @@ def main():
             raw_text = ""
             metodo_usado = "Ninguno"
             
-            # ============================================================================
             # INTENTO 1: Groq Vision (si está disponible)
-            # ============================================================================
             if components['groq_vision'].is_available:
                 try:
                     matches = components['groq_vision'].extract_matches_with_vision(img_bytes)
@@ -135,9 +139,7 @@ def main():
                     if debug_mode:
                         st.warning(f"Groq Vision falló: {e}")
             
-            # ============================================================================
             # INTENTO 2: Google Vision + Parser Universal
-            # ============================================================================
             if not matches:
                 try:
                     from google.cloud import vision
@@ -151,9 +153,7 @@ def main():
                 except Exception as e:
                     st.error(f"Error en OCR: {e}")
             
-            # ============================================================================
             # INTENTO 3: Google Vision con coordenadas (si el parser falló)
-            # ============================================================================
             if not matches and components['vision'].client:
                 try:
                     matches = components['vision'].process_image(img_bytes)
@@ -187,7 +187,7 @@ def main():
                     st.code(raw_text[:2000])
             
             st.divider()
-            st.subheader("3. Análisis Profesional")
+            st.subheader("3. Análisis Profesional con Detector de Valor")
             
             matches_analizados = []
             
@@ -223,14 +223,69 @@ def main():
                                             st.metric("Visitante", f"{live_odds['away']['value']}", 
                                                      live_odds['away']['bookmaker'][:15])
                         
-                        best = analysis.get('best_bet', {})
-                        if best:
+                        # ============================================================================
+                        # NUEVO: DETECTOR DE VALOR
+                        # ============================================================================
+                        value_result = components['value_detector'].get_best_value_bet(analysis, match)
+                        
+                        # Mostrar recomendación con valor
+                        if value_result:
+                            with st.container(border=True):
+                                if value_result.get('type') == 'value_bet':
+                                    st.markdown(f"### 🔥 VALUE BET DETECTADO")
+                                    st.markdown(f"**{value_result['market']}**")
+                                    
+                                    # Calcular probabilidad implícita del mercado
+                                    implied_prob = 1 / value_result['decimal_odd'] if value_result.get('decimal_odd') else 0
+                                    
+                                    col_val1, col_val2 = st.columns(2)
+                                    with col_val1:
+                                        st.metric("Tu probabilidad", f"{value_result.get('implied_probability', 0):.1%}")
+                                        st.metric("Odds del mercado", f"{value_result['decimal_odd']:.2f}")
+                                    with col_val2:
+                                        st.metric("Prob. mercado", f"{implied_prob:.1%}")
+                                        st.metric("📈 EDGE", f"+{value_result['edge']:.1%}", delta_color="normal")
+                                    
+                                    st.success(value_result['recommendation'])
+                                else:
+                                    # Si no hay value bet, mostrar recomendación normal
+                                    best = analysis.get('best_bet', {})
+                                    conf_color = {'ALTA': '🟢', 'MEDIA': '🟡', 'BAJA': '🔴'}.get(best.get('confidence', 'MEDIA'), '⚪')
+                                    
+                                    st.markdown(f"### {conf_color} RECOMENDACIÓN")
+                                    st.markdown(f"**{best.get('market', 'Over 1.5 goles')}** - {best.get('probability', 0.7):.1%}")
+                                    st.markdown(f"📌 *{best.get('reason', 'Análisis contextual')}*")
+                                    
+                                    if value_result.get('edge', 0) > 0:
+                                        st.caption(f"💡 Nota: Hay una pequeña ventaja de {value_result['edge']:.1%} sobre el mercado")
+                        else:
+                            # Fallback si no hay value_result
+                            best = analysis.get('best_bet', {})
                             conf_color = {'ALTA': '🟢', 'MEDIA': '🟡', 'BAJA': '🔴'}.get(best.get('confidence', 'MEDIA'), '⚪')
                             
                             with st.container(border=True):
                                 st.markdown(f"### {conf_color} RECOMENDACIÓN")
-                                st.markdown(f"**{best.get('market', 'Over 1.5')}** - {best.get('probability', 0.7):.1%}")
+                                st.markdown(f"**{best.get('market', 'Over 1.5 goles')}** - {best.get('probability', 0.7):.1%}")
                                 st.markdown(f"📌 *{best.get('reason', 'Análisis contextual')}*")
+                        
+                        if debug_mode and analysis.get('reglas_aplicadas'):
+                            with st.expander("📋 Reglas aplicadas"):
+                                for r in analysis['reglas_aplicadas']:
+                                    st.caption(f"• {r}")
+                        
+                        markets_filtered = [
+                            m for m in analysis.get('markets', []) 
+                            if m.get('prob', 0) >= prob_minima and m.get('category', '') in categorias
+                        ]
+                        
+                        if markets_filtered:
+                            with st.expander("📊 Todos los mercados analizados"):
+                                df_markets = pd.DataFrame([{
+                                    'Mercado': m['name'],
+                                    'Prob': f"{m['prob']:.1%}",
+                                    'Tipo': m['category']
+                                } for m in markets_filtered[:10]])
+                                st.dataframe(df_markets, use_container_width=True, hide_index=True)
                         
                         matches_analizados.append(analysis)
             
