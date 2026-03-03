@@ -4,20 +4,31 @@ import streamlit as st
 from groq import Groq
 import json
 import re
-import time
 
 class GroqVisionParser:
     def __init__(self):
-        """Inicializa el cliente de Groq con fallback automático"""
+        """Inicializa el cliente de Groq con fallback silencioso"""
         self.api_key = st.secrets.get("GROQ_API_KEY", "")
         self.client = None
-        self.model = None
         self.is_available = False
-        self.available_models = []
         
+        # Solo intentar si hay API key
         if self.api_key:
-            self._initialize_with_retry()
+            try:
+                self.client = Groq(api_key=self.api_key)
+                # Verificar si hay modelos sin mostrar mensajes
+                models = self.client.models.list()
+                # Buscar modelos de visión
+                vision_models = [m.id for m in models.data if 'vision' in m.id.lower()]
+                self.is_available = len(vision_models) > 0
+            except:
+                self.is_available = False
     
+    def extract_matches_with_vision(self, image_bytes):
+        """Si no está disponible, retorna None sin mensajes"""
+        if not self.is_available:
+            return None
+        # ... resto del código (si hay modelos disponibles)# modules/groq_vision.py   
     def _initialize_with_retry(self, max_retries=3):
         """Intenta inicializar Groq con reintentos y modelos alternativos"""
         for attempt in range(max_retries):
