@@ -10,3 +10,4 @@ pandas
 streamlit
 pandas
 python-dotenv
+degen
