@@ -4,7 +4,7 @@ import streamlit as st
 class ValueDetector:
     """
     Detector de apuestas de valor (value betting)
-    Compara nuestra probabilidad calculada con las odds reales del mercado
+    Usa Valor Esperado (EV) como métrica principal
     """
     
     def __init__(self):
@@ -19,10 +19,8 @@ class ValueDetector:
             odd_str = str(american_odd).strip()
             
             if odd_str.startswith('+'):
-                # +200 -> 3.00
                 return (int(odd_str[1:]) / 100) + 1
             elif odd_str.startswith('-'):
-                # -150 -> 1.67
                 return (100 / abs(int(odd_str))) + 1
             else:
                 return float(odd_str)
@@ -47,13 +45,15 @@ class ValueDetector:
     
     def detect_value(self, our_probability, market_odds, threshold=0.05):
         """
-        Detecta si hay valor (edge) positivo
-        threshold = 0.05 significa 5% de ventaja
+        Detecta si hay valor usando Valor Esperado (EV)
+        EV = (Probabilidad * Cuota) - 1
+        threshold = 0.05 significa 5% de EV positivo
         """
         if not market_odds or market_odds == 'N/A':
             return {
                 'has_value': False,
-                'edge': 0,
+                'ev': 0,
+                'fair_odd': None,
                 'implied_probability': None,
                 'decimal_odd': None,
                 'recommendation': 'No hay odds de mercado para comparar'
@@ -63,31 +63,36 @@ class ValueDetector:
         if not decimal_odd:
             return {
                 'has_value': False,
-                'edge': 0,
+                'ev': 0,
+                'fair_odd': None,
                 'implied_probability': None,
                 'decimal_odd': None,
                 'recommendation': 'No se pudo convertir la odd'
             }
         
-        # Probabilidad implícita del mercado (1 / odd)
+        # Probabilidad implícita del mercado
         implied_prob = self.calculate_implied_probability(decimal_odd)
         
-        # Calcular edge (diferencia entre nuestra probabilidad y la del mercado)
-        edge = our_probability - implied_prob
+        # FAIR ODD (Odd justa basada en nuestra probabilidad)
+        fair_odd = 1 / our_probability if our_probability > 0 else 0
         
-        # Solo considerar VALUE si el edge es positivo y significativo
-        has_value = edge > threshold
+        # VALOR ESPERADO (EV) - Métrica correcta
+        ev = (our_probability * decimal_odd) - 1
+        
+        # Hay valor si EV > umbral
+        has_value = ev > threshold
         
         if has_value:
-            recommendation = f"🔥 VALUE BET! Ventaja de {edge:.1%}"
-        elif edge > 0:
-            recommendation = f"👍 Pequeña ventaja: {edge:.1%} (menor al umbral de {threshold:.1%})"
+            recommendation = f"🔥 VALUE! EV: {ev:.1%}"
+        elif ev > 0:
+            recommendation = f"👍 Pequeño EV: {ev:.1%} (menor al umbral de {threshold:.1%})"
         else:
-            recommendation = f"👎 Desventaja: {edge:.1%}"
+            recommendation = f"👎 EV negativo: {ev:.1%}"
         
         return {
             'has_value': has_value,
-            'edge': edge,
+            'ev': ev,
+            'fair_odd': fair_odd,
             'implied_probability': implied_prob,
             'decimal_odd': decimal_odd,
             'american_odd': market_odds,
@@ -95,23 +100,22 @@ class ValueDetector:
         }
     
     def analyze_match_markets(self, match_analysis, match_odds):
-        """
-        Analiza todos los mercados de un partido en busca de valor
-        """
+        """Analiza todos los mercados de un partido en busca de valor"""
         results = []
         
-        # Mapeo de mercados a las odds correspondientes
-        market_mapping = [
-            ('Gana Local', 'all_odds', 0),
-            ('Empate', 'all_odds', 1),
-            ('Gana Visitante', 'all_odds', 2),
+        # Mapeo flexible de mercados (con búsqueda por substring)
+        market_keywords = [
+            ('Gana Local', ['local', 'home']),
+            ('Empate', ['empate', 'draw']),
+            ('Gana Visitante', ['visitante', 'away']),
         ]
         
-        for market_name, odds_key, odds_index in market_mapping:
+        for market_name, keywords in market_keywords:
             # Buscar la probabilidad de este mercado en el análisis
             market_prob = None
             for m in match_analysis.get('markets', []):
-                if m['name'] == market_name:
+                # Búsqueda flexible por nombre
+                if any(keyword in m['name'].lower() for keyword in keywords):
                     market_prob = m['prob']
                     break
             
@@ -119,38 +123,45 @@ class ValueDetector:
                 continue
             
             # Obtener la odd real de la imagen
-            if odds_key in match_odds and len(match_odds[odds_key]) > odds_index:
-                market_odd = match_odds[odds_key][odds_index]
+            if 'all_odds' in match_odds and len(match_odds['all_odds']) > 0:
+                # Intentar encontrar la odd correspondiente
+                if 'local' in market_name.lower() and len(match_odds['all_odds']) > 0:
+                    market_odd = match_odds['all_odds'][0]
+                elif 'empate' in market_name.lower() and len(match_odds['all_odds']) > 1:
+                    market_odd = match_odds['all_odds'][1]
+                elif 'visitante' in market_name.lower() and len(match_odds['all_odds']) > 2:
+                    market_odd = match_odds['all_odds'][2]
+                else:
+                    market_odd = 'N/A'
             else:
                 market_odd = 'N/A'
             
             # Detectar valor
             value_result = self.detect_value(market_prob, market_odd)
             value_result['market'] = market_name
+            value_result['market_prob'] = market_prob
             
             results.append(value_result)
         
         return results
     
     def get_best_value_bet(self, match_analysis, match_odds):
-        """
-        Obtiene la mejor apuesta de valor para un partido
-        """
+        """Obtiene la mejor apuesta de valor para un partido"""
         results = self.analyze_match_markets(match_analysis, match_odds)
         
-        # Filtrar solo las que tienen valor positivo
-        value_bets = [r for r in results if r.get('has_value', False)]
+        # Filtrar solo las que tienen EV positivo
+        value_bets = [r for r in results if r.get('ev', 0) > 0]
         
         if value_bets:
-            # Ordenar por edge (mayor a menor)
-            value_bets.sort(key=lambda x: x.get('edge', 0), reverse=True)
+            # Ordenar por EV (mayor a menor)
+            value_bets.sort(key=lambda x: x.get('ev', 0), reverse=True)
             best = value_bets[0]
             best['type'] = 'value_bet'
             return best
         else:
             # Si no hay valor, devolver la de mayor probabilidad
             if results:
-                results.sort(key=lambda x: x.get('implied_probability', 0), reverse=True)
+                results.sort(key=lambda x: x.get('market_prob', 0), reverse=True)
                 best = results[0]
                 best['type'] = 'probabilidad'
                 return best
@@ -158,8 +169,6 @@ class ValueDetector:
         return None
     
     def get_value_summary(self, match_analysis, match_odds):
-        """
-        Obtiene un resumen de todos los valores para un partido
-        """
+        """Obtiene un resumen de todos los valores para un partido"""
         results = self.analyze_match_markets(match_analysis, match_odds)
-        return [r for r in results if r.get('has_value', False)]
+        return [r for r in results if r.get('ev', 0) > 0]
