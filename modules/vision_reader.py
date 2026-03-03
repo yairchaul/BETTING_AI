@@ -15,218 +15,131 @@ class ImageParser:
             self.client = None
 
     def process_image(self, image_bytes):
-        """Procesa la imagen y extrae pares de equipos"""
+        """Procesa la imagen y extrae palabras con coordenadas"""
         if not self.client:
             return []
         
         try:
             image = vision.Image(content=image_bytes)
             response = self.client.document_text_detection(image=image)
-            texts = response.text_annotations
-
-            if not texts:
+            
+            if not response.text_annotations:
                 return []
-
-            full_text = texts[0].description
             
-            # Primero mostramos el debug con la estructura actual
-            st.write("### 📊 Estructura detectada por OCR:")
-            lines = [line.strip() for line in full_text.split('\n') if line.strip()]
+            # Extraer cada palabra con sus coordenadas
+            words_with_coords = []
+            for annotation in response.text_annotations[1:]:  # Saltar el primer elemento (todo el texto)
+                vertices = annotation.bounding_poly.vertices
+                if vertices:
+                    # Calcular centro del bounding box
+                    x = sum(v.x for v in vertices) / 4
+                    y = sum(v.y for v in vertices) / 4
+                    
+                    # Calcular altura aproximada (para detectar tamaños de letra)
+                    height = abs(vertices[0].y - vertices[2].y) if vertices else 0
+                    
+                    words_with_coords.append({
+                        'text': annotation.description,
+                        'x': x,
+                        'y': y,
+                        'height': height,
+                        'confidence': annotation.confidence if hasattr(annotation, 'confidence') else 1.0
+                    })
             
-            # Crear tabla temporal para mostrar cómo está leyendo el OCR
-            html_temp = "<table style='width:100%; border-collapse: collapse;'>"
-            html_temp += "<tr style='background-color: #FF5722; color: white;'>"
-            html_temp += "<th style='padding: 8px; border: 1px solid #ddd;'>#</th>"
-            html_temp += "<th style='padding: 8px; border: 1px solid #ddd;'>Línea detectada</th>"
-            html_temp += "</tr>"
-            
-            for i, line in enumerate(lines[:20]):  # Mostrar primeras 20 líneas
-                html_temp += f"<tr><td style='padding: 8px; border: 1px solid #ddd;'>{i+1}</td>"
-                html_temp += f"<td style='padding: 8px; border: 1px solid #ddd;'>{line}</td></tr>"
-            
-            html_temp += "</table>"
-            st.markdown(html_temp, unsafe_allow_html=True)
-            
-            # Ahora procesamos con una lógica más inteligente
-            return self.parse_with_context(full_text)
+            return self._group_by_visual_structure(words_with_coords)
             
         except Exception as e:
             st.error(f"Error procesando imagen: {e}")
             return []
-
-    def parse_with_context(self, text):
+    
+    def _group_by_visual_structure(self, words):
         """
-        Interpreta el texto respetando los nombres completos de los equipos
+        Agrupa palabras por proximidad visual (misma línea, mismo bloque)
         """
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        # Ordenar por coordenada Y (de arriba a abajo)
+        words.sort(key=lambda w: w['y'])
         
-        # ============================================================================
-        # PASO 1: Identificar el patrón de la tabla de 6 columnas en el debug
-        # ============================================================================
+        # Agrupar en líneas (tolerancia de 15 píxeles en Y)
+        lines = []
+        current_line = [words[0]]
+        
+        for word in words[1:]:
+            if abs(word['y'] - current_line[-1]['y']) < 15:
+                current_line.append(word)
+            else:
+                # Ordenar línea por X (izquierda a derecha)
+                current_line.sort(key=lambda w: w['x'])
+                lines.append(current_line)
+                current_line = [word]
+        lines.append(current_line)
+        
+        # Ahora detectar bloques basados en espaciado vertical
+        blocks = []
+        current_block = [lines[0]]
+        
+        for i in range(1, len(lines)):
+            prev_line = lines[i-1]
+            curr_line = lines[i]
+            
+            # Calcular espacio vertical entre líneas
+            prev_y = sum(w['y'] for w in prev_line) / len(prev_line)
+            curr_y = sum(w['y'] for w in curr_line) / len(curr_line)
+            gap = curr_y - prev_y
+            
+            # Si el gap es grande (> 30 píxeles), es un nuevo bloque
+            if gap > 30:
+                blocks.append(current_block)
+                current_block = [curr_line]
+            else:
+                current_block.append(curr_line)
+        blocks.append(current_block)
+        
+        # Procesar cada bloque para extraer partidos
+        return self._extract_matches_from_blocks(blocks)
+    
+    def _extract_matches_from_blocks(self, blocks):
+        """
+        Extrae partidos de cada bloque visual
+        """
         matches = []
         
-        # Buscar el patrón: Equipo, Cuota, Empate, Cuota, Equipo, Cuota
-        i = 0
-        while i < len(lines) - 5:
-            # Posibles elementos de una fila completa
-            posible_local = lines[i]
-            posible_cuota_local = lines[i+1]
-            posible_empate = lines[i+2]
-            posible_cuota_empate = lines[i+3]
-            posible_visitante = lines[i+4]
-            posible_cuota_visitante = lines[i+5]
+        for block in blocks:
+            # Un bloque debe tener al menos 6 líneas para ser un partido
+            if len(block) < 6:
+                continue
             
-            # Validar el patrón
-            if (self.is_team_name(posible_local) and
-                self.is_odds(posible_cuota_local) and
-                "Empate" in posible_empate and
-                self.is_odds(posible_cuota_empate) and
-                self.is_team_name(posible_visitante) and
-                self.is_odds(posible_cuota_visitante)):
+            # Extraer texto de cada línea
+            block_texts = [' '.join([w['text'] for w in line]) for line in block]
+            
+            # Detectar patrón: línea1 (metadata), línea2 (local), línea3 (visitante), línea4 (fecha), luego cuotas
+            if len(block_texts) >= 5:
+                # Posible metadata (número con signo)
+                metadata = block_texts[0] if re.match(r'^[+-]\d+$', block_texts[0]) else ''
                 
-                # Verificar que los nombres de equipos no sean parte de un nombre más grande
-                local_completo = self.get_full_team_name(posible_local, lines, i)
-                visitante_completo = self.get_full_team_name(posible_visitante, lines, i+4)
+                # Equipo local y visitante
+                home = block_texts[1] if len(block_texts) > 1 else ''
+                away = block_texts[2] if len(block_texts) > 2 else ''
+                fecha = block_texts[3] if len(block_texts) > 3 else ''
                 
-                matches.append({
-                    "home": local_completo,
-                    "away": visitante_completo,
-                    "all_odds": [
-                        posible_cuota_local,
-                        posible_cuota_empate,
-                        posible_cuota_visitante
-                    ]
-                })
-                i += 6
-            else:
-                i += 1
-        
-        # ============================================================================
-        # PASO 2: Si no encuentra, usar el método de agrupación por contexto
-        # ============================================================================
-        if not matches:
-            # Lista de equipos conocidos de LaLiga para reconstruir nombres
-            equipos_conocidos = [
-                "Real Madrid", "Barcelona", "Atletico Madrid", "Athletic Bilbao",
-                "Real Sociedad", "Real Betis", "Villarreal", "Valencia",
-                "Sevilla", "Espanyol", "Getafe", "Rayo Vallecano",
-                "Celta de Vigo", "Real Valladolid", "Osasuna", "Cadiz",
-                "Almeria", "Elche", "RCD Mallorca", "Girona",
-                "Real Oviedo", "Levante", "Granada", "Las Palmas",
-                "Racing Santander", "Sporting Gijon", "Zaragoza", "Tenerife"
-            ]
-            
-            # Extraer todas las odds
-            odds_list = [line for line in lines if self.is_odds(line)]
-            
-            # Extraer todas las palabras que parecen equipos
-            team_parts = []
-            for line in lines:
-                if self.is_team_name(line) and "Empate" not in line:
-                    team_parts.append(line)
-            
-            # Intentar reconstruir nombres completos
-            st.write("### 🔍 Reconstruyendo nombres de equipos:")
-            
-            # Crear tabla de reconstrucción
-            html_rebuild = "<table style='width:100%; border-collapse: collapse;'>"
-            html_rebuild += "<tr style='background-color: #4CAF50; color: white;'>"
-            html_rebuild += "<th style='padding: 8px; border: 1px solid #ddd;'>#</th>"
-            html_rebuild += "<th style='padding: 8px; border: 1px solid #ddd;'>Partes detectadas</th>"
-            html_rebuild += "<th style='padding: 8px; border: 1px solid #ddd;'>Posible equipo</th>"
-            html_rebuild += "</tr>"
-            
-            # Agrupar partes para formar nombres completos
-            i = 0
-            reconstruidos = []
-            while i < len(team_parts):
-                current = team_parts[i]
-                combinado = current
+                # Extraer cuotas de las líneas restantes
+                odds = []
+                for i in range(4, min(7, len(block_texts))):
+                    # Buscar números con signo en la línea
+                    found_odds = re.findall(r'[+-]\d+', block_texts[i])
+                    if found_odds:
+                        odds.extend(found_odds)
                 
-                # Verificar si combinado con el siguiente forma un equipo conocido
-                if i + 1 < len(team_parts):
-                    prueba = current + " " + team_parts[i+1]
-                    for equipo in equipos_conocidos:
-                        if prueba.lower() in equipo.lower() or equipo.lower() in prueba.lower():
-                            combinado = prueba
-                            i += 1
-                            break
-                
-                reconstruidos.append(combinado)
-                html_rebuild += f"<tr><td style='padding: 8px; border: 1px solid #ddd;'>{len(reconstruidos)}</td>"
-                html_rebuild += f"<td style='padding: 8px; border: 1px solid #ddd;'>{current}</td>"
-                html_rebuild += f"<td style='padding: 8px; border: 1px solid #ddd;'>{combinado}</td></tr>"
-                i += 1
-            
-            html_rebuild += "</table>"
-            st.markdown(html_rebuild, unsafe_allow_html=True)
-            
-            # Construir matches con los nombres reconstruidos
-            num_partidos = min(len(reconstruidos) // 2, len(odds_list) // 3)
-            for j in range(num_partidos):
-                if j * 2 + 1 < len(reconstruidos) and j * 3 + 2 < len(odds_list):
+                if home and away and len(odds) >= 2:
+                    # Completar si faltan odds
+                    while len(odds) < 3:
+                        odds.append('N/A')
+                    
                     matches.append({
-                        "home": reconstruidos[j * 2],
-                        "away": reconstruidos[j * 2 + 1],
-                        "all_odds": [
-                            odds_list[j * 3],
-                            odds_list[j * 3 + 1],
-                            odds_list[j * 3 + 2]
-                        ]
+                        'home': home,
+                        'away': away,
+                        'all_odds': odds[:3],
+                        'metadata': metadata,
+                        'fecha': fecha
                     })
         
         return matches
-
-    def get_full_team_name(self, start_word, all_lines, start_index):
-        """
-        Intenta obtener el nombre completo del equipo mirando las líneas siguientes
-        """
-        nombre = start_word
-        i = start_index + 1
-        
-        # Mirar las siguientes líneas para ver si forman parte del mismo equipo
-        while i < len(all_lines):
-            next_word = all_lines[i]
-            # Si la siguiente línea es una odds o "Empate", detenerse
-            if self.is_odds(next_word) or "Empate" in next_word:
-                break
-            # Si no, probablemente es parte del nombre
-            nombre += " " + next_word
-            i += 1
-        
-        return nombre.strip()
-
-    def is_team_name(self, text):
-        """Determina si un texto es probable nombre de equipo"""
-        if not text or len(text) < 2:
-            return False
-        if re.match(r'^[+-]\d{3,4}$', text):
-            return False
-        if "Empate" in text or "empate" in text.lower():
-            return False
-        if not re.search(r'[A-Za-z]', text):
-            return False
-        if re.match(r'^\d{1,2}\s+[A-Za-z]{3}', text) or re.match(r'^\d{2}:\d{2}$', text):
-            return False
-        return True
-
-    def is_odds(self, text):
-        """Determina si un texto es una odds"""
-        return bool(re.match(r'^[+-]\d{3,4}$', text))
-
-
-# Función de respaldo para entrada manual
-def procesar_texto_manual(texto):
-    """Procesa texto ingresado manualmente"""
-    lineas = texto.split('\n')
-    partidos = []
-    for linea in lineas:
-        if ' vs ' in linea.lower():
-            teams = re.split(r' vs ', linea, flags=re.IGNORECASE)
-            if len(teams) == 2:
-                partidos.append({
-                    "home": teams[0].strip(), 
-                    "away": teams[1].strip(),
-                    "all_odds": ['N/A', 'N/A', 'N/A']
-                })
-    return partidos
