@@ -204,7 +204,7 @@ def main():
                 with st.expander(f"📊 {home} vs {away}", expanded=i==0):
                     st.caption(f"🎲 Cuotas: Local {odds[0]} | Empate {odds[1]} | Visitante {odds[2]}")
                     
-                    analysis = components['analyzer'].analyze_match(home, away, odds)
+               analysis = components['analyzer'].analyze_match(home, away, {'all_odds': odds})
                     
                     if analysis:
                         liga = analysis.get('liga', 'Desconocida')
