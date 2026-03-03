@@ -6,15 +6,19 @@ import numpy as np
 from datetime import datetime
 from modules.team_knowledge import TeamKnowledge
 from modules.smart_searcher import SmartSearcher
+from modules.montecarlo_pro import MonteCarloPro
+from math import exp, factorial
 
 class ProAnalyzerUltimate:
     """
-    Analizador profesional con cobertura GLOBAL de ligas
+    Analizador profesional con cobertura GLOBAL de ligas + Monte Carlo
     """
     
     def __init__(self):
         self.knowledge = TeamKnowledge()
         self.searcher = SmartSearcher()
+        self.montecarlo = MonteCarloPro(simulations=50000)
+        self.max_edge = 0.06  # máximo 6% diferencia vs mercado (anti sobreajuste)
         
         # APIs disponibles
         self.apis = {
@@ -26,7 +30,7 @@ class ProAnalyzerUltimate:
             }
         }
         
-        # BASE DE DATOS COMPLETA DE LIGAS
+        # BASE DE DATOS COMPLETA DE LIGAS (LA TUYA COMPLETA)
         self.leagues_db = self._build_complete_leagues_database()
         
         # Reglas de inferencia profesional
@@ -738,14 +742,47 @@ class ProAnalyzerUltimate:
         """Determina si un equipo es debil"""
         return not self._is_top_team(team, liga)
     
+    def american_to_decimal(self, american_odd):
+        """Convierte odds americanas a decimales"""
+        try:
+            if american_odd == 'N/A' or not american_odd:
+                return None
+            odd_str = str(american_odd).strip()
+            if odd_str.startswith('+'):
+                return (int(odd_str[1:]) / 100) + 1
+            elif odd_str.startswith('-'):
+                return (100 / abs(int(odd_str))) + 1
+            else:
+                return float(odd_str)
+        except:
+            return None
+    
+    def market_probabilities(self, odds):
+        """Convierte odds a probabilidades de mercado sin vig"""
+        decimals = [self.american_to_decimal(o) for o in odds[:3]]
+        implied = [1/d for d in decimals]
+        total = sum(implied)
+        return [p/total for p in implied]
+    
+    def regularize(self, market_probs, model_probs):
+        """Regulariza para evitar sobreajuste"""
+        final = []
+        for m, mod in zip(market_probs, model_probs):
+            diff = mod - m
+            if abs(diff) > self.max_edge:
+                diff = self.max_edge if diff > 0 else -self.max_edge
+            final.append(m + diff)
+        total = sum(final)
+        return [p/total for p in final]
+    
     def analyze_match(self, home_team, away_team, odds_data=None):
         """
-        Analisis profesional completo
+        Analisis profesional completo con Monte Carlo
         """
         # Identificar liga
         liga_nombre, liga_data = self.identify_league(home_team, away_team)
         
-        # Aplicar reglas
+        # Aplicar reglas (para contexto, no para probabilidades fijas)
         reglas_aplicadas = []
         for rule in self.rules:
             try:
@@ -754,11 +791,66 @@ class ProAnalyzerUltimate:
             except:
                 pass
         
-        # Determinar mejor apuesta
-        best_bet = self._determine_best_bet(reglas_aplicadas, liga_data)
+        # Si hay odds, usar Monte Carlo + mercado
+        if odds_data and odds_data.get('all_odds'):
+            # Calcular lambdas para Poisson
+            goles_liga = liga_data.get('goles_promedio', 2.5)
+            local_adv = liga_data.get('local_ventaja', 55) / 100
+            
+            home_strength = 1.05 if self._is_top_team(home_team, liga_nombre) else 1.0
+            away_strength = 1.05 if self._is_top_team(away_team, liga_nombre) else 1.0
+            
+            home_lambda = (goles_liga / 2) * local_adv * home_strength
+            away_lambda = (goles_liga / 2) * (1 - local_adv) * away_strength
+            
+            # Monte Carlo
+            mc_probs = self.montecarlo.analyze_match(home_lambda, away_lambda)
+            model_probs = [mc_probs['home_win'], mc_probs['draw'], mc_probs['away_win']]
+            
+            # Mercado
+            market_probs = self.market_probabilities(odds_data['all_odds'])
+            
+            # Regularizar
+            final_probs = self.regularize(market_probs, model_probs)
+            
+            # Generar todos los mercados
+            markets = [
+                {"name": "Gana Local", "prob": final_probs[0], "category": "1X2"},
+                {"name": "Empate", "prob": final_probs[1], "category": "1X2"},
+                {"name": "Gana Visitante", "prob": final_probs[2], "category": "1X2"},
+                {"name": "Over 1.5 goles", "prob": mc_probs['over_1_5'], "category": "Totales"},
+                {"name": "Over 2.5 goles", "prob": mc_probs['over_2_5'], "category": "Totales"},
+                {"name": "Over 3.5 goles", "prob": mc_probs['over_3_5'], "category": "Totales"},
+                {"name": "Over 4.5 goles", "prob": mc_probs['over_4_5'], "category": "Totales"},
+                {"name": "Under 2.5 goles", "prob": 1 - mc_probs['over_2_5'], "category": "Totales"},
+                {"name": "Ambos anotan (BTTS)", "prob": mc_probs['btts'], "category": "BTTS"},
+                {"name": "Ambos anotan (1T)", "prob": mc_probs['btts_first_half'], "category": "Primer Tiempo"},
+            ]
+            
+            # Mejor apuesta (la de mayor probabilidad, pero podrías usar EV)
+            best_bet = max(markets, key=lambda x: x['prob'])
+            
+            return {
+                'home_team': home_team,
+                'away_team': away_team,
+                'liga': liga_nombre,
+                'liga_data': liga_data,
+                'markets': sorted(markets, key=lambda x: x['prob'], reverse=True),
+                'best_bet': best_bet,
+                'reglas_aplicadas': [r['name'] for r in reglas_aplicadas],
+                'market_base': market_probs,
+                'model_raw': model_probs,
+                'final_probs': final_probs,
+                'mc_stats': {
+                    'avg_goals': mc_probs['avg_goals'],
+                    'std_goals': mc_probs['std_goals'],
+                    'simulations': 50000
+                }
+            }
         
-        # Generar mercados
-        markets = self._generate_markets(liga_data, best_bet)
+        # Fallback si no hay odds (usar reglas)
+        best_bet = self._determine_best_bet(reglas_aplicadas, liga_data)
+        markets = self._generate_markets_fallback(liga_data, best_bet)
         
         return {
             'home_team': home_team,
@@ -771,11 +863,11 @@ class ProAnalyzerUltimate:
         }
     
     def _determine_best_bet(self, reglas, liga_data):
-        """Determina la mejor apuesta basada en reglas"""
+        """Determina la mejor apuesta basada en reglas (fallback)"""
         if not reglas:
             return {
                 'market': 'Over 1.5 goles',
-                'probability': 0.70,
+                'probability': liga_data.get('over_2_5_prob', 50) / 100 * 1.4,  # aproximación
                 'confidence': 'BAJA',
                 'reason': 'Sin datos especificos, apuesta conservadora'
             }
@@ -784,18 +876,12 @@ class ProAnalyzerUltimate:
         acciones = [r['action'] for r in reglas]
         mas_comun = Counter(acciones).most_common(1)[0][0]
         
-        # Encontrar regla con mayor probabilidad
         mejor_regla = max(
             [r for r in reglas if r['action'] == mas_comun],
             key=lambda x: x.get('base_prob', 50)
         )
         
-        # Ajustar segun liga
-        prob_ajustada = mejor_regla['base_prob']
-        if mas_comun == 'over_2_5':
-            prob_ajustada = liga_data.get('over_2_5_prob', prob_ajustada)
-        elif mas_comun == 'under_2_5':
-            prob_ajustada = liga_data.get('under_2_5_prob', prob_ajustada)
+        prob_ajustada = mejor_regla['base_prob'] / 100
         
         market_map = {
             'local_gana': 'Gana Local',
@@ -804,18 +890,17 @@ class ProAnalyzerUltimate:
             'btts': 'Ambos anotan (BTTS)',
             'over_2_5': 'Over 2.5 goles',
             'under_2_5': 'Under 2.5 goles',
-            'local_gana_y_over': 'Gana Local + Over 2.5'
         }
         
         return {
             'market': market_map.get(mas_comun, 'Over 1.5 goles'),
-            'probability': prob_ajustada / 100,
-            'confidence': 'ALTA' if prob_ajustada > 65 else 'MEDIA' if prob_ajustada > 55 else 'BAJA',
+            'probability': prob_ajustada,
+            'confidence': 'ALTA' if prob_ajustada > 0.65 else 'MEDIA' if prob_ajustada > 0.55 else 'BAJA',
             'reason': mejor_regla['reason']
         }
     
-    def _generate_markets(self, liga_data, best_bet):
-        """Genera mercados basados en datos de liga (con probabilidades realistas)"""
+    def _generate_markets_fallback(self, liga_data, best_bet):
+        """Genera mercados de respaldo cuando no hay odds"""
         markets = [
             {'name': 'Gana Local', 'prob': 0.40, 'category': '1X2'},
             {'name': 'Empate', 'prob': 0.25, 'category': '1X2'},
