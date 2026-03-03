@@ -327,3 +327,4 @@ class UniversalParser:
         if re.match(r'^[+-]?\d+$', name):
             return False
         return True
+        
