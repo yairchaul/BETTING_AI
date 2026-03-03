@@ -664,28 +664,28 @@ class ProAnalyzerUltimate:
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('btts_pct', 50) > 55,
                 'action': 'btts',
                 'base_prob': 60,
-                'reason': f'En esta liga es comun que ambos anoten'
+                'reason': 'En esta liga es comun que ambos anoten'
             },
             {
                 'name': 'LOCAL_MUY_FUERTE',
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('local_ventaja', 50) > 60,
                 'action': 'local_no_pierde',
                 'base_prob': 70,
-                'reason': f'En esta liga los locales son muy fuertes'
+                'reason': 'En esta liga los locales son muy fuertes'
             },
             {
                 'name': 'LIGA_POCOS_GOLES',
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('goles_promedio', 2.5) < 2.3,
                 'action': 'under_2_5',
                 'base_prob': 65,
-                'reason': f'Esta liga tiene pocos goles historicamente'
+                'reason': 'Esta liga tiene pocos goles historicamente'
             },
             {
                 'name': 'LIGA_MUCHOS_GOLES',
                 'condition': lambda liga, local, visit: self.leagues_db.get(liga, {}).get('goles_promedio', 2.5) > 2.8,
                 'action': 'over_2_5',
                 'base_prob': 62,
-                'reason': f'Esta liga tiene muchos goles historicamente'
+                'reason': 'Esta liga tiene muchos goles historicamente'
             }
         ]
     
@@ -815,58 +815,14 @@ class ProAnalyzerUltimate:
         }
     
     def _generate_markets(self, liga_data, best_bet):
-    """Genera mercados basados en datos de liga (con probabilidades realistas)"""
-    markets = [
-        {'name': 'Gana Local', 'prob': 0.40, 'category': '1X2'},
-        {'name': 'Empate', 'prob': 0.25, 'category': '1X2'},
-        {'name': 'Gana Visitante', 'prob': 0.35, 'category': '1X2'},
-        {'name': 'Over 1.5 goles', 'prob': 0.70, 'category': 'Totales'},
-        {'name': 'Over 2.5 goles', 'prob': liga_data.get('over_2_5_prob', 50) / 100, 'category': 'Totales'},
-        {'name': 'Under 2.5 goles', 'prob': liga_data.get('under_2_5_prob', 50) / 100, 'category': 'Totales'},
-        {'name': 'Ambos anotan (BTTS)', 'prob': liga_data.get('btts_pct', 50) / 100, 'category': 'BTTS'},
-    ]
-    return sorted(markets, key=lambda x: x['prob'], reverse=True)
-
-def _determine_best_bet(self, reglas, liga_data):
-    """Determina la mejor apuesta basada en reglas"""
-    if not reglas:
-        return {
-            'market': 'Over 1.5 goles',
-            'probability': 0.70,
-            'confidence': 'BAJA',
-            'reason': 'Sin datos específicos, apuesta conservadora'
-        }
-    
-    from collections import Counter
-    acciones = [r['action'] for r in reglas]
-    mas_comun = Counter(acciones).most_common(1)[0][0]
-    
-    # Encontrar regla con mayor probabilidad
-    mejor_regla = max(
-        [r for r in reglas if r['action'] == mas_comun],
-        key=lambda x: x.get('base_prob', 50)
-    )
-    
-    # Ajustar según liga
-    prob_ajustada = mejor_regla['base_prob']
-    if mas_comun == 'over_2_5':
-        prob_ajustada = liga_data.get('over_2_5_prob', prob_ajustada)
-    elif mas_comun == 'under_2_5':
-        prob_ajustada = liga_data.get('under_2_5_prob', prob_ajustada)
-    
-    market_map = {
-        'local_gana': 'Gana Local',
-        'visitante_gana': 'Gana Visitante',
-        'local_no_pierde': 'Local o Empate (1X)',
-        'btts': 'Ambos anotan (BTTS)',
-        'over_2_5': 'Over 2.5 goles',
-        'under_2_5': 'Under 2.5 goles',
-        'local_gana_y_over': 'Gana Local + Over 2.5'
-    }
-    
-    return {
-        'market': market_map.get(mas_comun, 'Over 1.5 goles'),
-        'probability': prob_ajustada / 100,
-        'confidence': 'ALTA' if prob_ajustada > 65 else 'MEDIA' if prob_ajustada > 55 else 'BAJA',
-        'reason': mejor_regla['reason']
-    }
+        """Genera mercados basados en datos de liga (con probabilidades realistas)"""
+        markets = [
+            {'name': 'Gana Local', 'prob': 0.40, 'category': '1X2'},
+            {'name': 'Empate', 'prob': 0.25, 'category': '1X2'},
+            {'name': 'Gana Visitante', 'prob': 0.35, 'category': '1X2'},
+            {'name': 'Over 1.5 goles', 'prob': 0.70, 'category': 'Totales'},
+            {'name': 'Over 2.5 goles', 'prob': liga_data.get('over_2_5_prob', 50) / 100, 'category': 'Totales'},
+            {'name': 'Under 2.5 goles', 'prob': liga_data.get('under_2_5_prob', 50) / 100, 'category': 'Totales'},
+            {'name': 'Ambos anotan (BTTS)', 'prob': liga_data.get('btts_pct', 50) / 100, 'category': 'BTTS'},
+        ]
+        return sorted(markets, key=lambda x: x['prob'], reverse=True)
