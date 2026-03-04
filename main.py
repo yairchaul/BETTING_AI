@@ -51,7 +51,6 @@ def generar_parlay_pro(matches_analizados, max_selecciones=3):
         if match_name in partidos_usados:
             continue
             
-        # Priorizar mercados diferentes a Over 1.5
         mejores_opciones = sorted(markets, key=lambda x: x['prob'], reverse=True)
         
         seleccionado = None
@@ -103,7 +102,6 @@ def main():
     with st.sidebar:
         st.header("⚙️ Configuración")
         
-        # Bankroll total
         bankroll = st.number_input("Bankroll Total ($)", min_value=100, max_value=100000, value=1000, step=100)
         
         prob_minima = st.slider("Probabilidad mínima", 0.0, 1.0, 0.55, 0.05)
@@ -118,7 +116,6 @@ def main():
         check_live_odds = st.checkbox("📡 Verificar odds en vivo", value=True)
         max_parlay = st.slider("Máximo selecciones por parlay", 2, 5, 3, 1)
         
-        # Umbrales de valor
         value_threshold = st.slider("Umbral de EV para VALUE", 0.0, 0.2, 0.05, 0.01)
         high_value_threshold = st.slider("Umbral de EV para HIGH VALUE", 0.0, 0.3, 0.10, 0.01)
         
@@ -206,85 +203,60 @@ def main():
                 with st.expander(f"📊 {home} vs {away}", expanded=i==0):
                     st.caption(f"🎲 Cuotas: Local {odds[0]} | Empate {odds[1]} | Visitante {odds[2]}")
                     
-                    # ============================================================================
-                    # CORRECCIÓN: Convertir odds a diccionario
-                    # ============================================================================
                     odds_dict = {'all_odds': odds}
                     analysis = components['analyzer'].analyze_match(home, away, odds_dict)
                     
                     if analysis:
                         liga = analysis.get('liga', 'Desconocida')
+                        liga_data = analysis.get('liga_data', {})
                         st.info(f"🏆 Liga detectada: **{liga}**")
                         
-                        # Mostrar estadísticas de Monte Carlo si están disponibles
-                        if 'mc_stats' in analysis:
+                        # Obtener probabilidades
+                        final_probs_list = analysis.get('final_probs', [0.33, 0.33, 0.34])
+                        mc_probs = analysis.get('mc_stats', {})
+                        probs_by_model = analysis.get('probs_by_model', {})
+                        
+                        # Mostrar estadísticas de Monte Carlo
+                        if mc_probs:
                             st.caption(f"📊 Simulación Monte Carlo (50,000 partidos)")
                             col_mc1, col_mc2, col_mc3 = st.columns(3)
                             with col_mc1:
-                                st.metric("Goles promedio", f"{analysis['mc_stats']['avg_goals']:.2f}")
+                                st.metric("Goles promedio", f"{mc_probs.get('avg_goals', 0):.2f}")
                             with col_mc2:
-                                st.metric("Desviación", f"{analysis['mc_stats']['std_goals']:.2f}")
+                                st.metric("Desviación", f"{mc_probs.get('std_goals', 0):.2f}")
                             with col_mc3:
-                                st.metric("Simulaciones", f"{analysis['mc_stats']['simulations']:,}")
+                                st.metric("Simulaciones", f"{mc_probs.get('simulations', 50000):,}")
                         
-                        # Mostrar contribución de cada modelo si está disponible
-                        if 'probs_by_model' in analysis:
+                        # Mostrar contribución de modelos
+                        if probs_by_model:
                             with st.expander("📊 Contribución de modelos"):
                                 col_m1, col_m2, col_m3 = st.columns(3)
                                 
-                                models = analysis['probs_by_model']
-                                
                                 with col_m1:
                                     st.caption("🎲 Mercado")
-                                    st.metric("Local", f"{models['market'][0]:.1%}")
-                                    st.metric("Empate", f"{models['market'][1]:.1%}")
-                                    st.metric("Visitante", f"{models['market'][2]:.1%}")
+                                    st.metric("Local", f"{probs_by_model.get('market', [0,0,0])[0]:.1%}")
+                                    st.metric("Empate", f"{probs_by_model.get('market', [0,0,0])[1]:.1%}")
+                                    st.metric("Visitante", f"{probs_by_model.get('market', [0,0,0])[2]:.1%}")
                                 
                                 with col_m2:
                                     st.caption("📈 Poisson")
-                                    st.metric("Local", f"{models['poisson'][0]:.1%}")
-                                    st.metric("Empate", f"{models['poisson'][1]:.1%}")
-                                    st.metric("Visitante", f"{models['poisson'][2]:.1%}")
+                                    st.metric("Local", f"{probs_by_model.get('poisson', [0,0,0])[0]:.1%}")
+                                    st.metric("Empate", f"{probs_by_model.get('poisson', [0,0,0])[1]:.1%}")
+                                    st.metric("Visitante", f"{probs_by_model.get('poisson', [0,0,0])[2]:.1%}")
                                 
                                 with col_m3:
                                     st.caption("⚡ ELO")
-                                    st.metric("Local", f"{models['elo'][0]:.1%}")
-                                    st.metric("Empate", f"{models['elo'][1]:.1%}")
-                                    st.metric("Visitante", f"{models['elo'][2]:.1%}")
-                                
-                                if models.get('xgb'):
-                                    st.caption("🤖 XGBoost")
-                                    col_x1, col_x2, col_x3 = st.columns(3)
-                                    with col_x1:
-                                        st.metric("Local", f"{models['xgb'][0]:.1%}")
-                                    with col_x2:
-                                        st.metric("Empate", f"{models['xgb'][1]:.1%}")
-                                    with col_x3:
-                                        st.metric("Visitante", f"{models['xgb'][2]:.1%}")
-                        
-                        # Análisis con Ollama
-                        if use_ollama and components['ollama'].is_available:
-                            with st.spinner("🤖 Consultando IA local..."):
-                                ollama_analysis = components['ollama'].analyze_match(home, away)
-                                if ollama_analysis:
-                                    st.info("🤖 Análisis de IA Local:")
-                                    col_ollama1, col_ollama2, col_ollama3 = st.columns(3)
-                                    with col_ollama1:
-                                        st.metric("Local", f"{ollama_analysis.get('local_win_prob', 0):.1%}")
-                                    with col_ollama2:
-                                        st.metric("Empate", f"{ollama_analysis.get('draw_prob', 0):.1%}")
-                                    with col_ollama3:
-                                        st.metric("Visitante", f"{ollama_analysis.get('away_win_prob', 0):.1%}")
-                                    st.caption(f"💡 {ollama_analysis.get('explanation', '')}")
+                                    st.metric("Local", f"{probs_by_model.get('elo', [0,0,0])[0]:.1%}")
+                                    st.metric("Empate", f"{probs_by_model.get('elo', [0,0,0])[1]:.1%}")
+                                    st.metric("Visitante", f"{probs_by_model.get('elo', [0,0,0])[2]:.1%}")
                         
                         # ============================================================================
-                        # DETECTOR DE VALOR OPTIMIZADO (CON BANKROLL)
+                        # DETECTOR DE VALOR
                         # ============================================================================
                         value_result = components['value_detector'].get_best_value_bet(analysis, match, bankroll=bankroll)
                         
                         if value_result:
                             with st.container(border=True):
-                                # HIGH VALUE (EV > 10%)
                                 if value_result.get('type') == 'high_value':
                                     st.markdown(f"### 🔥🔥 HIGH VALUE BET DETECTADO 🔥🔥")
                                     st.markdown(f"**{value_result['market']}**")
@@ -302,7 +274,6 @@ def main():
                                     
                                     st.success(value_result['recommendation'])
                                 
-                                # VALUE normal (EV entre 5% y 10%)
                                 elif value_result.get('type') == 'value_bet':
                                     st.markdown(f"### 🔥 VALUE BET DETECTADO")
                                     st.markdown(f"**{value_result['market']}**")
@@ -318,13 +289,123 @@ def main():
                                     st.info(f"💡 Stake sugerido: ${value_result['stake']} (Kelly {value_result['confidence']})")
                                     st.success(value_result['recommendation'])
                                 
-                                # Mejor opción sin valor
                                 else:
                                     best = analysis.get('best_bet', {})
                                     st.markdown(f"### ✨ MEJOR OPCIÓN")
                                     st.markdown(f"**{best.get('market', 'Over 1.5')}** - {best.get('probability', 0.7):.1%}")
                                     st.markdown(f"📌 *{best.get('reason', 'Análisis contextual')}*")
                                     st.caption(f"ℹ️ Sin valor significativo (EV: {value_result.get('ev', 0):.1%})")
+                        
+                        # ============================================================================
+                        # MOSTRAR TODOS LOS MERCADOS ANALIZADOS (LO QUE PEDISTE)
+                        # ============================================================================
+                        with st.expander("📊 Ver TODOS los mercados analizados", expanded=True):
+                            st.markdown("### 🎯 RESULTADO FINAL (TIEMPO REGULAR)")
+                            
+                            col_r1, col_r2, col_r3 = st.columns(3)
+                            with col_r1:
+                                st.metric("Gana Local", f"{final_probs_list[0]:.1%}")
+                            with col_r2:
+                                st.metric("Empate", f"{final_probs_list[1]:.1%}")
+                            with col_r3:
+                                st.metric("Gana Visitante", f"{final_probs_list[2]:.1%}")
+                            
+                            st.markdown("---")
+                            st.markdown("### ⚽ AMBOS EQUIPOS ANOTAN (BTTS)")
+                            
+                            col_b1, col_b2 = st.columns(2)
+                            with col_b1:
+                                st.metric("SÍ anotan ambos", f"{mc_probs.get('btts', 0.5):.1%}")
+                            with col_b2:
+                                st.metric("NO anotan ambos", f"{1 - mc_probs.get('btts', 0.5):.1%}")
+                            
+                            st.markdown("---")
+                            st.markdown("### 📊 TOTAL GOLES OVER/UNDER")
+                            
+                            # Asegurar que existan todas las métricas
+                            over_0_5 = mc_probs.get('over_0_5', mc_probs.get('over_1_5', 0.95) * 1.2)
+                            over_1_5 = mc_probs.get('over_1_5', 0.8)
+                            over_2_5 = mc_probs.get('over_2_5', 0.55)
+                            over_3_5 = mc_probs.get('over_3_5', 0.3)
+                            over_4_5 = mc_probs.get('over_4_5', 0.15)
+                            
+                            col_t1, col_t2, col_t3 = st.columns(3)
+                            with col_t1:
+                                st.metric("Over 0.5", f"{over_0_5:.1%}")
+                                st.metric("Under 0.5", f"{1 - over_0_5:.1%}")
+                            with col_t2:
+                                st.metric("Over 1.5", f"{over_1_5:.1%}")
+                                st.metric("Under 1.5", f"{1 - over_1_5:.1%}")
+                            with col_t3:
+                                st.metric("Over 2.5", f"{over_2_5:.1%}")
+                                st.metric("Under 2.5", f"{1 - over_2_5:.1%}")
+                            
+                            col_t4, col_t5, col_t6 = st.columns(3)
+                            with col_t4:
+                                st.metric("Over 3.5", f"{over_3_5:.1%}")
+                                st.metric("Under 3.5", f"{1 - over_3_5:.1%}")
+                            with col_t5:
+                                st.metric("Over 4.5", f"{over_4_5:.1%}")
+                                st.metric("Under 4.5", f"{1 - over_4_5:.1%}")
+                            with col_t6:
+                                st.metric("Over 5.5", f"{mc_probs.get('over_5_5', 0.05):.1%}")
+                                st.metric("Under 5.5", f"{1 - mc_probs.get('over_5_5', 0.05):.1%}")
+                            
+                            st.markdown("---")
+                            st.markdown("### ⏱️ 1RA MITAD TOTAL DE GOLES")
+                            
+                            over_0_5_1t = mc_probs.get('over_0_5_1t', over_1_5 * 0.7)
+                            over_1_5_1t = mc_probs.get('over_1_5_1t', over_2_5 * 0.4)
+                            
+                            col_h1, col_h2 = st.columns(2)
+                            with col_h1:
+                                st.metric("Over 0.5 (1T)", f"{over_0_5_1t:.1%}")
+                                st.metric("Over 1.5 (1T)", f"{over_1_5_1t:.1%}")
+                            with col_h2:
+                                st.metric("Under 0.5 (1T)", f"{1 - over_0_5_1t:.1%}")
+                                st.metric("Under 1.5 (1T)", f"{1 - over_1_5_1t:.1%}")
+                            
+                            st.markdown("---")
+                            st.markdown("### 🔀 RESULTADO FINAL CON OVER/UNDER (1.5)")
+                            
+                            col_c1, col_c2, col_c3 = st.columns(3)
+                            with col_c1:
+                                st.metric("Local + Over 1.5", f"{final_probs_list[0] * over_1_5:.1%}")
+                                st.metric("Local + Under 1.5", f"{final_probs_list[0] * (1 - over_1_5):.1%}")
+                            with col_c2:
+                                st.metric("Empate + Over 1.5", f"{final_probs_list[1] * over_1_5:.1%}")
+                                st.metric("Empate + Under 1.5", f"{final_probs_list[1] * (1 - over_1_5):.1%}")
+                            with col_c3:
+                                st.metric("Visitante + Over 1.5", f"{final_probs_list[2] * over_1_5:.1%}")
+                                st.metric("Visitante + Under 1.5", f"{final_probs_list[2] * (1 - over_1_5):.1%}")
+                            
+                            st.markdown("---")
+                            st.markdown("### 🔀 RESULTADO FINAL CON OVER/UNDER (2.5)")
+                            
+                            col_d1, col_d2, col_d3 = st.columns(3)
+                            with col_d1:
+                                st.metric("Local + Over 2.5", f"{final_probs_list[0] * over_2_5:.1%}")
+                                st.metric("Local + Under 2.5", f"{final_probs_list[0] * (1 - over_2_5):.1%}")
+                            with col_d2:
+                                st.metric("Empate + Over 2.5", f"{final_probs_list[1] * over_2_5:.1%}")
+                                st.metric("Empate + Under 2.5", f"{final_probs_list[1] * (1 - over_2_5):.1%}")
+                            with col_d3:
+                                st.metric("Visitante + Over 2.5", f"{final_probs_list[2] * over_2_5:.1%}")
+                                st.metric("Visitante + Under 2.5", f"{final_probs_list[2] * (1 - over_2_5):.1%}")
+                            
+                            st.markdown("---")
+                            st.markdown("### 🔀 RESULTADO FINAL CON OVER/UNDER (3.5)")
+                            
+                            col_e1, col_e2, col_e3 = st.columns(3)
+                            with col_e1:
+                                st.metric("Local + Over 3.5", f"{final_probs_list[0] * over_3_5:.1%}")
+                                st.metric("Local + Under 3.5", f"{final_probs_list[0] * (1 - over_3_5):.1%}")
+                            with col_e2:
+                                st.metric("Empate + Over 3.5", f"{final_probs_list[1] * over_3_5:.1%}")
+                                st.metric("Empate + Under 3.5", f"{final_probs_list[1] * (1 - over_3_5):.1%}")
+                            with col_e3:
+                                st.metric("Visitante + Over 3.5", f"{final_probs_list[2] * over_3_5:.1%}")
+                                st.metric("Visitante + Under 3.5", f"{final_probs_list[2] * (1 - over_3_5):.1%}")
                         
                         # ============================================================================
                         # Preparar picks para el optimizador
@@ -335,7 +416,6 @@ def main():
                         ]
                         
                         for m in markets_filtered[:3]:
-                            # Calcular EV para este pick usando cuotas reales
                             pick_ev = 0
                             decimal_odd = None
                             
@@ -392,7 +472,7 @@ def main():
                             st.success("✅ Parlay registrado!")
                             st.rerun()
                 
-                # PARLAY OPTIMIZADO (basado en EV)
+                # PARLAY OPTIMIZADO
                 if all_picks_for_optimizer and len(all_picks_for_optimizer) >= 2:
                     st.divider()
                     st.subheader("🎯 Parlay Optimizado (Basado en EV)")
@@ -419,7 +499,6 @@ def main():
                             
                             st.markdown("**Selecciones:**")
                             for p in optimal['picks']:
-                                # Color según EV individual
                                 if p.get('ev', 0) > high_value_threshold:
                                     color = '🔴🔴'
                                 elif p.get('ev', 0) > value_threshold:
@@ -437,7 +516,6 @@ def main():
                                     f"💰 Stake: ${stake_kelly:.2f}"
                                 )
                             
-                            # Botón para registrar con stakes calculados
                             if st.button("📝 Registrar parlay optimizado"):
                                 components['tracker'].add_bet({
                                     'matches': [f"{p['match']}: {p['selection']}" for p in optimal['picks']],
