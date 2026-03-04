@@ -1,0 +1,183 @@
+﻿# modules/smart_searcher.py
+import requests
+import unicodedata
+import re
+from difflib import SequenceMatcher
+import streamlit as st
+from groq import Groq
+import numpy as np
+from datetime import datetime
+
+class SmartSearcher:
+    def __init__(self):
+        self.football_api_key = st.secrets.get("FOOTBALL_API_KEY", "")
+        self.google_api_key = st.secrets.get("GOOGLE_API_KEY", "")
+        self.google_cse_id = st.secrets.get("GOOGLE_CSE_ID", "")
+        self.odds_api_key = st.secrets.get("ODDS_API_KEY", "")
+        
+        # GROQ
+        self.groq_client = None
+        self.modelo_groq = "llama-3.3-70b-versatile"
+        if st.secrets.get("GROQ_API_KEY"):
+            try:
+                self.groq_client = Groq(api_key=st.secrets.get("GROQ_API_KEY"))
+            except:
+                self.groq_client = None
+                
+        self.cache = {}
+        
+        # Headers CORRECTOS para Football-API
+        self.football_headers = {
+            'x-apisports-key': self.football_api_key
+        }
+        
+        # MAPEO DEFINITIVO (según verificación)
+        self.mapeo_directo = {
+            'puebla': 'Puebla',
+            'tigres': 'Tigres UANL',
+            'tigres uanl': 'Tigres UANL',
+            'america': 'Club America',
+            'club america': 'Club America',
+            'chivas': 'Guadalajara Chivas',
+            'guadalajara': 'Guadalajara Chivas',
+            'cruz azul': 'Cruz Azul',
+            'pumas': 'U.N.A.M. - Pumas',
+            'unam': 'U.N.A.M. - Pumas',
+            'monterrey': 'Monterrey',
+            'rayados': 'Monterrey',
+            'atlas': 'Atletico Atlas',
+            'santos': 'Santos Laguna',
+            'santos laguna': 'Santos Laguna',
+            'san luis': 'Atletico San Luis',
+            'atletico san luis': 'Atletico San Luis',
+            'leon': 'Leon',
+            'necaxa': 'Necaxa',
+            'pachuca': 'Pachuca',
+            'queretaro': 'Club Queretaro',
+            'juarez': 'FC Juarez',
+            'fc juarez': 'FC Juarez',
+            'tijuana': 'Club Tijuana',
+            'xolos': 'Club Tijuana',
+            'toluca': 'Toluca',
+            'mazatlan': 'Mazatlán',
+            'mazatlán': 'Mazatlán',
+        }
+
+    def normalize(self, name):
+        if not name:
+            return ""
+        name = name.lower().strip()
+        name = unicodedata.normalize('NFKD', name)
+        name = ''.join([c for c in name if not unicodedata.combining(c)])
+        name = re.sub(r'[^a-z0-9\s]', '', name)
+        name = re.sub(r'\s+', ' ', name).strip()
+        return name
+
+    def get_api_team_name(self, team_name):
+        if not team_name:
+            return team_name
+        normalized = self.normalize(team_name)
+        for key, value in self.mapeo_directo.items():
+            if key in normalized or normalized in key:
+                return value
+        return team_name
+
+    def search_team_football_api(self, team_name):
+        if not self.football_api_key:
+            return None
+        cache_key = f"football_api_{team_name}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+        api_name = self.get_api_team_name(team_name)
+        try:
+            url = "https://v3.football.api-sports.io/teams"
+            params = {"search": api_name}
+            response = requests.get(url, headers=self.football_headers, params=params, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('response') and len(data['response']) > 0:
+                    team_data = data['response'][0]['team']
+                    self.cache[cache_key] = team_data
+                    return team_data
+        except:
+            pass
+        self.cache[cache_key] = None
+        return None
+
+    def get_team_id(self, team_name):
+        team_info = self.search_team_football_api(team_name)
+        return team_info.get('id') if team_info else None
+
+    def get_team_stats(self, team_name):
+        """Obtiene estadísticas REALES del equipo"""
+        cache_key = f"stats_{team_name}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+        
+        # Valores por defecto (promedios Liga MX)
+        stats = {
+            'avg_goals_scored': 1.35,
+            'avg_goals_conceded': 1.35,
+            'btts_rate': 0.52,
+            'over_2_5_rate': 0.55,
+            'confidence': 0.5,
+            'source': 'default'
+        }
+        
+        # Intentar obtener datos REALES de Football-API
+        team_id = self.get_team_id(team_name)
+        if team_id:
+            try:
+                url = "https://v3.football.api-sports.io/teams/statistics"
+                params = {"team": team_id, "season": 2025, "league": 262}
+                response = requests.get(url, headers=self.football_headers, params=params, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('response'):
+                        stats_data = data['response']
+                        stats['avg_goals_scored'] = float(stats_data.get('goals', {}).get('for', {}).get('average', {}).get('total', 1.35))
+                        stats['avg_goals_conceded'] = float(stats_data.get('goals', {}).get('against', {}).get('average', {}).get('total', 1.35))
+                        stats['confidence'] = 0.9
+                        stats['source'] = 'football-api'
+            except:
+                pass
+        
+        self.cache[cache_key] = stats
+        return stats
+
+    def get_head_to_head(self, home_team, away_team):
+        """Obtiene historial REAL de enfrentamientos"""
+        cache_key = f"h2h_{home_team}_{away_team}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+        
+        result = {
+            'total_matches': 0,
+            'home_wins': 0,
+            'away_wins': 0,
+            'draws': 0,
+            'avg_goals': 2.5,
+            'confidence': 0.3,
+            'source': 'default'
+        }
+        
+        home_id = self.get_team_id(home_team)
+        away_id = self.get_team_id(away_team)
+        
+        if home_id and away_id:
+            try:
+                url = "https://v3.football.api-sports.io/fixtures/headtohead"
+                params = {"h2h": f"{home_id}-{away_id}", "last": 10}
+                response = requests.get(url, headers=self.football_headers, params=params, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    fixtures = data.get('response', [])
+                    if fixtures:
+                        result['total_matches'] = len(fixtures)
+                        result['source'] = 'football-api'
+                        result['confidence'] = 0.8
+            except:
+                pass
+        
+        self.cache[cache_key] = result
+        return result

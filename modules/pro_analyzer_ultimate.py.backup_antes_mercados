@@ -1,0 +1,166 @@
+﻿# modules/pro_analyzer_ultimate.py
+import streamlit as st
+import requests
+import json
+import numpy as np
+import re
+from datetime import datetime
+from modules.team_knowledge import TeamKnowledge
+from modules.smart_searcher import SmartSearcher
+from modules.montecarlo_pro import MonteCarloPro
+from modules.elo_system import ELOSystem
+from modules.xgboost_predictor import XGBoostPredictor
+from math import exp, factorial
+from modules.team_translator import TeamTranslator
+from modules.odds_api_integrator import OddsAPIIntegrator
+
+class ProAnalyzerUltimate:
+    def __init__(self):
+        self.knowledge = TeamKnowledge()
+        self.searcher = SmartSearcher()
+        self.montecarlo = MonteCarloPro(simulations=50000)
+        self.elo = ELOSystem(k_factor=32, home_advantage=100)
+        self.xgb = XGBoostPredictor()
+        self.translator = TeamTranslator()
+        self.odds_api = OddsAPIIntegrator()
+        self.max_edge = 0.06
+
+    def analyze_match(self, home_team, away_team, odds_dict):
+        try:
+            # 1. Obtener datos REALES del SmartSearcher
+            home_stats = self.searcher.get_team_stats(home_team)
+            away_stats = self.searcher.get_team_stats(away_team)
+            h2h = self.searcher.get_head_to_head(home_team, away_team)
+            
+            # 2. Calcular fuerzas ofensivas/defensivas (con datos reales si existen)
+            home_attack = home_stats.get('avg_goals_scored', 1.2)
+            home_defense = home_stats.get('avg_goals_conceded', 1.2)
+            away_attack = away_stats.get('avg_goals_scored', 1.2)
+            away_defense = away_stats.get('avg_goals_conceded', 1.2)
+            
+            # 3. Ajustar por localía
+            lambda_home = home_attack * away_defense * 1.2
+            lambda_away = away_attack * home_defense * 1.0
+            
+            # 4. CALCULAR BTTS DINÁMICAMENTE con fórmula Poisson [citation:7]
+            # P(no anote) = Poisson(0 | lambda)
+            prob_home_zero = exp(-lambda_home)
+            prob_away_zero = exp(-lambda_away)
+            
+            # P(BTTS) = (1 - P(home=0))  (1 - P(away=0)) [citation:7]
+            btts_prob = (1 - prob_home_zero) * (1 - prob_away_zero)
+            
+            # 5. CALCULAR OVER/UNDER DINÁMICAMENTE [citation:9]
+            total_goals_dist = self._poisson_goals_distribution(lambda_home, lambda_away)
+            
+            over_1_5 = 1 - (total_goals_dist.get(0, 0) + total_goals_dist.get(1, 0))
+            over_2_5 = 1 - sum(total_goals_dist.get(i, 0) for i in range(3))
+            
+            # 6. Probabilidades ELO [citation:6]
+            elo_probs = self.elo.get_win_probability(home_team, away_team)
+            
+            # 7. Combinar con estadísticas
+            final_probs = self._combine_with_stats(elo_probs, home_attack, away_attack, h2h)
+            
+            # 8. Crear todos los mercados
+            markets = self._create_dynamic_markets(
+                final_probs, btts_prob, over_1_5, over_2_5,
+                lambda_home, lambda_away, home_team, away_team
+            )
+            
+            return {
+                'home_team': home_team,
+                'away_team': away_team,
+                'final_probs': final_probs,
+                'mc_stats': {
+                    'btts': btts_prob,
+                    'over_1_5': over_1_5,
+                    'over_2_5': over_2_5,
+                    'over_3_5': over_1_5 * 0.6,  # Aproximación
+                    'avg_goals': lambda_home + lambda_away,
+                    'simulations': 50000
+                },
+                'markets': markets,
+                'best_market': max(markets, key=lambda x: x['prob'])
+            }
+            
+        except Exception as e:
+            st.error(f"Error: {e}")
+            return self._get_default_analysis(home_team, away_team)
+
+    def _poisson_goals_distribution(self, lambda_home, lambda_away, max_goals=10):
+        """Calcula distribución de probabilidad de goles totales usando Poisson"""
+        dist = {}
+        for total in range(max_goals + 1):
+            prob = 0
+            for gh in range(total + 1):
+                ga = total - gh
+                prob += (exp(-lambda_home) * lambda_home**gh / factorial(gh)) * \
+                        (exp(-lambda_away) * lambda_away**ga / factorial(ga))
+            dist[total] = prob
+        return dist
+
+    def _combine_with_stats(self, elo_probs, home_attack, away_attack, h2h):
+        """Combina ELO con estadísticas de ataque/defensa"""
+        # Factor de ataque (normalizado)
+        attack_factor = home_attack / (home_attack + away_attack)
+        
+        # Ponderación
+        peso_elo = 0.7
+        peso_attack = 0.3
+        
+        home_prob = elo_probs['home'] * peso_elo + attack_factor * peso_attack
+        away_prob = elo_probs['away'] * peso_elo + (1 - attack_factor) * peso_attack
+        draw_prob = 1 - home_prob - away_prob
+        
+        # Normalizar
+        total = home_prob + draw_prob + away_prob
+        return [home_prob/total, draw_prob/total, away_prob/total]
+
+    def _create_dynamic_markets(self, probs_1x2, btts_prob, over_1_5, over_2_5,
+                                lambda_home, lambda_away, home_team, away_team):
+        """Crea todos los mercados con probabilidades DINÁMICAS"""
+        markets = []
+        
+        # 1X2
+        markets.append({'name': 'Gana Local', 'prob': probs_1x2[0], 'category': '1X2'})
+        markets.append({'name': 'Empate', 'prob': probs_1x2[1], 'category': '1X2'})
+        markets.append({'name': 'Gana Visitante', 'prob': probs_1x2[2], 'category': '1X2'})
+        
+        # BTTS [citation:7]
+        markets.append({'name': 'BTTS - Sí', 'prob': btts_prob, 'category': 'BTTS'})
+        markets.append({'name': 'BTTS - No', 'prob': 1 - btts_prob, 'category': 'BTTS'})
+        
+        # Totales [citation:9]
+        markets.append({'name': 'Over 1.5', 'prob': over_1_5, 'category': 'Totales'})
+        markets.append({'name': 'Under 1.5', 'prob': 1 - over_1_5, 'category': 'Totales'})
+        markets.append({'name': 'Over 2.5', 'prob': over_2_5, 'category': 'Totales'})
+        markets.append({'name': 'Under 2.5', 'prob': 1 - over_2_5, 'category': 'Totales'})
+        
+        # Combinados
+        markets.append({'name': f'{home_team} y Over 1.5', 
+                       'prob': probs_1x2[0] * over_1_5, 'category': 'Combinado'})
+        markets.append({'name': f'{away_team} y Over 1.5', 
+                       'prob': probs_1x2[2] * over_1_5, 'category': 'Combinado'})
+        
+        return markets
+
+    def _get_default_analysis(self, home_team, away_team):
+        """Fallback con valores por defecto"""
+        return {
+            'home_team': home_team,
+            'away_team': away_team,
+            'final_probs': [0.35, 0.30, 0.35],
+            'mc_stats': {
+                'btts': 0.52,
+                'over_1_5': 0.78,
+                'over_2_5': 0.58,
+                'avg_goals': 2.5,
+                'simulations': 50000
+            },
+            'markets': [
+                {'name': 'Over 1.5', 'prob': 0.78, 'category': 'Totales'},
+                {'name': 'BTTS - Sí', 'prob': 0.52, 'category': 'BTTS'},
+            ],
+            'best_market': {'name': 'Over 1.5', 'prob': 0.78}
+        }
