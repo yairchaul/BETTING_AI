@@ -1,62 +1,104 @@
 # modules/odds_api_integrator.py
-from odds_api import OddsAPIClient
+import requests
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import time
 
 class OddsAPIIntegrator:
     """
-    Integración profesional con Odds-API.io para datos reales
+    Integración profesional con Odds-API.io para Windows usando requests
     """
     
     def __init__(self):
         self.api_key = st.secrets.get("ODDS_API_KEY", "")
-        self.client = None
-        if self.api_key:
-            self.client = OddsAPIClient(api_key=self.api_key)
+        self.base_url = "https://api.oddsapi.io"
+        self.last_request_time = 0
+        self.request_interval = 0.25  # 4 requests por segundo (respetar rate limit)
+        
+    def _rate_limit(self):
+        """Controla el rate limiting"""
+        now = time.time()
+        time_since_last = now - self.last_request_time
+        if time_since_last < self.request_interval:
+            time.sleep(self.request_interval - time_since_last)
+        self.last_request_time = time.time()
     
     def get_live_odds(self, home_team, away_team):
         """
         Obtiene odds EN VIVO para un partido específico
         """
-        if not self.client:
+        if not self.api_key:
+            st.warning("⚠️ ODDS_API_KEY no configurada en secrets.toml")
             return None
         
         try:
-            # Buscar por nombres de equipos
-            query = f"{home_team} {away_team}"
-            events = self.client.search_events(query=query)
+            self._rate_limit()
             
-            if events and len(events) > 0:
-                event_id = events[0]['id']
+            # Buscar partidos por equipo
+            search_url = f"{self.base_url}/v1/events"
+            params = {
+                "apiKey": self.api_key,
+                "sport": "soccer",
+                "name": f"{home_team} {away_team}",
+                "status": "live,upcoming"
+            }
+            
+            response = requests.get(search_url, params=params)
+            
+            if response.status_code == 200:
+                data = response.json()
                 
-                # Obtener odds de múltiples bookmakers [citation:3]
-                odds = self.client.get_event_odds(
-                    event_id, 
-                    bookmakers="pinnacle,bet365,caliente"
-                )
-                
-                if odds:
-                    return {
-                        'partido': f"{home_team} vs {away_team}",
-                        'cuota_local': self._extract_odds(odds, 'home'),
-                        'cuota_empate': self._extract_odds(odds, 'draw'),
-                        'cuota_visitante': self._extract_odds(odds, 'away'),
-                        'bookmaker': odds.get('bookmaker', 'Desconocido')
+                if data.get('events') and len(data['events']) > 0:
+                    event = data['events'][0]
+                    event_id = event['id']
+                    
+                    # Obtener odds del evento
+                    odds_url = f"{self.base_url}/v1/events/{event_id}/odds"
+                    odds_params = {
+                        "apiKey": self.api_key,
+                        "bookmakers": "pinnacle,bet365,caliente",
+                        "markets": "h2h"  # Head to head (1X2)
                     }
+                    
+                    odds_response = requests.get(odds_url, params=odds_params)
+                    
+                    if odds_response.status_code == 200:
+                        odds_data = odds_response.json()
+                        
+                        return {
+                            'partido': f"{home_team} vs {away_team}",
+                            'cuota_local': self._extract_odds(odds_data, 'home'),
+                            'cuota_empate': self._extract_odds(odds_data, 'draw'),
+                            'cuota_visitante': self._extract_odds(odds_data, 'away'),
+                            'liga': event.get('league', 'Desconocida'),
+                            'fecha': event.get('start_time', ''),
+                            'bookmaker': 'Pinnacle/Bet365'
+                        }
+            
+            return None
+            
         except Exception as e:
             st.error(f"Error obteniendo odds: {e}")
-        
-        return None
+            return None
     
     def _extract_odds(self, odds_data, market_type):
         """Extrae odds específicas del mercado"""
         try:
-            for market in odds_data.get('markets', []):
-                if market.get('name') == 'ML':  # Money Line
-                    for odd in market.get('odds', []):
-                        if market_type in odd:
-                            return float(odd[market_type])
+            market_map = {
+                'home': 0,  # Índice para local
+                'draw': 1,  # Índice para empate
+                'away': 2   # Índice para visitante
+            }
+            
+            if odds_data.get('odds'):
+                for bookmaker in odds_data['odds']:
+                    if bookmaker.get('markets'):
+                        for market in bookmaker['markets']:
+                            if market.get('key') == 'h2h':
+                                outcomes = market.get('outcomes', [])
+                                if len(outcomes) > market_map[market_type]:
+                                    return float(outcomes[market_map[market_type]])
         except:
             pass
         return None
@@ -68,29 +110,69 @@ class OddsAPIIntegrator:
         value_bets = []
         
         for analisis in partidos_analizados:
-            odds_reales = self.get_live_odds(
-                analisis['home_team'], 
-                analisis['away_team']
-            )
+            # Extraer equipos del análisis
+            home_team = analisis.get('home_team', '')
+            away_team = analisis.get('away_team', '')
+            
+            if not home_team or not away_team:
+                continue
+            
+            odds_reales = self.get_live_odds(home_team, away_team)
             
             if odds_reales:
+                # Obtener probabilidades del análisis
+                probs = analisis.get('final_probs', [0.33, 0.34, 0.33])
+                
                 mercados = [
-                    ('Gana Local', analisis['final_probs'][0], odds_reales['cuota_local']),
-                    ('Empate', analisis['final_probs'][1], odds_reales['cuota_empate']),
-                    ('Gana Visitante', analisis['final_probs'][2], odds_reales['cuota_visitante'])
+                    ('Gana Local', probs[0] if len(probs) > 0 else 0.33, odds_reales['cuota_local']),
+                    ('Empate', probs[1] if len(probs) > 1 else 0.34, odds_reales['cuota_empate']),
+                    ('Gana Visitante', probs[2] if len(probs) > 2 else 0.33, odds_reales['cuota_visitante'])
                 ]
                 
                 for mercado, prob, odd in mercados:
-                    if odd and prob:
+                    if odd and prob and odd > 1.0:
                         ev = (prob * odd) - 1
                         if ev > umbral_ev:
                             value_bets.append({
-                                'partido': f"{analisis['home_team']} vs {analisis['away_team']}",
+                                'partido': f"{home_team} vs {away_team}",
+                                'liga': analisis.get('league', 'Desconocida'),
                                 'mercado': mercado,
-                                'probabilidad': prob,
+                                'probabilidad': round(prob * 100, 2),
                                 'odd_real': odd,
-                                'ev': ev,
-                                'confianza': 'ALTA' if ev > 0.10 else 'MEDIA'
+                                'ev': round(ev * 100, 2),
+                                'confianza': '🚀 ALTA' if ev > 0.10 else '📊 MEDIA',
+                                'kelly_sugerido': self._calcular_kelly(prob, odd)
                             })
         
         return sorted(value_bets, key=lambda x: x['ev'], reverse=True)
+    
+    def _calcular_kelly(self, prob, odd):
+        """Calcula fracción de Kelly"""
+        b = odd - 1
+        p = prob
+        q = 1 - p
+        
+        if b <= 0:
+            return 0
+        
+        kelly = (b * p - q) / b
+        return round(max(0, min(kelly * 0.25, 0.05)) * 100, 2)  # 25% de Kelly, max 5% del bank
+    
+    def test_connection(self):
+        """Prueba la conexión con la API"""
+        if not self.api_key:
+            return False, "❌ API Key no configurada"
+        
+        try:
+            self._rate_limit()
+            test_url = f"{self.base_url}/v1/sports"
+            params = {"apiKey": self.api_key}
+            
+            response = requests.get(test_url, params=params)
+            
+            if response.status_code == 200:
+                return True, "✅ Conexión exitosa con Odds-API.io"
+            else:
+                return False, f"❌ Error {response.status_code}: {response.text}"
+        except Exception as e:
+            return False, f"❌ Error de conexión: {e}"
