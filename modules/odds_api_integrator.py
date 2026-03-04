@@ -15,57 +15,69 @@ class OddsAPIIntegrator:
         if self.api_key:
             self.client = OddsAPIClient(api_key=self.api_key)
     
-    def get_live_odds_for_parlay(self, partidos):
+    def get_live_odds(self, home_team, away_team):
         """
-        Obtiene odds EN VIVO para todos los partidos del parlay
+        Obtiene odds EN VIVO para un partido específico
         """
         if not self.client:
             return None
         
-        resultados = []
-        
-        for partido in partidos:
+        try:
             # Buscar por nombres de equipos
-            query = f"{partido['local']} {partido['visitante']}"
+            query = f"{home_team} {away_team}"
             events = self.client.search_events(query=query)
             
             if events and len(events) > 0:
                 event_id = events[0]['id']
+                
+                # Obtener odds de múltiples bookmakers [citation:3]
                 odds = self.client.get_event_odds(
                     event_id, 
                     bookmakers="pinnacle,bet365,caliente"
                 )
                 
                 if odds:
-                    resultados.append({
-                        'partido': f"{partido['local']} vs {partido['visitante']}",
-                        'odds_reales': odds,
-                        'cuota_local': odds.get('home_odd'),
-                        'cuota_empate': odds.get('draw_odd'),
-                        'cuota_visitante': odds.get('away_odd'),
-                        'bookmaker': odds.get('bookmaker')
-                    })
+                    return {
+                        'partido': f"{home_team} vs {away_team}",
+                        'cuota_local': self._extract_odds(odds, 'home'),
+                        'cuota_empate': self._extract_odds(odds, 'draw'),
+                        'cuota_visitante': self._extract_odds(odds, 'away'),
+                        'bookmaker': odds.get('bookmaker', 'Desconocido')
+                    }
+        except Exception as e:
+            st.error(f"Error obteniendo odds: {e}")
         
-        return resultados
+        return None
     
-    def find_value_bets(self, nuestros_analisis, umbral_ev=0.05):
+    def _extract_odds(self, odds_data, market_type):
+        """Extrae odds específicas del mercado"""
+        try:
+            for market in odds_data.get('markets', []):
+                if market.get('name') == 'ML':  # Money Line
+                    for odd in market.get('odds', []):
+                        if market_type in odd:
+                            return float(odd[market_type])
+        except:
+            pass
+        return None
+    
+    def find_value_bets(self, partidos_analizados, umbral_ev=0.05):
         """
         Compara nuestras probabilidades con odds reales del mercado
         """
         value_bets = []
         
-        for analisis in nuestros_analisis:
-            # Buscar odds reales
-            odds_reales = self.get_live_odds_for_parlay([analisis])
+        for analisis in partidos_analizados:
+            odds_reales = self.get_live_odds(
+                analisis['home_team'], 
+                analisis['away_team']
+            )
             
-            if odds_reales and len(odds_reales) > 0:
-                odds = odds_reales[0]
-                
-                # Para cada mercado, calcular EV real
+            if odds_reales:
                 mercados = [
-                    ('Gana Local', analisis['prob_local'], odds['cuota_local']),
-                    ('Empate', analisis['prob_empate'], odds['cuota_empate']),
-                    ('Gana Visitante', analisis['prob_visit'], odds['cuota_visitante'])
+                    ('Gana Local', analisis['final_probs'][0], odds_reales['cuota_local']),
+                    ('Empate', analisis['final_probs'][1], odds_reales['cuota_empate']),
+                    ('Gana Visitante', analisis['final_probs'][2], odds_reales['cuota_visitante'])
                 ]
                 
                 for mercado, prob, odd in mercados:
@@ -73,7 +85,7 @@ class OddsAPIIntegrator:
                         ev = (prob * odd) - 1
                         if ev > umbral_ev:
                             value_bets.append({
-                                'partido': analisis['partido'],
+                                'partido': f"{analisis['home_team']} vs {analisis['away_team']}",
                                 'mercado': mercado,
                                 'probabilidad': prob,
                                 'odd_real': odd,
