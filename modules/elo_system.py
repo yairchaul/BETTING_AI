@@ -90,52 +90,7 @@ class ELOSystem:
             'expected_away': expected_away
         }
     
-    def get_win_probability(self, home_team, away_team):
-        """
-        Calcula probabilidad de victoria basada solo en ELO
-        """
-        rating_home = self.get_rating(home_team)
-        rating_away = self.get_rating(away_team)
-        
-        expected_home = self.expected_score(rating_home, rating_away, home=True)
-        
-        # Probabilidades aproximadas (asumiendo que empate es el resto después de ajustar)
-        # Esta es una simplificación, en realidad el empate tiene su propia distribución
-        home_prob = expected_home * 0.9
-        away_prob = (1 - expected_home) * 0.9
-        draw_prob = 1 - home_prob - away_prob
-        
-        return {
-            'home': home_prob,
-            'draw': draw_prob,
-            'away': away_prob
-        }
-    
-    def get_top_teams(self, n=10):
-        """Devuelve los n equipos con mejor rating"""
-        sorted_teams = sorted(self.ratings.items(), key=lambda x: x[1], reverse=True)
-        return sorted_teams[:n]
-    
-    def save_ratings(self, filepath='data/elo_ratings.json'):
-        """Guarda los ratings en un archivo"""
-        import json
-        with open(filepath, 'w') as f:
-            json.dump({
-                'ratings': self.ratings,
-                'history': self.history[-1000:]  # Guardar últimos 1000 cambios
-            }, f, indent=2, default=str)
-    
-    def load_ratings(self, filepath='data/elo_ratings.json'):
-        """Carga ratings desde un archivo"""
-        import json
-        import os
-        if os.path.exists(filepath):
-            with open(filepath, 'r') as f:
-                data = json.load(f)
-                self.ratings = data.get('ratings', {})
-                self.history = data.get('history', [])
-                
-    def get_win_probability(self, home_team, away_team):
+   def get_win_probability(self, home_team, away_team):
     """
     Calcula probabilidad de victoria basada solo en ELO (VERSIÓN CORREGIDA)
     """
@@ -167,3 +122,27 @@ class ELOSystem:
         'draw': draw_prob,
         'away': away_prob
     }
+    
+    def get_top_teams(self, n=10):
+        """Devuelve los n equipos con mejor rating"""
+        sorted_teams = sorted(self.ratings.items(), key=lambda x: x[1], reverse=True)
+        return sorted_teams[:n]
+    
+    def save_ratings(self, filepath='data/elo_ratings.json'):
+        """Guarda los ratings en un archivo"""
+        import json
+        with open(filepath, 'w') as f:
+            json.dump({
+                'ratings': self.ratings,
+                'history': self.history[-1000:]  # Guardar últimos 1000 cambios
+            }, f, indent=2, default=str)
+    
+    def load_ratings(self, filepath='data/elo_ratings.json'):
+        """Carga ratings desde un archivo"""
+        import json
+        import os
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                self.ratings = data.get('ratings', {})
+                self.history = data.get('history', [])
