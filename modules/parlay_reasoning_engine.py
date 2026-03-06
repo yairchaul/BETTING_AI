@@ -1,197 +1,222 @@
-#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Motor de razonamiento para parlays - Regla 6 corregida SEGÚN ESPECIFICACIÓN
+Motor de razonamiento para parlays - REGLAS 1-7 (ORDEN CORREGIDO)
 """
-import numpy as np
-
 class ParlayReasoningEngine:
     """
-    Implementa la Regla 6: Comparación de parlays vs picks simples
-    PARA EL MISMO PARTIDO
+    Implementa las 7 reglas jerárquicas en el orden correcto
     """
     
-    def __init__(self, umbral_principal=0.50):
-        self.umbral_principal = umbral_principal  # 50%
-        self.umbral_comparacion = 0.45  # 45% para zona de comparación
+    def __init__(self):
+        self.umbral_over_1t = 0.60     # Regla 1
+        self.umbral_over_3_5 = 0.60    # Regla 2
+        self.umbral_favorito_over = 0.55  # Regla 2
+        self.umbral_btts = 0.60        # Regla 3
+        self.umbral_over = 0.55        # Regla 4
+        self.objetivo_over = 0.55      # Regla 4
+        self.umbral_favorito = 0.50    # Reglas 5 y 6
+        self.umbral_underdog = 0.40    # Reglas 5 y 6
+        self.umbral_combinado = 0.50   # Regla 7
     
-    def evaluar_combinacion_mismo_partido(self, picks_del_partido):
+    def aplicar_reglas(self, markets, probs_1x2, home, away):
         """
-        Evalúa si es mejor combinar picks del MISMO PARTIDO o elegir el mejor simple
-        Esta es la implementación correcta de la Regla 6
-        
-        Args:
-            picks_del_partido: Lista de picks para el mismo partido
-                              ej: [{'mercado': 'Gana Local', 'prob': 0.48},
-                                   {'mercado': 'Over 1.5', 'prob': 0.55}]
-        
-        Returns:
-            Decisión: 'combinado', 'mejor_simple', o 'ninguno'
+        Aplica las 7 reglas en orden jerárquico
         """
-        if len(picks_del_partido) < 2:
-            return {'decision': 'mejor_simple', 'pick': picks_del_partido[0] if picks_del_partido else None}
+        picks = []
         
-        # Ordenar picks por probabilidad (mejor primero)
-        picks_ordenados = sorted(picks_del_partido, key=lambda x: x['prob'], reverse=True)
+        # =====================================================================
+        # REGLA 1 - Over 1.5 Primer Tiempo (>60%) [MÁXIMA PRIORIDAD]
+        # =====================================================================
+        over_1_5_1t = markets['overs']['over1_5_1t']
+        if over_1_5_1t > self.umbral_over_1t:
+            picks.append({
+                'nivel': 1,
+                'mercado': 'Over 1.5 1T',
+                'prob': over_1_5_1t,
+                'justificacion': f'Regla 1: Over 1.5 1T = {over_1_5_1t:.1%} > 60%'
+            })
+            return picks
         
-        # El mejor pick simple
-        mejor_simple = picks_ordenados[0]
+        # =====================================================================
+        # REGLA 2 - Over 3.5 >60% + Favorito >55% [NUEVA ALTA PRIORIDAD]
+        # =====================================================================
+        over_3_5 = markets['overs']['over3_5']
+        home_win = probs_1x2['home']
+        away_win = probs_1x2['away']
         
-        # Intentar combinaciones de 2 picks (las más probables)
-        mejores_combinaciones = []
-        for i in range(len(picks_ordenados)):
-            for j in range(i+1, len(picks_ordenados)):
-                prob_combinada = picks_ordenados[i]['prob'] * picks_ordenados[j]['prob']
-                
-                # Calcular EV si hay odds
-                ev_combinado = None
-                ev_simple = None
-                if 'odds' in mejor_simple and 'odds' in picks_ordenados[i] and 'odds' in picks_ordenados[j]:
-                    ev_simple = (mejor_simple['prob'] * mejor_simple['odds']) - 1
-                    ev_combinado = (prob_combinada * picks_ordenados[i]['odds'] * picks_ordenados[j]['odds']) - 1
-                
-                mejores_combinaciones.append({
-                    'picks': [picks_ordenados[i], picks_ordenados[j]],
-                    'prob_combinada': prob_combinada,
-                    'ev_combinado': ev_combinado,
-                    'ev_simple': ev_simple
+        if over_3_5 > self.umbral_over_3_5:
+            if home_win > self.umbral_favorito_over:
+                # 2 picks: Gana Local + Over 3.5
+                picks.append({
+                    'nivel': 2,
+                    'mercado': f'Gana {home}',
+                    'prob': home_win,
+                    'justificacion': f'Regla 2: Local favorito + Over 3.5'
                 })
+                picks.append({
+                    'nivel': 2,
+                    'mercado': 'Over 3.5',
+                    'prob': over_3_5,
+                    'justificacion': f'Regla 2: Over 3.5 complementario'
+                })
+                return picks
+            
+            elif away_win > self.umbral_favorito_over:
+                # 2 picks: Gana Visitante + Over 3.5
+                picks.append({
+                    'nivel': 2,
+                    'mercado': f'Gana {away}',
+                    'prob': away_win,
+                    'justificacion': f'Regla 2: Visitante favorito + Over 3.5'
+                })
+                picks.append({
+                    'nivel': 2,
+                    'mercado': 'Over 3.5',
+                    'prob': over_3_5,
+                    'justificacion': f'Regla 2: Over 3.5 complementario'
+                })
+                return picks
         
-        # Ordenar combinaciones por probabilidad
-        mejores_combinaciones.sort(key=lambda x: x['prob_combinada'], reverse=True)
+        # =====================================================================
+        # REGLA 3 - BTTS (>60%)
+        # =====================================================================
+        btts = markets['btts']
+        if btts > self.umbral_btts:
+            picks.append({
+                'nivel': 3,
+                'mercado': 'BTTS Sí',
+                'prob': btts,
+                'justificacion': f'Regla 3: BTTS = {btts:.1%} > 60%'
+            })
+            return picks
         
-        if not mejores_combinaciones:
-            return {'decision': 'mejor_simple', 'pick': mejor_simple}
-        
-        mejor_combinacion = mejores_combinaciones[0]
-        prob_combinada = mejor_combinacion['prob_combinada']
-        
-        # APLICAR REGLA 6 SEGÚN ESPECIFICACIÓN
-        resultado = {
-            'mejor_simple': mejor_simple,
-            'mejor_combinacion': mejor_combinacion,
-            'prob_combinada': prob_combinada,
-            'decision': None,
-            'justificacion': ''
-        }
-        
-        # Caso 1: prob_combinada ≥ 50% → MANTENER combinado
-        if prob_combinada >= self.umbral_principal:
-            resultado['decision'] = 'combinado'
-            resultado['justificacion'] = f'Combinado ≥ {self.umbral_principal:.0%} → MANTENER'
-            resultado['picks_seleccionados'] = mejor_combinacion['picks']
-        
-        # Caso 2: prob_combinada < 45% → REEMPLAZAR por mejor simple
-        elif prob_combinada < self.umbral_comparacion:
-            resultado['decision'] = 'mejor_simple'
-            resultado['justificacion'] = f'Combinado < {self.umbral_comparacion:.0%} → usar mejor simple: {mejor_simple["mercado"]} ({mejor_simple["prob"]:.0%})'
-            resultado['picks_seleccionados'] = [mejor_simple]
-        
-        # Caso 3: prob_combinada entre 45% y 50% → COMPARAR y elegir el mayor
-        else:
-            # Comparar valor esperado si hay odds
-            if mejor_combinacion['ev_combinado'] is not None and mejor_combinacion['ev_simple'] is not None:
-                if mejor_combinacion['ev_combinado'] > mejor_combinacion['ev_simple']:
-                    resultado['decision'] = 'combinado'
-                    resultado['justificacion'] = f'Zona gris: mejor EV combinado ({mejor_combinacion["ev_combinado"]:.2%} vs {mejor_combinacion["ev_simple"]:.2%})'
-                    resultado['picks_seleccionados'] = mejor_combinacion['picks']
-                else:
-                    resultado['decision'] = 'mejor_simple'
-                    resultado['justificacion'] = f'Zona gris: mejor EV simple ({mejor_combinacion["ev_simple"]:.2%} vs {mejor_combinacion["ev_combinado"]:.2%})'
-                    resultado['picks_seleccionados'] = [mejor_simple]
+        # =====================================================================
+        # REGLA 4 - Mejor Over (cuando no hay favorito claro)
+        # =====================================================================
+        if home_win < self.umbral_favorito and away_win < self.umbral_favorito:
+            overs = [
+                ('Over 1.5', markets['overs']['over1_5']),
+                ('Over 2.5', markets['overs']['over2_5']),
+                ('Over 3.5', markets['overs']['over3_5'])
+            ]
+            
+            overs_validos = [(nombre, prob) for nombre, prob in overs if prob > self.umbral_over]
+            
+            if overs_validos:
+                # Elegir el más cercano a 55%
+                mejor_over = min(overs_validos, key=lambda x: abs(x[1] - self.objetivo_over))
+                picks.append({
+                    'nivel': 4,
+                    'mercado': mejor_over[0],
+                    'prob': mejor_over[1],
+                    'justificacion': f'Regla 4: {mejor_over[0]} más cercano a 55%'
+                })
             else:
-                # Sin odds, elegir el de mayor probabilidad
-                if prob_combinada > mejor_simple['prob']:
-                    resultado['decision'] = 'combinado'
-                    resultado['justificacion'] = f'Zona gris: prob combinada > mejor simple ({prob_combinada:.2%} vs {mejor_simple["prob"]:.2%})'
-                    resultado['picks_seleccionados'] = mejor_combinacion['picks']
-                else:
-                    resultado['decision'] = 'mejor_simple'
-                    resultado['justificacion'] = f'Zona gris: mejor simple tiene mayor prob ({mejor_simple["prob"]:.2%} vs {prob_combinada:.2%})'
-                    resultado['picks_seleccionados'] = [mejor_simple]
+                mejor_over = max(overs, key=lambda x: x[1])
+                picks.append({
+                    'nivel': 4,
+                    'mercado': mejor_over[0],
+                    'prob': mejor_over[1],
+                    'justificacion': f'Regla 4: {mejor_over[0]} (ninguno >55%)'
+                })
+            
+            return picks
         
-        return resultado
-    
-    def construir_parlay_por_partido(self, partidos_con_picks):
-        """
-        Construye parlay aplicando Regla 6 a cada partido individualmente
-        
-        Args:
-            partidos_con_picks: Dict con partido como key y lista de picks como value
-                               ej: {'Tottenham vs Arsenal': [pick1, pick2, ...]}
-        
-        Returns:
-            Lista de picks seleccionados (uno por partido)
-        """
-        picks_finales = []
-        
-        for partido, picks in partidos_con_picks.items():
-            if len(picks) == 1:
-                picks_finales.append(picks[0])
-                print(f"📌 {partido}: 1 pick → {picks[0]['mercado']} ({picks[0]['prob']:.0%})")
+        # =====================================================================
+        # REGLA 5 - Favorito Local (>50%) + Mejor Over
+        # =====================================================================
+        if home_win > self.umbral_favorito and away_win < self.umbral_underdog:
+            picks.append({
+                'nivel': 5,
+                'mercado': f'Gana {home}',
+                'prob': home_win,
+                'justificacion': f'Regla 5: Favorito Local = {home_win:.1%}'
+            })
+            
+            # Buscar mejor Over
+            overs = [
+                ('Over 1.5', markets['overs']['over1_5']),
+                ('Over 2.5', markets['overs']['over2_5']),
+                ('Over 3.5', markets['overs']['over3_5'])
+            ]
+            overs_validos = [(nombre, prob) for nombre, prob in overs if prob > self.umbral_over]
+            
+            if overs_validos:
+                mejor_over = min(overs_validos, key=lambda x: abs(x[1] - self.objetivo_over))
             else:
-                resultado = self.evaluar_combinacion_mismo_partido(picks)
-                if resultado['decision'] == 'combinado':
-                    picks_combinados = resultado['picks_seleccionados']
-                    prob_combinada = resultado['prob_combinada']
-                    print(f"📌 {partido}: COMBINADO ({len(picks_combinados)} picks) → prob: {prob_combinada:.2%}")
-                    for pick in picks_combinados:
-                        print(f"      - {pick['mercado']} ({pick['prob']:.0%})")
-                    # Para el parlay final, consideramos esto como UNA selección
-                    picks_finales.append({
-                        'partido': partido,
-                        'tipo': 'combinado',
-                        'picks': picks_combinados,
-                        'prob': prob_combinada,
-                        'justificacion': resultado['justificacion']
-                    })
-                else:
-                    pick_elegido = resultado['picks_seleccionados'][0]
-                    print(f"📌 {partido}: MEJOR SIMPLE → {pick_elegido['mercado']} ({pick_elegido['prob']:.0%})")
-                    picks_finales.append(pick_elegido)
+                mejor_over = max(overs, key=lambda x: x[1])
+            
+            picks.append({
+                'nivel': 5,
+                'mercado': mejor_over[0],
+                'prob': mejor_over[1],
+                'justificacion': f'Regla 5: Over complementario'
+            })
+            
+            return picks
         
-        return picks_finales
-
-# Ejemplo de uso
-if __name__ == "__main__":
-    engine = ParlayReasoningEngine()
-    
-    print("🔍 PROBANDO REGLA 6 CORREGIDA (POR PARTIDO)")
-    print("=" * 70)
-    
-    # Ejemplo 1: Tottenham vs Arsenal con múltiples picks
-    partidos_ejemplo = {
-        'Tottenham vs Arsenal': [
-            {'partido': 'Tottenham vs Arsenal', 'mercado': 'Gana Tottenham', 'prob': 0.41, 'odds': 2.20},
-            {'partido': 'Tottenham vs Arsenal', 'mercado': 'Over 1.5', 'prob': 0.53, 'odds': 1.85},
-            {'partido': 'Tottenham vs Arsenal', 'mercado': 'BTTS Sí', 'prob': 0.48, 'odds': 2.10}
-        ],
-        'Liverpool vs United': [
-            {'partido': 'Liverpool vs United', 'mercado': 'BTTS Sí', 'prob': 0.52, 'odds': 1.90},
-            {'partido': 'Liverpool vs United', 'mercado': 'Over 2.5', 'prob': 0.55, 'odds': 1.88}
-        ],
-        'Real Madrid vs Barcelona': [
-            {'partido': 'Real Madrid vs Barcelona', 'mercado': 'Gana Real Madrid', 'prob': 0.48, 'odds': 2.10}
+        # =====================================================================
+        # REGLA 6 - Favorito Visitante (>50%) + Mejor Over
+        # =====================================================================
+        if away_win > self.umbral_favorito and home_win < self.umbral_underdog:
+            picks.append({
+                'nivel': 6,
+                'mercado': f'Gana {away}',
+                'prob': away_win,
+                'justificacion': f'Regla 6: Favorito Visitante = {away_win:.1%}'
+            })
+            
+            overs = [
+                ('Over 1.5', markets['overs']['over1_5']),
+                ('Over 2.5', markets['overs']['over2_5']),
+                ('Over 3.5', markets['overs']['over3_5'])
+            ]
+            overs_validos = [(nombre, prob) for nombre, prob in overs if prob > self.umbral_over]
+            
+            if overs_validos:
+                mejor_over = min(overs_validos, key=lambda x: abs(x[1] - self.objetivo_over))
+            else:
+                mejor_over = max(overs, key=lambda x: x[1])
+            
+            picks.append({
+                'nivel': 6,
+                'mercado': mejor_over[0],
+                'prob': mejor_over[1],
+                'justificacion': f'Regla 6: Over complementario'
+            })
+            
+            return picks
+        
+        # =====================================================================
+        # REGLA 7 - Default (mejor Over)
+        # =====================================================================
+        overs = [
+            ('Over 1.5', markets['overs']['over1_5']),
+            ('Over 2.5', markets['overs']['over2_5']),
+            ('Over 3.5', markets['overs']['over3_5'])
         ]
-    }
+        mejor_over = max(overs, key=lambda x: x[1])
+        picks.append({
+            'nivel': 7,
+            'mercado': mejor_over[0],
+            'prob': mejor_over[1],
+            'justificacion': f'Regla 7: Default = {mejor_over[0]}'
+        })
+        
+        return picks
     
-    print("\n📊 ANALIZANDO PARTIDOS:")
-    print("-" * 70)
-    
-    picks_finales = engine.construir_parlay_por_partido(partidos_ejemplo)
-    
-    print("\n" + "=" * 70)
-    print("🎯 PARLAY FINAL (1 pick por partido):")
-    print("-" * 70)
-    
-    for pick in picks_finales:
-        if pick.get('tipo') == 'combinado':
-            print(f"📦 {pick['partido']}: COMBINADO")
-            for p in pick['picks']:
-                print(f"      - {p['mercado']} ({p['prob']:.0%})")
-            print(f"      Prob total: {pick['prob']:.2%}")
-        else:
-            print(f"🎯 {pick['partido']}: {pick['mercado']} ({pick['prob']:.0%})")
-    
-    # Calcular probabilidad total del parlay
-    prob_parlay = np.prod([p['prob'] if 'prob' in p else p.get('prob_combinada', 1) for p in picks_finales])
-    print(f"\n📊 PROBABILIDAD TOTAL PARLAY: {prob_parlay:.2%}")
+    def validar_combinacion(self, picks_partido):
+        """
+        REGLA 7 - Validación de combinados
+        Si la probabilidad combinada < 50%, reemplazar por el mejor pick simple
+        """
+        if len(picks_partido) != 2:
+            return picks_partido
+        
+        prob_combinada = picks_partido[0]['prob'] * picks_partido[1]['prob']
+        
+        if prob_combinada < self.umbral_combinado:
+            mejor_pick = max(picks_partido, key=lambda x: x['prob'])
+            return [mejor_pick]
+        
+        return picks_partido

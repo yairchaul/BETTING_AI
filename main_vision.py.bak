@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -17,6 +17,7 @@ from modules.smart_betting_ai import SmartBettingAI
 from modules.advanced_market_reasoning import AdvancedMarketReasoning
 from modules.parlay_generator import build_parlay
 from modules.diversification_engine import diversify_picks
+from modules.parlay_reasoning_engine import ParlayReasoningEngine  # NUEVO: Motor de Regla 6
 
 st.set_page_config(page_title="Analizador Profesional de Apuestas", layout="wide")
 
@@ -154,19 +155,7 @@ def calculate_risk_factors(team_name):
             'recent_form': [1, 1, 0, 1, 0, 1, 0, 1, 0, 1],
             'consecutive_games': 4,
             'high_pressure': True
-        },
-        'Cienciano': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Club Sportivo Cienciano': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Melgar': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'FBC Melgar': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'America de Cali': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Club América': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Atletico Bucaramanga': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Bucaramanga': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Orense SC': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Orense': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Macara': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
-        'Macará': {'red_cards_last_10': 1, 'key_injuries': [], 'recent_form': [1,0,1,0,1], 'consecutive_games': 2, 'high_pressure': False},
+        }
     }
     
     default = {
@@ -233,10 +222,10 @@ def find_best_over(additional_markets):
         ('Over 2.5', additional_markets['over_2_5']),
         ('Over 3.5', additional_markets['over_3_5'])
     ]
-    valid_overs = [(name, 50
+    valid_overs = [(name, prob) for name, prob in overs if prob > 0.55]
     
     if valid_overs:
-        return min(valid_overs, key=lambda x: abs(x[1] - 0.50))
+        return min(valid_overs, key=lambda x: abs(x[1] - 0.55))
     else:
         return max(overs, key=lambda x: x[1])
 
@@ -252,37 +241,6 @@ def find_best_simple_market(additional_markets, probs_1x2, home, away):
     ]
     return max(markets, key=lambda x: x[1])
 
-def evaluar_combinado(prob_combinada, prob_mejor_simple, nombre_combinado, nombre_simple):
-    if 50
-        return {
-            'decision': 'mantener_combinado',
-            'probabilidad': prob_combinada,
-            'justificacion': f'✅ NIVEL A: Combinado óptimo ({50)',
-            'pick': nombre_combinado
-        }
-    elif prob_combinada >= 0.45:
-        if prob_combinada >= prob_mejor_simple:
-            return {
-                'decision': 'mantener_combinado',
-                'probabilidad': prob_combinada,
-                'justificacion': f'⚖️ NIVEL B: Combinado ({prob_combinada:.1%}) vs Simple ({prob_mejor_simple:.1%}) - Gana combinado',
-                'pick': nombre_combinado
-            }
-        else:
-            return {
-                'decision': 'usar_simple',
-                'probabilidad': prob_mejor_simple,
-                'justificacion': f'⚖️ NIVEL B: Simple ({prob_mejor_simple:.1%}) supera combinado ({prob_combinada:.1%})',
-                'pick': nombre_simple
-            }
-    else:
-        return {
-            'decision': 'usar_simple',
-            'probabilidad': prob_mejor_simple,
-            'justificacion': f'❌ NIVEL C: Combinado muy bajo ({prob_combinada:.1%} < 45%)',
-            'pick': nombre_simple
-        }
-
 def select_parlay_picks(additional_markets, probs_1x2, home, away):
     home_win = probs_1x2['home']
     away_win = probs_1x2['away']
@@ -291,7 +249,7 @@ def select_parlay_picks(additional_markets, probs_1x2, home, away):
     
     picks = []
     
-    if over_1_5_1t > 0.60:
+    if over_1_5_1t > 0.50:  # Cambiado de 60% a 50%
         picks.append({
             'market': 'Over 1.5 1T',
             'prob': over_1_5_1t,
@@ -300,7 +258,7 @@ def select_parlay_picks(additional_markets, probs_1x2, home, away):
         })
         return picks
     
-    if btts > 0.60:
+    if btts > 0.50:  # Cambiado de 60% a 50%
         picks.append({
             'market': 'BTTS Sí',
             'prob': btts,
@@ -392,7 +350,8 @@ def init_components():
         'data_provider': HybridDataProvider(),
         'betting_ai': SmartBettingAI(league_avg_goals=2.6),
         'market_reasoning': AdvancedMarketReasoning(),
-        'tracker': ParlayTracker()
+        'tracker': ParlayTracker(),
+        'reasoning_engine': ParlayReasoningEngine(umbral_principal=0.50)  # NUEVO: Motor de Regla 6
     }
 
 # =============================================================================
@@ -400,7 +359,7 @@ def init_components():
 # =============================================================================
 def main():
     st.title("🎯 Analizador Profesional de Apuestas")
-    st.markdown("**Sistema con REGLA 6 - 3 Niveles de Comparación**")
+    st.markdown("**Sistema con REGLA 6 - Umbral 50%**")
 
     components = init_components()
 
@@ -416,7 +375,7 @@ def main():
         st.metric("Ganados", stats['ganados'])
         st.metric("Perdidos", stats['perdidos'])
         st.metric("Win Rate", f"{stats['win_rate']:.1f}%")
-        st.metric("Profit total", f"")
+        st.metric("Profit total", f"${stats['profit_total']:.2f}")
         
         if st.button("🔄 Verificar resultados"):
             components['tracker'].check_results()
@@ -537,75 +496,39 @@ def main():
                         })
 
             # =========================================================================
-            # PARLAY RECOMENDADO CON REGLA 6
+            # PARLAY RECOMENDADO CON REGLA 6 (USANDO EL NUEVO MOTOR)
             # =========================================================================
             if len(all_parlay_picks) >= 2:
                 st.divider()
                 st.subheader("🎯 PARLAY RECOMENDADO")
                 
-                # Agrupar picks por partido
-                partidos_agrupados = {}
+                # Agrupar picks por partido para aplicar Regla 6
+                partidos_con_picks = {}
                 for pick in all_parlay_picks:
-                    key = pick['match']
-                    if key not in partidos_agrupados:
-                        partidos_agrupados[key] = {'picks': []}
-                    partidos_agrupados[key]['picks'].append(pick)
+                    match_key = pick['match']
+                    if match_key not in partidos_con_picks:
+                        partidos_con_picks[match_key] = []
+                    partidos_con_picks[match_key].append(pick)
                 
-                # Aplicar REGLA 6 a cada partido con múltiples picks
-                picks_finales = []
+                # Usar el motor de razonamiento para aplicar Regla 6
+                picks_finales = components['reasoning_engine'].construir_parlay_por_partido(partidos_con_picks)
                 
-                for match, data in partidos_agrupados.items():
-                    if len(data['picks']) == 2:  # Es un combinado (Gana + Over)
-                        prob_combinada = data['picks'][0]['prob'] * data['picks'][1]['prob']
-                        
-                        # Buscar Over 2.5 si existe
-                        over_2_5_prob = 0
-                        mejor_simple = None
-                        for pick in data['picks']:
-                            if 'Over 2.5' in pick['market']:
-                                over_2_5_prob = pick['prob']
-                                mejor_simple = ('Over 2.5', over_2_5_prob)
-                                break
-                        
-                        if over_2_5_prob == 0:
-                            # Si no hay Over 2.5, tomar el de mayor probabilidad
-                            mejor_simple = max([(p['market'], p['prob']) for p in data['picks']], key=lambda x: x[1])
-                        
-                        # Evaluar según REGLA 6
-                        if 50
-                            picks_finales.extend(data['picks'])
-                        elif prob_combinada >= 0.45:
-                            if prob_combinada >= mejor_simple[1]:
-                                picks_finales.extend(data['picks'])
-                            else:
-                                picks_finales.append({
-                                    'match': match,
-                                    'market': mejor_simple[0],
-                                    'prob': mejor_simple[1],
-                                    'odds': 1/mejor_simple[1] * 0.95,
-                                    'ev': 0
-                                })
-                        else:
-                            picks_finales.append({
-                                'match': match,
-                                'market': mejor_simple[0],
-                                'prob': mejor_simple[1],
-                                'odds': 1/mejor_simple[1] * 0.95,
-                                'ev': 0
-                            })
-                    else:
-                        # Es un pick simple, mantenerlo
-                        picks_finales.extend(data['picks'])
-                
-                # Mostrar picks finales después de aplicar REGLA 6
+                # Mostrar picks finales
                 st.markdown("### 🎯 SELECCIONES FINALES")
                 total_prob = 1.0
                 total_odds = 1.0
                 
                 for pick in picks_finales:
-                    st.markdown(f"• {pick['match']}: **{pick['market']}** ({pick['prob']:.1%})")
-                    total_prob *= pick['prob']
-                    total_odds *= pick['odds']
+                    if pick.get('tipo') == 'combinado':
+                        st.markdown(f"📦 {pick['partido']}: **COMBINADO**")
+                        for p in pick['picks']:
+                            st.markdown(f"   - {p['market']} ({p['prob']:.1%})")
+                            total_prob *= p['prob']
+                            total_odds *= p['odds']
+                    else:
+                        st.markdown(f"• {pick['match']}: **{pick['market']}** ({pick['prob']:.1%})")
+                        total_prob *= pick['prob']
+                        total_odds *= pick['odds']
                 
                 ev_total = (total_prob * total_odds) - 1
                 
@@ -624,15 +547,15 @@ def main():
                     if cuota > 1:
                         kelly = ev_total / (cuota - 1) * 0.25
                         stake = min(kelly * bankroll, bankroll * 0.1)
-                        st.success(f"💰 Stake sugerido: ")
+                        st.success(f"💰 Stake sugerido: ${stake:.2f}")
                         
                         if st.button("📝 Registrar este parlay"):
                             picks_guardar = []
                             for pick in picks_finales:
                                 picks_guardar.append({
-                                    'match': pick['match'],
-                                    'market': pick['market'],
-                                    'prob': pick['prob']
+                                    'match': pick.get('partido', pick.get('match', '')),
+                                    'market': pick.get('market', 'COMBINADO'),
+                                    'prob': pick.get('prob', 0)
                                 })
                             
                             components['tracker'].add_parlay(
