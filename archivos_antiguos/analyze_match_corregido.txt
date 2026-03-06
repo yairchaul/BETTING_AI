@@ -1,0 +1,120 @@
+﻿    def analyze_match(self, home_team, away_team, odds_dict):
+        """
+        Analiza un partido y calcula TODOS los mercados disponibles
+        VERSIÓN CORREGIDA - Datos DINÁMICOS por partido
+        """
+        try:
+            # Obtener odds en formato decimal
+            odds_decimal = odds_dict.get('decimal_odds', odds_dict.get('all_odds', [2.0, 3.2, 3.5]))
+            
+            # ============================================================================
+            # 1. OBTENER DATOS ESPECÍFICOS DE ESTOS EQUIPOS
+            # ============================================================================
+            home_stats = self.searcher.get_team_stats(home_team)
+            away_stats = self.searcher.get_team_stats(away_team)
+            
+            # Mostrar en consola para verificar (debug)
+            print(f"\n--- ANALIZANDO {home_team} vs {away_team} ---")
+            print(f"Stats {home_team}: {home_stats}")
+            print(f"Stats {away_team}: {away_stats}")
+            
+            # ============================================================================
+            # 2. CALCULAR FUERZAS ESPECÍFICAS DE ESTE PARTIDO
+            # ============================================================================
+            # Usar estadísticas reales si existen, sino promedios
+            home_attack = home_stats.get('avg_goals_scored', 1.2)
+            home_defense = home_stats.get('avg_goals_conceded', 1.2)
+            away_attack = away_stats.get('avg_goals_scored', 1.2)
+            away_defense = away_stats.get('avg_goals_conceded', 1.2)
+            
+            # Ajustar por localía
+            home_attack *= 1.1
+            home_defense *= 0.95
+            away_attack *= 0.95
+            away_defense *= 1.05
+            
+            # Calcular lambdas para Poisson (ÚNICOS para este partido)
+            lambda_home = home_attack * away_defense
+            lambda_away = away_attack * home_defense
+            
+            print(f"Lambdas: {lambda_home:.2f} - {lambda_away:.2f}")
+            
+            # ============================================================================
+            # 3. OBTENER PROBABILIDADES ELO (específicas)
+            # ============================================================================
+            elo_probs_dict = self.elo.get_win_probability(home_team, away_team)
+            elo_probs = {
+                'home': elo_probs_dict.get('home', 0.35),
+                'draw': elo_probs_dict.get('draw', 0.30),
+                'away': elo_probs_dict.get('away', 0.35)
+            }
+            
+            # ============================================================================
+            # 4. ANALIZAR TODOS LOS MERCADOS CON DATOS ESPECÍFICOS
+            # ============================================================================
+            all_markets, goal_dist = self.market_analyzer.analyze_match(
+                home_team, away_team,
+                lambda_home, lambda_away,
+                elo_probs
+            )
+            
+            # ============================================================================
+            # 5. CALcular estadísticas de Monte Carlo (específicas)
+            # ============================================================================
+            total_goals_dist = goal_dist['total']
+            avg_goals = sum(t * prob for t, prob in total_goals_dist.items())
+            
+            mc_stats = {
+                'avg_goals': avg_goals,
+                'std_goals': np.sqrt(avg_goals),  # Aproximación Poisson
+                'btts': next((m['prob'] for m in all_markets if m['name'] == 'BTTS - Sí'), 0.5),
+                'over_1_5': next((m['prob'] for m in all_markets if m['name'] == 'Over 1.5'), 0.7),
+                'over_2_5': next((m['prob'] for m in all_markets if m['name'] == 'Over 2.5'), 0.5),
+                'over_3_5': next((m['prob'] for m in all_markets if m['name'] == 'Over 3.5'), 0.3),
+                'simulations': self.market_analyzer.simulations
+            }
+            
+            # ============================================================================
+            # 6. ENCONTRAR MEJOR OPCIÓN
+            # ============================================================================
+            # Filtrar probabilidades válidas (entre 0 y 1)
+            valid_markets = [m for m in all_markets if 0 <= m['prob'] <= 1]
+            best_market = max(valid_markets, key=lambda x: x['prob']) if valid_markets else all_markets[0]
+            
+            print(f"Mejor opción: {best_market['name']} ({best_market['prob']:.1%})")
+            
+            # ============================================================================
+            # 7. DETECTAR LIGA
+            # ============================================================================
+            league = "Desconocida"
+            try:
+                # Intentar obtener liga del conocimiento local
+                if hasattr(self.knowledge, 'detect_league'):
+                    league = self.knowledge.detect_league(home_team, away_team) or "Desconocida"
+                else:
+                    # Fallback: buscar en mapeo de ligas
+                    ligas_mx = ['Puebla', 'Tigres', 'América', 'Chivas', 'Monterrey', 'Atlas']
+                    if any(eq in home_team for eq in ligas_mx) or any(eq in away_team for eq in ligas_mx):
+                        league = "Liga MX"
+            except:
+                pass
+            
+            return {
+                'home_team': home_team,
+                'away_team': away_team,
+                'liga': league,
+                'final_probs': [elo_probs['home'], elo_probs['draw'], elo_probs['away']],
+                'mc_stats': mc_stats,
+                'markets': all_markets,
+                'best_market': best_market,
+                'total_markets': len(all_markets),
+                'team_stats': {'home': home_stats, 'away': away_stats},
+                'lambda_home': lambda_home,
+                'lambda_away': lambda_away
+            }
+            
+        except Exception as e:
+            st.error(f"Error en analyze_match: {e}")
+            import traceback
+            traceback.print_exc()
+            return self._get_default_analysis(home_team, away_team)

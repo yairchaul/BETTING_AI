@@ -1,7 +1,11 @@
-﻿streamlit
+pillow
 pandas
 numpy
 requests
-pytesseract
-pillow
-beautifulsoup4
+google-cloud-vision
+streamlit
+opencv-python
+python-dotenv
+matplotlib
+seaborn
+scipy
