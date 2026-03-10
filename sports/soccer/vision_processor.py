@@ -1,32 +1,45 @@
 ﻿import streamlit as st
-import re
+import pandas as pd
 
 class SoccerVisionProcessor:
-    # Procesador visual específico para capturas de fútbol
-    
-    def process_matches(self, lines):
+    def process_soccer(self, raw_lines):
+        """Procesa líneas de fútbol y estructura partidos"""
         matches = []
-        i = 0
-        while i < len(lines) - 2:
-            # Buscar patrón: Local, odds_local, empate, odds_empate, visitante, odds_visitante
-            # Ejemplo: "Galatasaray +350 Empate +295 Liverpool -139"
-            line = lines[i]
-            parts = line.split()
+        for line in raw_lines:
+            # Buscar "Empate" para identificar el formato
+            empate_index = -1
+            for i, word in enumerate(line):
+                if word == "Empate":
+                    empate_index = i
+                    break
             
-            if len(parts) >= 6 and 'Empate' in line:
-                try:
-                    local_idx = 0
-                    empate_idx = parts.index('Empate') if 'Empate' in parts else -1
-                    
-                    if empate_idx > 0:
-                        match = {
-                            'home': ' '.join(parts[:empate_idx-1]),
-                            'odds_home': parts[empate_idx-1],
-                            'away': ' '.join(parts[empate_idx+2:]),
-                            'odds_away': parts[-1]
-                        }
-                        matches.append(match)
-                except:
-                    pass
-            i += 1
+            if empate_index > 0 and len(line) >= empate_index + 3:
+                home = " ".join(line[:empate_index-1])
+                home_odd = line[empate_index-1]
+                away = " ".join(line[empate_index+2:-1])
+                away_odd = line[-1]
+                draw_odd = line[empate_index+1]
+                
+                matches.append({
+                    'home': home,
+                    'odd_h': home_odd,
+                    'draw_odd': draw_odd,
+                    'away': away,
+                    'odd_a': away_odd
+                })
         return matches
+
+    def render_soccer_matches(self, matches):
+        if not matches:
+            st.error("❌ No se detectaron partidos")
+            return
+        
+        st.success(f"✅ {len(matches)} partidos detectados")
+        for i, m in enumerate(matches):
+            with st.expander(f"**⚽ {m['home']} vs {m['away']}**", expanded=(i == 0)):
+                df = pd.DataFrame({
+                    '': ['LOCAL', 'EMPATE', 'VISITANTE'],
+                    'EQUIPO': [m['home'], 'Empate', m['away']],
+                    'CUOTA': [m['odd_h'], m['draw_odd'], m['odd_a']]
+                })
+                st.table(df.set_index(''))

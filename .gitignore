@@ -3,26 +3,31 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Carpetas obsoletas
-.devcontainer/
-archivos_prueba_marzo2026/
-archivos_viejos/
-n8n_data/
-modules/
-core/
-BETTING_AI/
-
-# Archivos de respaldo
-*.bak
-*.backup
-*.jar
-*.log
-test_*.py
+*.so
+*.dll
 
 # Streamlit secrets
 .streamlit/secrets.toml
+secrets.toml
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (opcional, comenta si quieres subir datos)
+# data/
+*.json
+!requirements.txt
