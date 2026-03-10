@@ -8,6 +8,9 @@ from sports.soccer.processor import SoccerProcessor
 from stats_engine import StatsEngine
 from rule_engine import RuleEngine
 from evento import Evento
+from visual_futbol import VisualFutbol
+from visual_nba import VisualNBA
+from visual_ufc import VisualUFC
 
 st.set_page_config(page_title='BETTING_AI - Motor de Apuestas', page_icon='🎯', layout='wide')
 
@@ -48,22 +51,27 @@ def main():
     
     # Inicializar motores
     stats_engine = StatsEngine()
-    rule_engine = RuleEngine()
     
-    # Obtener procesador según deporte
-    procesadores = {
-        '⚽ Fútbol': SoccerProcessor(),
-        '�� NBA': NBAProcessor(),
-        '🥊 UFC': UFCProcessor()
+    # Inicializar visuales
+    visual_futbol = VisualFutbol()
+    visual_nba = VisualNBA()
+    visual_ufc = VisualUFC()
+    
+    # Mapeo de deportes
+    deporte_map = {
+        '⚽ Fútbol': 'FUTBOL',
+        '🏀 NBA': 'NBA',
+        '🥊 UFC': 'UFC'
     }
     
     with st.sidebar:
         st.header('⚙️ Configuración')
-        deporte = st.radio(
+        deporte_seleccionado = st.radio(
             'Selecciona deporte',
             ['⚽ Fútbol', '🏀 NBA', '🥊 UFC'],
             index=0
         )
+        deporte = deporte_map[deporte_seleccionado]
         
         st.divider()
         st.header('📊 Estadísticas')
@@ -73,7 +81,7 @@ def main():
             tracker.clear_picks()
             st.rerun()
     
-    st.header(f"📸 Sube tu captura de {deporte}")
+    st.header(f"📸 Sube tu captura de {deporte_seleccionado}")
     uploaded = st.file_uploader(
         "Selecciona una imagen",
         type=['png','jpg','jpeg'],
@@ -84,11 +92,15 @@ def main():
         st.image(uploaded, caption='Captura subida', use_container_width=True)
         
         with st.spinner(f'🔍 Analizando imagen...'):
-            # PASO 1: Extraer texto de la imagen
             raw_lines = vision.process_image(uploaded.getvalue())
             
-            # PASO 2: Normalización - convertir a Eventos
-            processor = procesadores[deporte]
+            if deporte == 'FUTBOL':
+                processor = SoccerProcessor()
+            elif deporte == 'NBA':
+                processor = NBAProcessor()
+            elif deporte == 'UFC':
+                processor = UFCProcessor()
+            
             eventos = processor.process(raw_lines)
             
             if not eventos:
@@ -97,52 +109,18 @@ def main():
             
             st.success(f"✅ {len(eventos)} eventos detectados")
             
-            # PASO 3: Enriquecimiento - calcular probabilidades reales
-            for evento in eventos:
+            for idx, evento in enumerate(eventos):
+                evento.deporte = deporte
                 evento = stats_engine.enriquecer(evento)
                 
-                # Mostrar cada evento
-                with st.expander(f"**{evento.local} vs {evento.visitante}**"):
-                    # Mostrar odds originales
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Local", evento.odds.get('local', 'N/A'))
-                    with col2:
-                        st.metric("Empate", evento.odds.get('draw', 'N/A'))
-                    with col3:
-                        st.metric("Visitante", evento.odds.get('visitante', 'N/A'))
-                    
-                    # Mostrar mercados calculados
-                    if evento.mercados:
-                        st.markdown("**📊 Probabilidades calculadas:**")
-                        cols = st.columns(3)
-                        items = list(evento.mercados.items())[:6]
-                        for i, (k, v) in enumerate(items):
-                            with cols[i % 3]:
-                                if isinstance(v, float):
-                                    st.metric(k.replace('_', ' ').title(), f"{v:.1%}")
-                    
-                    # PASO 4: Aplicar reglas
-                    picks = rule_engine.ejecutar(evento)
-                    
-                    if picks:
-                        st.markdown("**🎯 Picks según reglas:**")
-                        for pick in picks:
-                            st.info(f"Nivel {pick['nivel']}: **{pick['mercado']}** ({pick['prob']:.1%})")
-                            
-                            if st.button(f"➕ Agregar", key=f"add_{evento.local}_{pick['nivel']}"):
-                                tracker.add_pick(
-                                    f"{evento.local} vs {evento.visitante}",
-                                    pick['mercado'],
-                                    pick['prob'],
-                                    pick['nivel'],
-                                    evento.deporte
-                                )
-                                st.rerun()
-                    else:
-                        st.warning("No se generaron picks para este evento")
+                # Usar el visual correspondiente
+                if deporte == 'FUTBOL':
+                    visual_futbol.render(evento, idx, tracker)
+                elif deporte == 'NBA':
+                    visual_nba.render(evento, idx, tracker)
+                elif deporte == 'UFC':
+                    visual_ufc.render(evento, idx, tracker)
     
-    # Parlay
     if tracker.current_picks:
         st.divider()
         st.header('🎯 Parlay en construcción')
