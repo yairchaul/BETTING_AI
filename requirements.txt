@@ -1,11 +1,9 @@
-pillow
+﻿pip>=26.0.1
+streamlit
+altair
 pandas
 numpy
-requests
-google-cloud-vision
-streamlit
-opencv-python
+pillow
 python-dotenv
-matplotlib
-seaborn
-scipy
+requests
+protobuf

@@ -1,7 +1,0 @@
-﻿streamlit
-pandas
-numpy
-requests
-pytesseract
-pillow
-beautifulsoup4
