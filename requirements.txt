@@ -3,3 +3,5 @@ pandas
 numpy
 requests
 python-dotenv
+lxml
+html5lib

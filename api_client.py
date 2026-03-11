@@ -1,76 +1,179 @@
 ﻿"""
-Cliente API Unificado - Obtiene TODOS los partidos del día
+Cliente API Definitivo - Con nombres correctos y caché
 """
 import requests
 import os
-import re
+import json
 from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
+from ufc_scraper_dinamico import UFCDynamicScraper
 
 class OddsAPIClient:
     def __init__(self):
         self.api_key = os.getenv("ODDS_API_KEY", "98ccdb7d4c28042caa8bc8fe7ff6cc62")
         self.base_url = "https://api.the-odds-api.com/v4"
-        self.espn_url = "https://www.espn.com.mx/mma/calendario"
-        self.headers = {'User-Agent': 'Mozilla/5.0'}
-        print("🔑 API Cliente Inicializado")
+        self.ufc_scraper = UFCDynamicScraper()
+        self.cache_dir = "api_cache"
+        self.cache_duracion_horas = 6  # Cache de 6 horas para no abusar
+        
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+        
+        # ========================================
+        # 🏆 NOMBRES OFICIALES DE LIGAS (VERIFICADOS)
+        # ========================================
+        self.leagues = [
+            # MÉXICO
+            'soccer_mexico_liga_mx',
+            'soccer_mexico_liga_de_expansion_mx',
+            
+            # UEFA
+            'soccer_uefa_champions_league',
+            'soccer_uefa_europa_league',
+            
+            # TOP 5 (Nombres correctos)
+            'soccer_spain_la_liga',
+            'soccer_england_premier_league',     # ✅ CORRECTO (NO epl)
+            'soccer_germany_bundesliga',
+            'soccer_italy_serie_a',
+            'soccer_france_ligue_1',              # ✅ CORRECTO (NO ligue_one)
+            
+            # OTRAS
+            'soccer_netherlands_eredivisie',
+            'soccer_portugal_primeira_liga',
+            'soccer_belgium_first_div',
+            'soccer_turkey_super_league',
+            
+            # NBA
+            'basketball_nba'
+        ]
+        print(f"🔑 API Cliente Inicializado - {len(self.leagues)} ligas")
+
+    def _get_cache_path(self, league):
+        """Obtiene ruta de caché para una liga"""
+        return os.path.join(self.cache_dir, f"{league.replace('/', '_')}.json")
+
+    def _cargar_desde_cache(self, league):
+        """Carga datos desde caché si son recientes"""
+        cache_path = self._get_cache_path(league)
+        if os.path.exists(cache_path):
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            timestamp = datetime.fromisoformat(data['timestamp'])
+            if datetime.now() - timestamp < timedelta(hours=self.cache_duracion_horas):
+                print(f"📦 Cargando {league} desde caché")
+                return data['partidos']
+        return None
+
+    def _guardar_en_cache(self, league, partidos):
+        """Guarda datos en caché"""
+        cache_path = self._get_cache_path(league)
+        data = {
+            'timestamp': datetime.now().isoformat(),
+            'partidos': partidos
+        }
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
 
     def get_partidos_futbol(self) -> List[Dict]:
-        """Obtiene TODOS los partidos de fútbol de HOY"""
-        url = f"{self.base_url}/sports/soccer/odds"
-        params = {
-            "apiKey": self.api_key,
-            "regions": "mx,us,uk,eu,au",  # MÁS REGIONES = MÁS PARTIDOS
-            "markets": "h2h",
-            "oddsFormat": "decimal"
-        }
+        """Obtiene partidos usando caché para no agotar API"""
+        todos_partidos = []
         
-        try:
-            response = requests.get(url, params=params, timeout=15)
-            if response.status_code == 200:
-                data = response.json()
-                print(f"✅ {len(data)} partidos de fútbol encontrados")
+        for league in self.leagues:
+            if 'soccer' not in league:
+                continue
+            
+            # Intentar cargar desde caché
+            partidos_cache = self._cargar_desde_cache(league)
+            if partidos_cache is not None:
+                todos_partidos.extend(partidos_cache)
+                continue
+            
+            # Si no hay caché, llamar a API
+            url = f"{self.base_url}/sports/{league}/odds"
+            params = {
+                "apiKey": self.api_key,
+                "regions": "us,eu",  # USA y Europa = máxima cobertura
+                "markets": "h2h",
+                "oddsFormat": "decimal"
+            }
+            
+            try:
+                print(f"📡 Consultando {league}...")
+                response = requests.get(url, params=params, timeout=10)
                 
-                partidos = []
-                for item in data:
-                    if not item.get('bookmakers'):
-                        continue
-                    bookmaker = item['bookmakers'][0]
-                    odds_dict = {}
-                    for market in bookmaker['markets']:
-                        if market['key'] == 'h2h':
-                            for outcome in market['outcomes']:
-                                odds_dict[outcome['name']] = outcome['price']
+                if response.status_code == 200:
+                    data = response.json()
+                    partidos_league = []
                     
-                    partidos.append({
-                        'liga': item['sport_title'],
-                        'local': item['home_team'],
-                        'visitante': item['away_team'],
-                        'odds_local': odds_dict.get(item['home_team'], 0),
-                        'odds_empate': odds_dict.get('Draw', 0),
-                        'odds_visitante': odds_dict.get(item['away_team'], 0),
-                    })
-                return partidos
-            else:
-                return self._get_simulated_futbol()
-        except:
-            return self._get_simulated_futbol()
+                    for item in data:
+                        if not item.get('bookmakers'):
+                            continue
+                        
+                        bookmaker = item['bookmakers'][0]
+                        odds_dict = {}
+                        for market in bookmaker['markets']:
+                            if market['key'] == 'h2h':
+                                for outcome in market['outcomes']:
+                                    odds_dict[outcome['name']] = outcome['price']
+                        
+                        league_name = league.replace('soccer_', '').replace('_', ' ').upper()
+                        
+                        partido = {
+                            'liga': league_name,
+                            'local': item['home_team'],
+                            'visitante': item['away_team'],
+                            'odds_local': odds_dict.get(item['home_team'], 0),
+                            'odds_empate': odds_dict.get('Draw', 0),
+                            'odds_visitante': odds_dict.get(item['away_team'], 0),
+                        }
+                        partidos_league.append(partido)
+                        todos_partidos.append(partido)
+                    
+                    # Guardar en caché
+                    self._guardar_en_cache(league, partidos_league)
+                    print(f"  ✅ {len(partidos_league)} partidos")
+                    
+                elif response.status_code == 401:
+                    print(f"❌ API Key inválida o expirada")
+                    return []
+                elif response.status_code == 429:
+                    print(f"❌ Límite de requests alcanzado - usando caché existente")
+                    # Si hay caché viejo, usarlo de emergencia
+                    if os.path.exists(self._get_cache_path(league)):
+                        with open(self._get_cache_path(league), 'r') as f:
+                            data = json.load(f)
+                            todos_partidos.extend(data['partidos'])
+                else:
+                    print(f"⚠️ Error {response.status_code} en {league}")
+                    
+            except Exception as e:
+                print(f"⚠️ Error en {league}: {e}")
+        
+        print(f"\n✅ TOTAL: {len(todos_partidos)} partidos de fútbol")
+        return todos_partidos
 
     def get_partidos_nba(self) -> List[Dict]:
-        """Obtiene TODOS los partidos de NBA de HOY"""
+        """Obtiene partidos de NBA"""
+        # Intentar caché primero
+        cache_nba = self._cargar_desde_cache('basketball_nba')
+        if cache_nba is not None:
+            return cache_nba
+        
         url = f"{self.base_url}/sports/basketball_nba/odds"
         params = {
             "apiKey": self.api_key,
-            "regions": "mx,us",
+            "regions": "us,eu",
             "markets": "h2h,spreads,totals",
             "oddsFormat": "decimal"
         }
         
         try:
-            response = requests.get(url, params=params, timeout=15)
+            response = requests.get(url, params=params, timeout=10)
+            
             if response.status_code == 200:
                 data = response.json()
-                print(f"✅ {len(data)} partidos de NBA encontrados")
+                print(f"✅ {len(data)} partidos de NBA")
                 
                 partidos = []
                 for item in data:
@@ -102,73 +205,19 @@ class OddsAPIClient:
                         'visitante': item['away_team'],
                         'odds': odds,
                     })
+                
+                # Guardar en caché
+                self._guardar_en_cache('basketball_nba', partidos)
                 return partidos
             else:
-                return self._get_simulated_nba()
+                return []
         except:
-            return self._get_simulated_nba()
-
-    def get_combates_ufc(self) -> List[Dict]:
-        """Obtiene TODOS los combates de UFC del calendario"""
+            return []
+    
+    def get_combates_ufc(self):
+        """Obtiene cartelera UFC completa"""
         try:
-            response = requests.get(self.espn_url, headers=self.headers, timeout=20)
-            if response.status_code != 200:
-                return self._get_simulated_ufc()
-            
-            html = response.text
-            combates = []
-            
-            # Extraer eventos
-            eventos = re.findall(r'<article[^>]*class="[^"]*EventCard[^"]*"[^>]*>(.*?)</article>', html, re.DOTALL)
-            
-            for evento in eventos[:3]:
-                nombre = re.search(r'<span[^>]*class="[^"]*EventName[^"]*"[^>]*>([^<]+)</span>', evento)
-                fecha = re.search(r'<span[^>]*class="[^"]*EventDate[^"]*"[^>]*>([^<]+)</span>', evento)
-                
-                event_name = nombre.group(1).strip() if nombre else "UFC Event"
-                event_date = fecha.group(1).strip() if fecha else "Próximamente"
-                
-                fights = re.findall(r'<div[^>]*class="[^"]*FightCard[^"]*"[^>]*>(.*?)</div>', evento, re.DOTALL)
-                
-                for i, fight in enumerate(fights[:8]):
-                    fighters = re.findall(r'<a[^>]*class="[^"]*FighterName[^"]*"[^>]*>([^<]+)</a>', fight)
-                    
-                    if len(fighters) >= 2:
-                        combates.append({
-                            'evento': event_name,
-                            'fecha': event_date,
-                            'tipo_tarjeta': 'Principal' if i < 4 else 'Preliminar',
-                            'peleador1': {'nombre': fighters[0].strip(), 'record': '0-0-0', 'pais': 'Desconocido'},
-                            'peleador2': {'nombre': fighters[1].strip(), 'record': '0-0-0', 'pais': 'Desconocido'}
-                        })
-            
-            return combates if combates else self._get_simulated_ufc()
+            combates = self.ufc_scraper.get_next_event()
+            return combates if combates else []
         except:
-            return self._get_simulated_ufc()
-
-    def _get_simulated_futbol(self):
-        return [
-            {'liga': 'UEFA Champions League', 'local': 'Real Madrid', 'visitante': 'Manchester City', 
-             'odds_local': 2.10, 'odds_empate': 3.40, 'odds_visitante': 3.20},
-            {'liga': 'UEFA Champions League', 'local': 'Liverpool', 'visitante': 'Arsenal', 
-             'odds_local': 1.95, 'odds_empate': 3.60, 'odds_visitante': 3.50},
-        ]
-    
-    def _get_simulated_nba(self):
-        return [
-            {'local': 'Cleveland Cavaliers', 'visitante': 'Orlando Magic', 'odds': {
-                'h2h': {'Cleveland Cavaliers': 1.67, 'Orlando Magic': 2.20},
-                'spreads': {'Cleveland Cavaliers': {'price': 1.91, 'point': -3.5}, 'Orlando Magic': {'price': 1.91, 'point': 3.5}},
-                'totals': {'Over': {'price': 1.90, 'point': 226.0}, 'Under': {'price': 1.90, 'point': 226.0}}
-            }}
-        ]
-    
-    def _get_simulated_ufc(self):
-        return [
-            {'evento': 'UFC Fight Night', 'fecha': '15 Mar 2026', 'tipo_tarjeta': 'Principal',
-             'peleador1': {'nombre': 'Josh Emmett', 'record': '19-6-0', 'pais': 'USA'},
-             'peleador2': {'nombre': 'Kevin Vallejos', 'record': '17-1-0', 'pais': 'Argentina'}},
-            {'evento': 'UFC Fight Night', 'fecha': '15 Mar 2026', 'tipo_tarjeta': 'Principal',
-             'peleador1': {'nombre': 'Amanda Lemos', 'record': '15-5-1', 'pais': 'Brasil'},
-             'peleador2': {'nombre': 'Gillian Robertson', 'record': '16-8-0', 'pais': 'Canadá'}},
-        ]
+            return []
