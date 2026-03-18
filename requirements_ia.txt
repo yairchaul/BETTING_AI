@@ -1,9 +1,0 @@
-﻿# IA y Gemini
-google-generativeai
-python-dotenv
-
-# Core
-streamlit
-pandas
-numpy
-requests
