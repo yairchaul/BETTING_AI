@@ -2,6 +2,8 @@
 requests
 pandas
 numpy
+plotly
 google-generativeai
 beautifulsoup4
 lxml
+python-dotenv

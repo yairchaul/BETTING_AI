@@ -38,3 +38,7 @@ backup_*/
 
 # Logs
 *.log
+
+# JSON data files (user generated)
+*.json
+!requirements.txt
