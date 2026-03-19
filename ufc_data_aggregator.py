@@ -1,5 +1,5 @@
 ﻿"""
-UFC DATA AGGREGATOR - PRIORIZA datos de ESPN, enriquece con dataset
+UFC DATA AGGREGATOR - Versión corregida
 """
 import streamlit as st
 from ufc_dataset_integrator import UFCDatasetIntegrator
@@ -30,52 +30,30 @@ class UFCDataAggregator:
             pass
         return {'wins': 0, 'losses': 0, 'draws': 0}
     
-    def get_fighter_data(self, fighter_name, espn_record=None):
+    def get_fighter_basic_data(self, fighter_name, espn_record=None):
         """
-        Obtiene datos del peleador:
-        - Usa récord de ESPN si está disponible
-        - Enriquece con datos físicos del dataset
+        Obtiene datos básicos del peleador
         """
         if fighter_name in self.cache:
             return self.cache[fighter_name]
         
-        # Obtener datos del dataset (altura, peso, estadísticas)
+        # Intentar obtener del dataset
         stats = self.dataset.get_fighter_stats(fighter_name)
         
-        # Crear datos base
+        # Usar récord de ESPN si está disponible
+        record = espn_record if espn_record else '0-0-0'
+        if stats and stats.get('record') and record == '0-0-0':
+            record = stats.get('record')
+        
         data = {
             'nombre': fighter_name,
-            'record': espn_record if espn_record else '0-0-0',
+            'record': record,
             'altura': stats.get('altura', 'N/A') if stats else 'N/A',
             'peso': stats.get('peso', 'N/A') if stats else 'N/A',
             'alcance': stats.get('alcance', 'N/A') if stats else 'N/A',
             'postura': stats.get('postura', 'Desconocida') if stats else 'Desconocida',
-            'record_dict': self._parse_record(espn_record if espn_record else '0-0-0')
+            'record_dict': self._parse_record(record)
         }
-        
-        # Añadir estadísticas de carrera si existen
-        if stats:
-            data['estadisticas_carrera'] = {
-                'sig_strikes_landed_per_min': stats.get('splm', 0),
-                'sig_strike_accuracy': stats.get('str_acc', 0),
-                'td_avg_per_15min': stats.get('td_avg', 0),
-                'td_accuracy': stats.get('td_acc', 0),
-                'td_defense': stats.get('td_def', 0),
-                'sub_avg_per_15min': stats.get('sub_avg', 0)
-            }
-        
-        # Obtener historial y estadísticas avanzadas
-        historial = self.dataset.get_fight_history(fighter_name)
-        if historial:
-            data['historial'] = historial
-        
-        win_stats = self.dataset.get_win_rate_stats(fighter_name)
-        if win_stats:
-            data['win_stats'] = win_stats
-        
-        adv_stats = self.dataset.get_fighter_advanced_stats(fighter_name)
-        if adv_stats:
-            data['advanced_stats'] = adv_stats
         
         self.cache[fighter_name] = data
         return data
@@ -83,10 +61,11 @@ class UFCDataAggregator:
     def get_fight_data(self, fighter1_name, fighter2_name, event_data=None):
         """
         Obtiene datos de ambos peleadores
-        - Usa récords de ESPN del evento
-        - Enriquece con datos del dataset
         """
-        # Buscar récords de ESPN en el evento
+        if not fighter1_name or not fighter2_name:
+            return None
+        
+        # Buscar récords de ESPN
         espn_record1 = None
         espn_record2 = None
         
@@ -95,14 +74,14 @@ class UFCDataAggregator:
                 p1 = fight.get('peleador1', {})
                 p2 = fight.get('peleador2', {})
                 
-                if fighter1_name in p1.get('nombre', '') or p1.get('nombre', '') in fighter1_name:
+                if fighter1_name.lower() in p1.get('nombre', '').lower() or p1.get('nombre', '').lower() in fighter1_name.lower():
                     espn_record1 = p1.get('record')
-                if fighter2_name in p2.get('nombre', '') or p2.get('nombre', '') in fighter2_name:
+                if fighter2_name.lower() in p2.get('nombre', '').lower() or p2.get('nombre', '').lower() in fighter2_name.lower():
                     espn_record2 = p2.get('record')
         
-        # Obtener datos combinados
-        p1_data = self.get_fighter_data(fighter1_name, espn_record1)
-        p2_data = self.get_fighter_data(fighter2_name, espn_record2)
+        # Obtener datos básicos
+        p1_data = self.get_fighter_basic_data(fighter1_name, espn_record1)
+        p2_data = self.get_fighter_basic_data(fighter2_name, espn_record2)
         
         return {
             'peleador1': p1_data,

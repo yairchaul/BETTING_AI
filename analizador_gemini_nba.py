@@ -1,5 +1,5 @@
 ﻿"""
-ANALIZADOR GEMINI NBA - Versión definitiva (87.5% precisión)
+ANALIZADOR GEMINI NBA - Versión corregida con clave apuesta
 """
 import google.generativeai as genai
 import json
@@ -13,6 +13,7 @@ class AnalizadorGeminiNBA:
         
         try:
             genai.configure(api_key=self.api_key)
+            # Usar modelo estable
             self.model = genai.GenerativeModel('models/gemini-2.5-flash')
             self.disponible = True
             print("✅ Gemini NBA conectado")
@@ -20,60 +21,59 @@ class AnalizadorGeminiNBA:
             st.warning(f"⚠️ Gemini no disponible: {e}")
     
     def analizar(self, partido):
-        """
-        Analiza partido con datos reales - Versión optimizada
-        """
         if not self.disponible:
-            return self._fallback_heurístico(partido)
+            return {
+                'apuesta': 'GEMINI NO DISPONIBLE',
+                'ganador': 'N/A',
+                'confianza': 0,
+                'razones': [],
+                'color': 'red'
+            }
         
         local = partido['local']
         visitante = partido['visitante']
         records = partido.get('records', {})
         odds = partido.get('odds', {})
         
+        # Extraer spread de forma segura
+        spread_val = 0
+        if isinstance(odds.get('spread'), dict):
+            spread_val = odds['spread'].get('valor', 0)
+        else:
+            spread_val = odds.get('spread', 0)
+        
+        try:
+            spread_num = float(spread_val)
+        except:
+            spread_num = 0
+        
         # Calcular win rates
         wr_local = self._calcular_wr(records.get('local', '0-0'))
         wr_visit = self._calcular_wr(records.get('visitante', '0-0'))
         
-        # Si hay clara diferencia, usar heurístico directamente
-        if abs(wr_local - wr_visit) > 15:
-            if wr_local > wr_visit:
-                return {
-                    'ganador': local,
-                    'confianza': 70,
-                    'razones': [f"Win rate muy superior ({wr_local:.1f}% vs {wr_visit:.1f}%)"],
-                    'color': 'green'
-                }
-            else:
-                return {
-                    'ganador': visitante,
-                    'confianza': 70,
-                    'razones': [f"Win rate muy superior ({wr_visit:.1f}% vs {wr_local:.1f}%)"],
-                    'color': 'green'
-                }
-        
-        # Prompt optimizado para casos dudosos
         prompt = f"""
-        Eres un analista de NBA. Analiza este partido basándote ÚNICAMENTE en los datos.
+        Eres un analista de NBA con 20 años de experiencia. Analiza este partido:
         
-        {local} vs {visitante}
+        **{local} vs {visitante}**
         
         DATOS REALES:
         - Récord {local}: {records.get('local', '0-0')} (Win Rate: {wr_local:.1f}%)
         - Récord {visitante}: {records.get('visitante', '0-0')} (Win Rate: {wr_visit:.1f}%)
-        - Diferencia: {abs(wr_local - wr_visit):.1f}%
-        - Spread: {odds.get('spread', 0):+g}
+        - Diferencia de win rate: {abs(wr_local - wr_visit):.1f}%
+        - Spread: {spread_num:+g}
         
-        REGLAS:
-        1. Si diferencia < 5%, es un partido parejo - ventaja al local
-        2. Si diferencia > 10%, favorito claro
-        3. NO inventes lesiones ni excusas
+        INSTRUCCIONES:
+        1. Si los win rates son muy similares (<5% diferencia), indica que es un partido parejo
+        2. Si hay clara diferencia (>10%), el favorito es el de mejor win rate
+        3. Considera la ventaja de localía (+3% al local)
         
         Responde SOLO con JSON:
         {{
             "ganador": "{local} o {visitante}",
+            "apuesta": "GANA X",
             "confianza": 65,
-            "razones": ["razón 1", "razón 2"]
+            "razones": ["razón 1", "razón 2"],
+            "color": "green"
         }}
         """
         
@@ -82,43 +82,31 @@ class AnalizadorGeminiNBA:
             match = re.search(r'\{.*\}', response.text, re.DOTALL)
             if match:
                 resultado = json.loads(match.group(0))
-                resultado['color'] = 'green' if resultado.get('confianza', 0) > 65 else 'orange'
+                # Asegurar que tenga clave 'apuesta'
+                if 'apuesta' not in resultado and 'ganador' in resultado:
+                    resultado['apuesta'] = f"GANA {resultado['ganador']}"
                 return resultado
-        except:
-            pass
+        except Exception as e:
+            st.warning(f"Error en Gemini: {e}")
         
-        return self._fallback_heurístico(partido)
-    
-    def _fallback_heurístico(self, partido):
-        """Fallback al método heurístico si Gemini falla"""
-        local = partido['local']
-        visitante = partido['visitante']
-        records = partido.get('records', {})
-        
-        wr_local = self._calcular_wr(records.get('local', '0-0'))
-        wr_visit = self._calcular_wr(records.get('visitante', '0-0'))
-        
+        # Fallback al heurístico
         if wr_local > wr_visit + 5:
-            return {
-                'ganador': local,
-                'confianza': 60,
-                'razones': [f"Mejor win rate ({wr_local:.1f}% vs {wr_visit:.1f}%)"],
-                'color': 'orange'
-            }
+            ganador = local
+            confianza = 60
         elif wr_visit > wr_local + 5:
-            return {
-                'ganador': visitante,
-                'confianza': 60,
-                'razones': [f"Mejor win rate ({wr_visit:.1f}% vs {wr_local:.1f}%)"],
-                'color': 'orange'
-            }
+            ganador = visitante
+            confianza = 60
         else:
-            return {
-                'ganador': local if wr_local > wr_visit else visitante,
-                'confianza': 55,
-                'razones': ["Partido parejo - ligera ventaja local"],
-                'color': 'yellow'
-            }
+            ganador = local if wr_local > wr_visit else visitante
+            confianza = 55
+        
+        return {
+            'apuesta': f"GANA {ganador}",
+            'ganador': ganador,
+            'confianza': confianza,
+            'razones': [f"Basado en win rates ({wr_local:.1f}% vs {wr_visit:.1f}%)"],
+            'color': 'orange' if confianza > 55 else 'yellow'
+        }
     
     def _calcular_wr(self, record_str):
         """Calcula win rate de string '45-23'"""
